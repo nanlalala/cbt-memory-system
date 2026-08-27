@@ -1,0 +1,3 @@
+arm,n,mean_model_assisted_score_12,mean_expected_proxy_coverage,citation_rate,median_latency_ms,pairwise_wins,ties
+no_rag,16,11.875,0.25,0.0,16503.41295599998,6,9
+public_reference_rag,16,11.3125,0.25,0.1875,15560.364388500035,1,9
