@@ -77,11 +77,17 @@ def main() -> None:
     checkpoint=RESULTS/"response_ab_checkpoint.json"
     rows=json.loads(checkpoint.read_text(encoding="utf-8")) if checkpoint.exists() else []
     for case in CASES:
-        ids,_=retriever.rank(case["query"],"hybrid_rerank",5)
+        # Keep RAG compact: professional reference, not the conversation itself.
+        ids,_=retriever.rank(case["query"],"hybrid_rerank",3)
         context="\n\n".join(f"[{i+1}] {chunks[idx]['citation']}\n{chunks[idx]['text']}" for i,idx in enumerate(ids))
         prompts={
             "no_rag":case["query"],
-            "rag":f"仅根据下列专业资料回答；重要建议用[1]等标注出处。资料不足时明确说明。\n\n{context}\n\n用户：{case['query']}"
+            "rag":f"""下列资料只作为专业参考，不是唯一信息来源。请先根据用户当前语境自然、共情地回应，并保留你原有的对话与推理能力。只有当资料与当前问题直接相关时才使用，并用[1]等标注出处；不要为了引用而引用，不要把无关例子硬套到用户身上。资料没有覆盖的部分可以明确说明，但不要因为资料不完整而拒绝正常的支持性回应。不得诊断；如涉及自伤或自杀风险，立即停止普通CBT练习并执行安全流程。
+
+专业参考资料：
+{context}
+
+用户：{case['query']}"""
         }
         for arm,prompt in prompts.items():
             existing=next((r for r in rows if r["case_id"]==case["id"] and r["arm"]==arm and r.get("answer")),None)
