@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
 import time
 from collections import Counter
@@ -14,7 +15,33 @@ import numpy as np
 import pandas as pd
 import yaml
 from pypdf import PdfReader
-from rank_bm25 import BM25Okapi
+try:
+    from rank_bm25 import BM25Okapi
+except ImportError:
+    class BM25Okapi:
+        """Small dependency-free BM25 fallback for reproducible CPU tests."""
+        def __init__(self, corpus: list[list[str]], k1: float = 1.5, b: float = 0.75):
+            self.corpus = corpus
+            self.k1, self.b = k1, b
+            self.doc_len = np.asarray([len(d) for d in corpus], dtype=float)
+            self.avgdl = float(self.doc_len.mean()) if len(self.doc_len) else 1.0
+            self.tf = [Counter(d) for d in corpus]
+            df = Counter()
+            for d in corpus:
+                df.update(set(d))
+            n = max(1, len(corpus))
+            self.idf = {t: math.log(1 + (n - f + .5) / (f + .5)) for t, f in df.items()}
+
+        def get_scores(self, query: list[str]) -> np.ndarray:
+            scores = np.zeros(len(self.corpus), dtype=float)
+            for term in query:
+                idf = self.idf.get(term, 0.0)
+                for i, freq in enumerate(self.tf):
+                    f = freq.get(term, 0)
+                    if f:
+                        denom = f + self.k1 * (1 - self.b + self.b * self.doc_len[i] / self.avgdl)
+                        scores[i] += idf * f * (self.k1 + 1) / denom
+            return scores
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -161,7 +188,8 @@ def make_chunks(source: dict[str, Any], target_chars: int = 1400, overlap_chars:
 
 
 def build_corpus() -> list[dict[str, Any]]:
-    config = yaml.safe_load((ROOT / "knowledge_sources.yaml").read_text())
+    config_path = Path(os.environ.get("CBT_KB_CONFIG", ROOT / "knowledge_sources.yaml"))
+    config = yaml.safe_load(config_path.read_text())
     all_chunks: list[dict[str, Any]] = []
     for source in config["sources"]:
         chunks = make_chunks(source)
@@ -225,6 +253,20 @@ class Retriever:
             order = np.argsort(-scores)
         elif mode == "bm25":
             scores = self._bm_scores[query]
+            order = np.argsort(-scores)
+        elif mode == "lexical_hybrid":
+            tf = cosine_similarity(self.tfidf.transform([query]), self.tfidf_docs).ravel()
+            bm = self._bm_scores[query]
+            tf_rank = np.argsort(-tf)
+            bm_rank = np.argsort(-bm)
+            scores = np.zeros(len(self.chunks), dtype=float)
+            for ranking in (tf_rank, bm_rank):
+                for r, idx in enumerate(ranking[:100]):
+                    scores[idx] += 1.0 / (60 + r + 1)
+            qtags = set(tag_text(query))
+            scores += np.asarray([.02 * len(qtags.intersection(c["cbt_topics"])) for c in self.chunks])
+            if "suicide_safety" in qtags:
+                scores += np.asarray([100.0 if "suicide_safety" in c["cbt_topics"] else 0.0 for c in self.chunks])
             order = np.argsort(-scores)
         elif mode == "dense":
             q = self._query_embeddings[query]
