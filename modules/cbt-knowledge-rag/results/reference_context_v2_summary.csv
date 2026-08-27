@@ -1,0 +1,3 @@
+arm,required_hits,required_total,forbidden_total,citation_rate,median_generation_ms,required_coverage
+no_rag,16,32,1,0.0,20745.41733749993,0.5
+reference_rag_v2,17,32,2,0.625,20674.123179000162,0.53125
