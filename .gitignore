@@ -13,3 +13,5 @@ cache/
 **/results/retrieval_per_question.csv
 **/results/response_ab_results.csv
 **/results/response_ab_checkpoint.json
+**/results/reference_context_v2_checkpoint.json
+**/results/reference_context_v2_results.csv
