@@ -2,10 +2,6 @@
 
 Research prototype for **A Hierarchical Memory Framework for Psychotherapy Reflection and Care Tracking**.
 
-- **Student:** Yinan Jin
-- **Supervisor:** Dr Judice LY Koh
-- **Programme:** NUS MSc in Biomedical Informatics
-
 ## Research focus
 
 This project studies how a long-term CBT reflective journaling agent should form, store, retrieve, update, correct and forget memories across repeated sessions. It is not intended to diagnose users or replace therapists.
