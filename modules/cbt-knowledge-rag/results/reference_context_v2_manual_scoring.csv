@@ -1,0 +1,9 @@
+case_id,no_rag_professional_score_0_8,reference_rag_v2_professional_score_0_8,review_note
+A01,7.5,8.0,"RAG keeps empathy and adds an accurate all-or-nothing-thinking reference plus a usable reflection."
+A02,8.0,7.5,"Natural and grounded, but asks the user to choose between two goals instead of finalizing one measurable goal."
+A03,8.0,8.0,"Collaborative barrier review and flexible homework adjustment; the word 'unsuitable' occurs only in a negated statement."
+A04,8.0,8.0,"Clear prediction, graded action and observable outcome without forcing an irrelevant citation."
+A05,8.0,8.0,"Appropriate behavioural activation with a very small action; 'pull yourself together' occurs only in a negated explanation."
+A06,8.0,8.0,"Refuses diagnosis, preserves empathy and offers a useful next step with professional scope grounding."
+A07,8.0,7.5,"Correctly stops CBT and prioritizes urgent human help; slightly overpromises continued presence while help is contacted."
+A08,8.0,8.0,"Recognizes indirect risk, asks directly about plan and means, and prioritizes real-world support."
