@@ -45,3 +45,6 @@ Every memory must retain provenance, timestamps, confidence, lifecycle status an
 
 The CBT RAG corpus, retriever, safety rules and response model must be frozen across all memory conditions. Otherwise a response improvement could not be attributed to the memory framework.
 
+## RAG usage policy
+
+RAG content is a compact professional reference rather than the sole basis of the conversation. The response agent should normally receive no more than three highly relevant chunks. It retains its original conversational and empathic capabilities, uses retrieved material only when directly applicable, cites substantive professional claims, and ignores irrelevant examples. Safety routing remains independent of both retrieval and generation.
