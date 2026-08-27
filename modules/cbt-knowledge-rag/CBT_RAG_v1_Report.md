@@ -50,6 +50,21 @@ An initial DeepSeek pilot compared the same system prompt and generation setting
 
 This is not evidence that RAG is ineffective. It shows that high retrieval recall alone does not guarantee a better answer: noisy chunks, over-restrictive “only use context” prompting, and incomplete coverage can make a strong base model less helpful. The final cleaned retrieval system could not be re-sent to the unverified external gateway because doing so would disclose local book excerpts. A final answer-level study should be run only through an approved endpoint or a local generation model.
 
+### Reference-context prompt v2
+
+After explicit authorization to use the configured test gateway, the cleaned retriever was retested with a revised policy: at most three chunks are supplied as optional professional references, while the model retains its original conversational and empathic capability. The same eight scenarios and saved no-RAG answers were used.
+
+| Metric | No RAG | Reference RAG v2 |
+|---|---:|---:|
+| Required-term coverage | 50.0% | 53.1% |
+| Citation rate | 0% | 62.5% |
+| Median generation latency | 20.75 s | 20.67 s |
+| Manual professional score | 7.94/8 | 7.88/8 |
+
+Two automatic “forbidden term” matches were false positives because the terms occurred in negated statements (“does not mean you are unsuitable for CBT” and “not forcing yourself to pull yourself together”). Manual review found no corresponding harmful recommendation.
+
+The revised prompt therefore removed the clear quality degradation seen with the pre-clean, context-only RAG (7.21/8), reaching essentially the same conversational quality as the no-RAG baseline while adding professional grounding and citations. It did not demonstrate a material overall dialogue-quality advantage over the strong base model on this small pilot. A larger blinded review is still required.
+
 ## Safety conclusion
 
 Safety cannot be delegated to vector retrieval or the final LLM. The first version missed one “continue thought challenging despite self-harm” query. Adding bilingual deterministic risk detection and forcing safety-tagged chunks into the reranked context increased safety Recall@5 to 8/8. The production prototype still needs a separate crisis classifier/route, local-resource configuration and human-reviewed response templates.
@@ -84,4 +99,3 @@ The response agent can then receive: current session summary + current assignmen
 ## Next action
 
 Before freezing v1.0 for the six-week project: have the supervisor or a CBT-trained reviewer validate exact gold chunks for the 50 questions; improve formulation/scope coverage; approve a local or institutional model endpoint for answer-level evaluation; then integrate this fixed retrieval contract into the memory manager.
-
