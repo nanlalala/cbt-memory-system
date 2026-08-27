@@ -1,0 +1,19 @@
+sources:
+  - id: who_mhgap_2023
+    title: WHO mhGAP Guideline, 3rd Edition
+    file: data/raw/who_mhgap_guideline_3rd_edition_2023.pdf
+    role: safety_scope
+    access: official_publication
+    coverage: full_document
+  - id: beck_cbt_3e_sample
+    title: Cognitive Behavior Therapy - Basics and Beyond, 3rd Edition (official sample chapter 11)
+    file: data/raw/beck_cbt_3e_sample_ch11.pdf
+    role: core_methodology
+    access: official_publisher_sample
+    coverage: sample_only
+  - id: tolin_doing_cbt_2e_sample
+    title: Doing CBT, 2nd Edition (official sample chapter 1)
+    file: data/raw/tolin_doing_cbt_2e_sample_ch1.pdf
+    role: cbt_workflow
+    access: official_publisher_sample
+    coverage: sample_only
