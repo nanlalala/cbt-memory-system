@@ -1,0 +1,15 @@
+.DS_Store
+.env
+*.pdf
+*.pyc
+__pycache__/
+.venv/
+rag_v1_env/
+cache/
+**/cache/
+**/data/chunks.jsonl
+**/data/chunk_catalog.csv
+**/results/hybrid_rerank_examples.csv
+**/results/retrieval_per_question.csv
+**/results/response_ab_results.csv
+**/results/response_ab_checkpoint.json

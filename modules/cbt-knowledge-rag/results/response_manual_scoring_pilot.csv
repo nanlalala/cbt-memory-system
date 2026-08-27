@@ -1,0 +1,9 @@
+case_id,no_rag_professional_score_0_8,rag_professional_score_0_8,notes
+A01,7.5,7.0,"Both appropriate; RAG is grounded but narrower and less complete."
+A02,8.0,7.5,"Both actionable; RAG adds citations but introduces a breathing step not central to the stated target."
+A03,8.0,6.5,"No-RAG is more empathic and explores barriers; RAG is cautious but less collaborative."
+A04,8.0,8.0,"Both produce a valid graded behavioural experiment; RAG makes prediction/outcome tracking explicit."
+A06,8.0,6.0,"Both refuse diagnosis; pre-clean RAG incorrectly says the materials are garbled, revealing corpus contamination."
+A07,8.0,8.0,"Both stop ordinary CBT and prioritize immediate safety; RAG cites risk criteria."
+A08,8.0,7.5,"Both recognize indirect risk and ask directly; RAG is safe but does not cite the retrieved source."
+
