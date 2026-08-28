@@ -1,50 +1,92 @@
 # System architecture
 
-The response context is assembled from five independently governed inputs:
+The system uses two independently governed retrieval channels:
 
-```text
-Current session summary
-+ active assignment and goal state
-+ selected long-term memories
-+ frozen CBT knowledge-base RAG context
-+ deterministic safety rules
-→ response agent
+- **CBT Knowledge RAG** for professional methods, evidence and safety references;
+- **Long-term Memory RAG** for user-specific history, goals, assignments, patterns and corrections.
+
+They share an orchestration layer but use different stores, metadata, ranking features and evaluation criteria.
+
+```mermaid
+flowchart TD
+    A[Current conversation] --> B[Task and safety router]
+    B --> C[CBT Knowledge RAG]
+    B --> D[Long-term Memory RAG]
+    C --> E[Context builder]
+    D --> E
+    E --> F[Response agent]
 ```
 
-## Memory layers
+## Context layers
 
-### Short-term memory
+The response context is assembled from independently governed inputs:
 
-- recent conversation window;
-- current topic and emotion;
-- active thought record;
-- unresolved items;
-- currently valid assignment.
+1. recent conversation and current session summary;
+2. active assignment and goal state;
+3. selected, valid long-term memories;
+4. selected CBT knowledge evidence;
+5. deterministic safety-policy output.
 
-### Long-term memory
+Either retriever may return zero items. Retrieved text is evidence, not an instruction to override the current conversation.
 
-- explicit user facts and preferences;
-- episodic events;
-- goals, assignments and outcomes;
-- candidate or confirmed recurring patterns;
-- restricted safety-related information.
+## CBT Knowledge RAG
 
-Every memory must retain provenance, timestamps, confidence, lifecycle status and user-confirmation state. User facts and model inferences must be stored separately.
+This channel retrieves relatively stable professional material. Ranking considers semantic relevance, source authority, CBT topic and safety labels. Relevance gating should prevent weak evidence from entering the prompt. Chinese conversations and English sources require multilingual retrieval and reranking.
 
-## Memory manager responsibilities
+## Long-term Memory RAG
 
-- extract candidate memories;
-- decide short-term versus long-term storage;
-- merge duplicates;
-- resolve conflicts without erasing provenance;
-- expire or reduce obsolete memories;
-- support view, confirmation, correction and deletion;
-- retrieve by relevance, validity, task state and sensitivity.
+This channel retrieves dynamic, user-scoped memory. It includes a write path and a read path.
+
+### Write path
+
+```text
+session
+→ candidate extraction
+→ validation and sensitivity check
+→ deduplication/conflict check
+→ structured record and embedding
+```
+
+### Read path
+
+```text
+current task
+→ memory query
+→ user/lifecycle/sensitivity filters
+→ candidate retrieval
+→ temporal and semantic reranking
+→ relevance gate
+→ context builder
+```
+
+Memory ranking may consider:
+
+- semantic and task relevance;
+- time and latest-state validity;
+- importance;
+- confidence;
+- user confirmation;
+- active or superseded lifecycle state;
+- sensitivity and access permission.
+
+Every memory retains provenance, timestamps, confidence, lifecycle status and user-confirmation state. Explicit user facts and model inferences remain distinguishable.
+
+## Lifecycle rules
+
+The memory system must:
+
+- consolidate duplicates without erasing provenance;
+- resolve conflicts by preserving history;
+- prefer confirmed and newer information where appropriate;
+- mark replaced memories as superseded;
+- support expiry or importance decay;
+- support user inspection, correction and deletion;
+- prevent deleted or superseded records from retrieval.
+
+## Safety boundary
+
+Deterministic crisis routing runs before both retrieval channels. CBT Knowledge RAG can provide grounded safety references, but it does not decide whether a crisis exists. Sensitive memories require separate access controls and must not be retrieved only because they are semantically similar.
 
 ## Experimental control
 
-The CBT RAG corpus, retriever, safety rules and response model must be frozen across all memory conditions. Otherwise a response improvement could not be attributed to the memory framework.
-
-## RAG usage policy
-
-RAG content is a compact professional reference rather than the sole basis of the conversation. The response agent should normally receive no more than three highly relevant chunks. It retains its original conversational and empathic capabilities, uses retrieved material only when directly applicable, cites substantive professional claims, and ignores irrelevant examples. Safety routing remains independent of both retrieval and generation.
+For the main memory study, the response model, CBT Knowledge RAG, safety rules and dialogue scenarios remain frozen across all memory conditions. The independent variable is the availability and management of cross-session memory.
