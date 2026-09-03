@@ -57,15 +57,14 @@ The conversation also has a separate memory write path: supported information is
 | Context builder | Validates, separates and budgets short-term state, personal memory and professional evidence |
 | Response agent | Generates a supportive response while respecting safety and role boundaries |
 
-See the [complete architecture diagram set](docs/diagrams/README.md) for detailed diagrams of each component.
+See the [complete architecture document](docs/architecture.md) for the overall design and all module-level diagrams on one page.
 
 ## Repository structure
 
 ```text
 cbt-memory-system/
 ├── docs/
-│   ├── architecture.md
-│   └── diagrams/                       # Overall and module-level diagrams
+│   └── architecture.md                 # Overall and module-level diagrams
 ├── modules/
 │   ├── cbt-knowledge-rag/              # Professional knowledge and safety references
 │   ├── long-term-memory/
@@ -106,7 +105,9 @@ Current retrieval results:
 | MRR@10 | **0.583** |
 | Safety Recall@5 | **1.00** |
 
-Response pilots suggest that knowledge RAG improves grounding and traceability, particularly for professional boundaries and safety references, but has not yet demonstrated a general improvement in dialogue quality. The next iteration will add relevance gating and allow zero retrieved chunks.
+An eight-scenario exploratory pilot found nearly identical observed dialogue scores for no RAG (7.94/8) and Reference RAG v2 (7.88/8). Reference RAG increased required-term coverage from 50.0% to 53.1% and citation coverage from 0% to 62.5%, without increasing median latency. These model-assisted results are development signals, not human clinical ratings.
+
+The full no-RAG versus RAG comparison will be repeated after Long-term Memory RAG and Agent integration are complete. The end-to-end evaluation will assess dialogue quality, cross-session continuity, assignment tracking, professional boundaries, safety, latency and token cost.
 
 ## Four-week implementation plan
 
@@ -120,6 +121,5 @@ Response pilots suggest that knowledge RAG improves grounding and traceability, 
 ## Documentation
 
 - [System architecture](docs/architecture.md)
-- [Architecture diagram set](docs/diagrams/README.md)
 - [CBT Knowledge RAG report](modules/cbt-knowledge-rag/CBT_RAG_v1_Report.md)
 - [Expanded dialogue evaluation](modules/cbt-knowledge-rag/CBT_RAG_v3_Expanded_Evaluation.md)
