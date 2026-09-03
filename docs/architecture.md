@@ -90,3 +90,7 @@ Deterministic crisis routing runs before both retrieval channels. CBT Knowledge 
 ## Experimental control
 
 For the main memory study, the response model, CBT Knowledge RAG, safety rules and dialogue scenarios remain frozen across all memory conditions. The independent variable is the availability and management of cross-session memory.
+
+## Detailed diagrams
+
+The presentation-ready overall architecture and detailed module diagrams are collected in [`docs/diagrams/`](diagrams/README.md).
