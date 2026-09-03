@@ -1,4 +1,4 @@
-# CBT Memory System
+![CBT Memory System — a hierarchical memory framework for repeated CBT reflections](assets/cbt-memory-system-header.png)
 
 Research prototype for **A Hierarchical Memory Framework for Psychotherapy Reflection and Care Tracking**.
 
