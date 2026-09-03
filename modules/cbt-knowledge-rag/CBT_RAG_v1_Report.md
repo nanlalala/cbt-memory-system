@@ -46,24 +46,26 @@ Before broken-font filtering, the final retriever reached Recall@5 0.76 and dens
 
 ## Exploratory response A/B
 
-An initial DeepSeek pilot compared the same system prompt and generation settings with and without retrieved context. The automatic proxy score showed 50% required-term coverage for both arms; RAG produced citations in 62.5% of answers versus 0% without RAG. One RAG response was empty because the gateway exhausted its token budget in hidden reasoning, and the pilot was run before the final broken-font cleanup. On seven complete pairs, manual professional-quality scoring averaged 7.93/8 for no-RAG and 7.21/8 for pre-clean RAG.
+An initial DeepSeek pilot compared the same system prompt and generation settings with and without retrieved context. The automatic proxy score showed 50% required-term coverage for both arms; RAG produced citations in 62.5% of answers versus 0% without RAG. One RAG response was empty because the gateway exhausted its token budget in hidden reasoning, and the pilot was run before the final broken-font cleanup. On seven complete pairs, model-assisted dialogue scoring averaged 7.93/8 for no-RAG and 7.21/8 for pre-clean RAG.
 
 This is not evidence that RAG is ineffective. It shows that high retrieval recall alone does not guarantee a better answer: noisy chunks, over-restrictive “only use context” prompting, and incomplete coverage can make a strong base model less helpful. The final cleaned retrieval system could not be re-sent to the unverified external gateway because doing so would disclose local book excerpts. A final answer-level study should be run only through an approved endpoint or a local generation model.
 
-### Reference-context prompt v2
+### Exploratory response pilot: Reference-context prompt v2
 
 After explicit authorization to use the configured test gateway, the cleaned retriever was retested with a revised policy: at most three chunks are supplied as optional professional references, while the model retains its original conversational and empathic capability. The same eight scenarios and saved no-RAG answers were used.
 
-| Metric | No RAG | Reference RAG v2 |
-|---|---:|---:|
-| Required-term coverage | 50.0% | 53.1% |
-| Citation rate | 0% | 62.5% |
-| Median generation latency | 20.75 s | 20.67 s |
-| Manual professional score | 7.94/8 | 7.88/8 |
+| Evaluation aspect | Result | Interpretation |
+|---|---:|---|
+| Model-assisted dialogue score | 7.88/8 vs 7.94/8 | Nearly identical observed scores in this eight-scenario pilot |
+| Required-term coverage | +3.1 percentage points | Slight improvement |
+| Citation coverage | 0% → 62.5% | Clear improvement in professional grounding |
+| Median generation latency | −0.08 s | No added latency |
 
-Two automatic “forbidden term” matches were false positives because the terms occurred in negated statements (“does not mean you are unsuitable for CBT” and “not forcing yourself to pull yourself together”). Manual review found no corresponding harmful recommendation.
+Two automatic “forbidden term” matches were false positives because the terms occurred in negated statements (“does not mean you are unsuitable for CBT” and “not forcing yourself to pull yourself together”). Post-hoc inspection found no corresponding harmful recommendation.
 
-The revised prompt therefore removed the clear quality degradation seen with the pre-clean, context-only RAG (7.21/8), reaching essentially the same conversational quality as the no-RAG baseline while adding professional grounding and citations. It did not demonstrate a material overall dialogue-quality advantage over the strong base model on this small pilot. A larger blinded review is still required.
+The revised prompt therefore removed the clear quality degradation seen with the pre-clean, context-only RAG (7.21/8). In this small pilot, it preserved approximately the same observed dialogue quality while adding professional grounding and citations; it did not demonstrate a material overall dialogue-quality advantage over the strong base model.
+
+This component-level pilot is exploratory and does not provide a final conclusion on the value of RAG. After Long-term Memory RAG and Agent integration are complete, the no-RAG and RAG configurations will be compared again in the end-to-end evaluation. The final comparison will examine dialogue quality, cross-session continuity, CBT assignment tracking, professional boundaries, safety, latency and token cost.
 
 ## Safety conclusion
 
