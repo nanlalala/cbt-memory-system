@@ -63,4 +63,4 @@ Final cleaned retrieval result: Recall@5 **0.80**, Recall@10 **0.84**, MRR@10 **
 
 The response pilots show that RAG improves grounding and traceability, especially for professional boundaries and safety references, but has not yet demonstrated a general dialogue-quality improvement. The next knowledge-RAG iteration will add relevance gating and allow zero retrieved chunks.
 
-See [the CBT RAG report](modules/cbt-knowledge-rag/CBT_RAG_v1_Report.md) and [the system architecture](docs/architecture.md).
+See [the CBT RAG report](modules/cbt-knowledge-rag/CBT_RAG_v1_Report.md), [the system architecture](docs/architecture.md), and [the complete architecture diagram set](docs/diagrams/README.md).
