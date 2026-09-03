@@ -1,96 +1,216 @@
 # System architecture
 
-The system uses two independently governed retrieval channels:
+[Back to project overview](../README.md)
 
-- **CBT Knowledge RAG** for professional methods, evidence and safety references;
-- **Long-term Memory RAG** for user-specific history, goals, assignments, patterns and corrections.
+This page contains the overall architecture and all module-level diagrams in one continuous document.
 
-They share an orchestration layer but use different stores, metadata, ranking features and evaluation criteria.
+## 1. Overall system
 
 ```mermaid
 flowchart TD
-    A[Current conversation] --> B[Task and safety router]
-    B --> C[CBT Knowledge RAG]
-    B --> D[Long-term Memory RAG]
-    C --> E[Context builder]
-    D --> E
-    E --> F[Response agent]
+    U["User reflection or follow-up"] --> APP["Reflective journaling interface"]
+    APP --> R["Safety and task router"]
+    R -->|Urgent risk| S["Safety response and referral"]
+    S --> APP
+    R -->|Normal flow| STM["Short-term state"]
+    R --> KR["CBT Knowledge RAG"]
+    R --> MR["Long-term Memory RAG"]
+    STM --> C["Context builder"]
+    KR --> C
+    MR --> C
+    C --> A["Response agent"]
+    A --> APP
+    APP --> X["Memory candidate extraction"]
+    X --> L["Memory lifecycle manager"]
+    L --> DB[("Long-term memory store")]
+    DB --> MR
 ```
 
-## Context layers
+The system combines current-session state with two independent retrieval channels. Safety routing is executed before normal retrieval.
 
-The response context is assembled from independently governed inputs:
+## 2. Safety and task routing
 
-1. recent conversation and current session summary;
-2. active assignment and goal state;
-3. selected, valid long-term memories;
-4. selected CBT knowledge evidence;
-5. deterministic safety-policy output.
-
-Either retriever may return zero items. Retrieved text is evidence, not an instruction to override the current conversation.
-
-## CBT Knowledge RAG
-
-This channel retrieves relatively stable professional material. Ranking considers semantic relevance, source authority, CBT topic and safety labels. Relevance gating should prevent weak evidence from entering the prompt. Chinese conversations and English sources require multilingual retrieval and reranking.
-
-## Long-term Memory RAG
-
-This channel retrieves dynamic, user-scoped memory. It includes a write path and a read path.
-
-### Write path
-
-```text
-session
-→ candidate extraction
-→ validation and sensitivity check
-→ deduplication/conflict check
-→ structured record and embedding
+```mermaid
+flowchart TD
+    I["Current message and recent context"] --> D["Deterministic risk checks"]
+    D --> Q{"Urgent or imminent risk?"}
+    Q -->|Yes| P["Safety-first response"]
+    P --> H["Immediate human or emergency support"]
+    Q -->|No| T["Task classifier"]
+    T --> K{"CBT knowledge needed?"}
+    T --> M{"Long-term memory needed?"}
+    K -->|Yes| KR["Build knowledge query"]
+    K -->|No| K0["No knowledge context"]
+    M -->|Yes| MR["Build memory query"]
+    M -->|No| M0["No memory context"]
+    KR --> C["Context builder"]
+    K0 --> C
+    MR --> C
+    M0 --> C
 ```
 
-### Read path
+Crisis detection is not delegated to vector retrieval. Either normal retrieval channel may return no context.
 
-```text
-current task
-→ memory query
-→ user/lifecycle/sensitivity filters
-→ candidate retrieval
-→ temporal and semantic reranking
-→ relevance gate
-→ context builder
+## 3. CBT Knowledge RAG
+
+```mermaid
+flowchart TD
+    S["Professional CBT sources"] --> P["PDF extraction and cleaning"]
+    P --> CH["Cited chunks and metadata"]
+    CH --> IDX["BM25 and multilingual embeddings"]
+    Q["Chinese or English task query"] --> QR["Multilingual query builder"]
+    QR --> B["BM25 retrieval"]
+    QR --> E["Multilingual E5 retrieval"]
+    IDX --> B
+    IDX --> E
+    B --> F["Rank fusion"]
+    E --> F
+    F --> RR["Cross-encoder reranking"]
+    RR --> G{"Relevant enough?"}
+    G -->|No| Z["Zero chunks"]
+    G -->|Yes| TOP["Up to three cited chunks"]
 ```
 
-Memory ranking may consider:
+This channel provides professional evidence, role boundaries and safety references.
 
-- semantic and task relevance;
-- time and latest-state validity;
-- importance;
-- confidence;
-- user confirmation;
-- active or superseded lifecycle state;
-- sensitivity and access permission.
+## 4. Short-term memory
 
-Every memory retains provenance, timestamps, confidence, lifecycle status and user-confirmation state. Explicit user facts and model inferences remain distinguishable.
+```mermaid
+flowchart TD
+    W["Recent conversation window"] --> U["Session-state updater"]
+    U --> T["Current topic and emotion"]
+    U --> R["Active thought record"]
+    U --> G["Current goal and assignment"]
+    U --> N["Unresolved items"]
+    T --> S["Structured session state"]
+    R --> S
+    G --> S
+    N --> S
+    S --> C["Context builder"]
+    S --> SUM["Rolling session summary"]
+    SUM --> X["Long-term memory candidates"]
+    UC["User correction"] --> U
+```
 
-## Lifecycle rules
+Short-term memory represents what is active now. Only selected, supported information becomes a long-term memory candidate.
 
-The memory system must:
+## 5. Long-term Memory RAG
 
-- consolidate duplicates without erasing provenance;
-- resolve conflicts by preserving history;
-- prefer confirmed and newer information where appropriate;
-- mark replaced memories as superseded;
-- support expiry or importance decay;
-- support user inspection, correction and deletion;
-- prevent deleted or superseded records from retrieval.
+```mermaid
+flowchart TD
+    subgraph WRITE["Write path"]
+        S["Session summary and supported spans"] --> X["Candidate extraction"]
+        UC["User confirmation or correction"] --> X
+        X --> SC["Typed schema and provenance"]
+        SC --> V["Validation and conflict checks"]
+        V --> DB[("Versioned user memory store")]
+    end
+    subgraph READ["Retrieval path"]
+        T["Current task"] --> Q["Memory query"]
+        Q --> F["User, lifecycle and sensitivity filters"]
+        F --> R["Semantic and structured retrieval"]
+        R --> RR["Temporal and semantic reranking"]
+        RR --> G{"Relevant and valid?"}
+        G -->|No| Z["Zero memories"]
+        G -->|Yes| M["Selected memories with provenance"]
+    end
+    DB --> F
+    DB --> R
+```
 
-## Safety boundary
+The write path creates traceable, correctable memories. The read path retrieves only relevant, valid and permitted memories.
 
-Deterministic crisis routing runs before both retrieval channels. CBT Knowledge RAG can provide grounded safety references, but it does not decide whether a crisis exists. Sensitive memories require separate access controls and must not be retrieved only because they are semantically similar.
+## 6. Memory schema
 
-## Experimental control
+```mermaid
+classDiagram
+    class BaseMemory {
+        +memory_id
+        +user_id
+        +content
+        +source_session_id
+        +timestamps
+        +confidence
+        +confirmation_state
+        +lifecycle_status
+        +sensitivity
+    }
+    class ExplicitFact
+    class EpisodicEvent
+    class EmotionRecord
+    class Goal
+    class CBTAssignment
+    class AssignmentOutcome
+    class CognitivePattern
+    class UserCorrection
+    BaseMemory <|-- ExplicitFact
+    BaseMemory <|-- EpisodicEvent
+    BaseMemory <|-- EmotionRecord
+    BaseMemory <|-- Goal
+    BaseMemory <|-- CBTAssignment
+    BaseMemory <|-- AssignmentOutcome
+    BaseMemory <|-- CognitivePattern
+    BaseMemory <|-- UserCorrection
+    CBTAssignment "1" --> "0..*" AssignmentOutcome : produces
+    UserCorrection --> BaseMemory : corrects
+```
 
-For the main memory study, the response model, CBT Knowledge RAG, safety rules and dialogue scenarios remain frozen across all memory conditions. The independent variable is the availability and management of cross-session memory.
+Every memory retains provenance, time, confidence, confirmation, lifecycle and sensitivity metadata. User statements remain distinguishable from model inferences.
 
-## Detailed diagrams
+## 7. Memory lifecycle
 
-The presentation-ready overall architecture and detailed module diagrams are collected in [`docs/diagrams/`](diagrams/README.md).
+```mermaid
+flowchart TD
+    I["New candidate, correction, time or deletion signal"] --> M["Match existing memories"]
+    M --> D{"Lifecycle decision"}
+    D -->|New| C["Create active version"]
+    D -->|Duplicate| G["Merge evidence"]
+    D -->|Changed state| S["Supersede old version"]
+    D -->|Correction| U["Create corrected version"]
+    D -->|Stale| E["Expire or reduce importance"]
+    D -->|Deletion| H["Delete content and index entry"]
+    C --> DB[("Versioned memory store")]
+    G --> DB
+    S --> DB
+    U --> DB
+    E --> DB
+    H --> DB
+    DB --> F["Retrieve only active, valid and permitted memories"]
+```
+
+Updates preserve provenance. Superseded, expired, deleted or restricted memories are excluded from normal retrieval.
+
+## 8. Agent context assembly
+
+```mermaid
+flowchart TD
+    S["Safety-policy output"] --> V["Context validation"]
+    T["Short-term session state"] --> V
+    K["CBT evidence or empty"] --> V
+    M["Long-term memories or empty"] --> V
+    V --> P["Provenance, lifecycle and sensitivity checks"]
+    P --> D["Deduplication and context budget"]
+    D --> N["Separate prompt sections"]
+    N --> A["Response agent"]
+    A --> O["Supportive response"]
+    A --> TR["Internal trace of information used"]
+```
+
+Professional evidence and personal memory remain separate in the prompt and cannot silently override the current user message.
+
+## 9. Evaluation framework
+
+```mermaid
+flowchart TD
+    K["Knowledge retrieval"] --> R["Integrated results"]
+    M["Memory retrieval"] --> R
+    D["End-to-end dialogue"] --> R
+    S["Safety evaluation"] --> R
+    C1["No cross-session memory"] --> D
+    C2["Short-term memory only"] --> D
+    C3["Short-term plus Long-term Memory RAG"] --> D
+    F["Frozen response model, CBT RAG and safety rules"] --> D
+    R --> REP["Development report and later human review"]
+```
+
+The main experiment changes only cross-session memory. Knowledge RAG, the response model, safety rules and scenarios remain fixed.
