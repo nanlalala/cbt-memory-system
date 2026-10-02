@@ -6,7 +6,7 @@ import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from memory_models import MemoryRecord
 
@@ -66,39 +66,40 @@ class SQLiteMemoryStore:
             )
 
     def put(self, record: MemoryRecord) -> None:
-        record.validate()
+        self.atomic_write(records=[record])
+
+    def _put(self, connection: sqlite3.Connection, record: MemoryRecord) -> None:
         payload = json.dumps(record.to_dict(), ensure_ascii=False, sort_keys=True)
-        with self.transaction() as connection:
-            existing = connection.execute(
-                "SELECT user_id FROM memories WHERE memory_id = ?", (record.memory_id,)
-            ).fetchone()
-            if existing and existing["user_id"] != record.user_id:
-                raise PermissionError("memory_id belongs to a different user")
-            connection.execute(
-                """
-                INSERT INTO memories(
-                    memory_id, user_id, memory_type, content, lifecycle_status,
-                    sensitivity, updated_at, record_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(memory_id) DO UPDATE SET
-                    memory_type=excluded.memory_type,
-                    content=excluded.content,
-                    lifecycle_status=excluded.lifecycle_status,
-                    sensitivity=excluded.sensitivity,
-                    updated_at=excluded.updated_at,
-                    record_json=excluded.record_json
-                """,
-                (
-                    record.memory_id,
-                    record.user_id,
-                    record.memory_type,
-                    record.content,
-                    record.lifecycle_status,
-                    record.sensitivity,
-                    record.updated_at,
-                    payload,
-                ),
-            )
+        existing = connection.execute(
+            "SELECT user_id FROM memories WHERE memory_id = ?", (record.memory_id,)
+        ).fetchone()
+        if existing and existing["user_id"] != record.user_id:
+            raise PermissionError("memory_id belongs to a different user")
+        connection.execute(
+            """
+            INSERT INTO memories(
+                memory_id, user_id, memory_type, content, lifecycle_status,
+                sensitivity, updated_at, record_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(memory_id) DO UPDATE SET
+                memory_type=excluded.memory_type,
+                content=excluded.content,
+                lifecycle_status=excluded.lifecycle_status,
+                sensitivity=excluded.sensitivity,
+                updated_at=excluded.updated_at,
+                record_json=excluded.record_json
+            """,
+            (
+                record.memory_id,
+                record.user_id,
+                record.memory_type,
+                record.content,
+                record.lifecycle_status,
+                record.sensitivity,
+                record.updated_at,
+                payload,
+            ),
+        )
 
     def get(self, user_id: str, memory_id: str) -> MemoryRecord | None:
         row = self.connection.execute(
@@ -132,11 +133,7 @@ class SQLiteMemoryStore:
         return [row["user_id"] for row in rows]
 
     def hard_delete(self, user_id: str, memory_id: str) -> bool:
-        with self.transaction() as connection:
-            cursor = connection.execute(
-                "DELETE FROM memories WHERE user_id = ? AND memory_id = ?", (user_id, memory_id)
-            )
-        return cursor.rowcount == 1
+        return self.atomic_write(deletes=[(user_id, memory_id)]) == 1
 
     def append_audit(
         self,
@@ -148,22 +145,60 @@ class SQLiteMemoryStore:
         actor: str,
         details: dict | None = None,
     ) -> None:
+        self.atomic_write(
+            audits=[
+                {
+                    "user_id": user_id,
+                    "memory_id": memory_id,
+                    "action": action,
+                    "occurred_at": occurred_at,
+                    "actor": actor,
+                    "details": details or {},
+                }
+            ]
+        )
+
+    def atomic_write(
+        self,
+        *,
+        records: list[MemoryRecord] | None = None,
+        audits: list[dict[str, Any]] | None = None,
+        deletes: list[tuple[str, str]] | None = None,
+    ) -> int:
+        """Commit a complete lifecycle transition and its audit trail together."""
+
+        records = records or []
+        audits = audits or []
+        deletes = deletes or []
+        for record in records:
+            record.validate()
+        deleted_count = 0
         with self.transaction() as connection:
-            connection.execute(
-                """
-                INSERT INTO audit_events(
-                    user_id, memory_id, action, occurred_at, actor, details_json
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    user_id,
-                    memory_id,
-                    action,
-                    occurred_at,
-                    actor,
-                    json.dumps(details or {}, ensure_ascii=False, sort_keys=True),
-                ),
-            )
+            for record in records:
+                self._put(connection, record)
+            for user_id, memory_id in deletes:
+                cursor = connection.execute(
+                    "DELETE FROM memories WHERE user_id = ? AND memory_id = ?",
+                    (user_id, memory_id),
+                )
+                deleted_count += cursor.rowcount
+            for event in audits:
+                connection.execute(
+                    """
+                    INSERT INTO audit_events(
+                        user_id, memory_id, action, occurred_at, actor, details_json
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event["user_id"],
+                        event["memory_id"],
+                        event["action"],
+                        event["occurred_at"],
+                        event["actor"],
+                        json.dumps(event.get("details", {}), ensure_ascii=False, sort_keys=True),
+                    ),
+                )
+        return deleted_count
 
     def audit_for_user(self, user_id: str) -> list[dict]:
         rows = self.connection.execute(

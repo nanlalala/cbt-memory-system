@@ -14,10 +14,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Protocol, Sequence
 
-from memory_models import LifecycleStatus, MemoryRecord, Sensitivity
+from memory_models import LifecycleStatus, MemoryRecord, Sensitivity, is_valid_at
 
 
-TOKEN_RE = re.compile(r"[\w]+|[\u3400-\u9fff]", re.UNICODE)
+TOKEN_RE = re.compile(r"[A-Za-z0-9_]+|[\u3400-\u9fff]+", re.UNICODE)
 STOPWORDS = {
     "a", "an", "and", "are", "do", "does", "for", "how", "i", "in", "is", "it",
     "my", "of", "on", "the", "to", "was", "what", "when", "where", "who", "why",
@@ -68,11 +68,18 @@ class RetrievedMemory:
 
 
 def _tokens(text: str) -> list[str]:
-    return [
-        value.casefold()
-        for value in TOKEN_RE.findall(text)
-        if value.casefold() not in STOPWORDS
-    ]
+    tokens: list[str] = []
+    for value in TOKEN_RE.findall(text):
+        if re.fullmatch(r"[\u3400-\u9fff]+", value):
+            # Character unigrams and bigrams make the dependency-free fallback
+            # usable for unsegmented CJK text and mixed-language queries.
+            tokens.extend(value)
+            tokens.extend(value[index : index + 2] for index in range(len(value) - 1))
+        else:
+            folded = value.casefold()
+            if folded not in STOPWORDS:
+                tokens.append(folded)
+    return tokens
 
 
 def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
@@ -158,8 +165,7 @@ class MemoryRetriever:
             and record.lifecycle_status in self.policy.allowed_lifecycle
             and (memory_types is None or record.memory_type in memory_types)
             and (allow_restricted or record.sensitivity != Sensitivity.RESTRICTED.value)
-            and (not record.valid_from or _parse_time(record.valid_from) <= now)
-            and (not record.valid_to or _parse_time(record.valid_to) >= now)
+            and is_valid_at(record, now)
         ]
         if not candidates or not query.strip():
             return []

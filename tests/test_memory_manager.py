@@ -216,6 +216,7 @@ class ExtractionContractTests(unittest.TestCase):
         )
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0].source_evidence.turn_ids, ["u1"])
+        self.assertEqual(records[0].confirmation_state, "unconfirmed")
 
     def test_assistant_turn_cannot_support_user_memory(self) -> None:
         turns = [ConversationTurn("a1", "assistant", "Try walking after lunch.")]
@@ -236,6 +237,90 @@ class ExtractionContractTests(unittest.TestCase):
             parse_extraction_output(
                 raw, user_id="user-a", session_id="s1", turns=turns
             )
+
+    def test_unentailed_model_summary_remains_unconfirmed_candidate(self) -> None:
+        turns = [ConversationTurn("u1", "user", "I like walking after lunch.")]
+        raw = json.dumps(
+            {
+                "candidates": [
+                    {
+                        "memory_id": "hallucinated",
+                        "memory_type": "explicit_fact",
+                        "content": "The user lives in Paris.",
+                        "source_turn_ids": ["u1"],
+                        "supporting_text": "I like walking",
+                    }
+                ]
+            }
+        )
+        extracted = parse_extraction_output(
+            raw, user_id="user-a", session_id="s1", turns=turns
+        )[0]
+        self.assertEqual(extracted.confirmation_state, "unconfirmed")
+        store = SQLiteMemoryStore()
+        self.addCleanup(store.close)
+        result = MemoryManager(store).ingest(extracted)
+        self.assertIn("candidate", result.reason)
+        self.assertEqual(store.get("user-a", "hallucinated").lifecycle_status, "candidate")
+
+
+class AtomicLifecycleTests(unittest.TestCase):
+    def test_unconfirmed_correction_waits_then_applies_atomically(self) -> None:
+        store = SQLiteMemoryStore()
+        self.addCleanup(store.close)
+        manager = MemoryManager(store)
+        manager.ingest(make_record("old", payload={"slot_key": "event:seminar-date"}))
+        correction = make_record(
+            "correction",
+            memory_type="user_correction",
+            content="The seminar is Thursday, not Friday.",
+            origin="user_correction",
+            confirmation_state="unconfirmed",
+            payload={"corrected_content": "The seminar is Thursday."},
+            supersedes="old",
+        )
+        result = manager.ingest(correction)
+        self.assertEqual(result.action, "correction_requires_confirmation")
+        self.assertEqual(store.get("user-a", "old").lifecycle_status, "active")
+        self.assertEqual(store.get("user-a", "correction").lifecycle_status, "candidate")
+        manager.confirm_candidate(
+            "user-a", "correction", confirmed_at="2026-10-02T10:00:00Z"
+        )
+        self.assertEqual(store.get("user-a", "old").lifecycle_status, "superseded")
+        self.assertEqual(store.get("user-a", "correction").lifecycle_status, "active")
+
+    def test_correction_rolls_back_when_replacement_insert_fails(self) -> None:
+        store = SQLiteMemoryStore()
+        self.addCleanup(store.close)
+        manager = MemoryManager(store)
+        manager.ingest(make_record("old", payload={"slot_key": "event:seminar-date"}))
+        store.connection.execute(
+            """
+            CREATE TRIGGER fail_correction_insert
+            BEFORE INSERT ON memories
+            WHEN NEW.memory_id = 'correction'
+            BEGIN
+                SELECT RAISE(ABORT, 'simulated replacement failure');
+            END;
+            """
+        )
+        correction = make_record(
+            "correction",
+            memory_type="user_correction",
+            content="The seminar is Thursday, not Friday.",
+            origin="user_correction",
+            confirmation_state="user_corrected",
+            payload={"corrected_content": "The seminar is Thursday."},
+            supersedes="old",
+        )
+        with self.assertRaisesRegex(Exception, "simulated replacement failure"):
+            manager.ingest(correction)
+        self.assertEqual(store.get("user-a", "old").lifecycle_status, "active")
+        self.assertIsNone(store.get("user-a", "correction"))
+        self.assertNotIn(
+            "correction_applied",
+            [event["action"] for event in store.audit_for_user("user-a")],
+        )
 
 
 class BenchmarkAdapterTests(unittest.TestCase):
