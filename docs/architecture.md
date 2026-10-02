@@ -163,7 +163,7 @@ Every memory retains provenance, time, confidence, confirmation, lifecycle and s
 flowchart TD
     I["New candidate, correction, time or deletion signal"] --> M["Match existing memories"]
     M --> D{"Lifecycle decision"}
-    D -->|New| C["Create active version"]
+    D -->|New| C["Create candidate version"]
     D -->|Duplicate| G["Merge evidence"]
     D -->|Changed state| S["Supersede old version"]
     D -->|Correction| U["Create corrected version"]

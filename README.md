@@ -94,7 +94,7 @@ The response model, CBT Knowledge RAG, safety rules and evaluation scenarios wil
 
 ## Current status
 
-The CBT Knowledge RAG module is complete. Memory Schema v1 and Memory Manager v1 are implemented, including provenance-aware extraction, SQLite storage, correction, conflict confirmation, expiry, deletion and user/sensitivity isolation. Long-term Memory RAG v1 and the Agent context builder are now implemented with relevance gating, temporal reranking, strict access filters and separate personal/professional context sections. The current suite contains 27 deterministic tests.
+The CBT Knowledge RAG module is complete. Memory Schema v1 and Memory Manager v1 are implemented, including provenance-aware extraction, SQLite storage, correction, conflict confirmation, expiry, deletion and user/sensitivity isolation. Model-extracted summaries remain unconfirmed candidates until a separate confirmation step, and lifecycle transitions are committed atomically with their audit events. Long-term Memory RAG v1 and the Agent context builder are implemented with relevance gating, temporal reranking, strict access filters and separate personal/professional context sections. The current suite contains 32 deterministic tests.
 
 The official LoCoMo comparison over 1,986 questions found that hybrid TF-IDF + multilingual E5 retrieval outperformed either component alone. Hybrid achieved Evidence Recall@5 = 0.520, Recall@10 = 0.598 and MRR@10 = 0.415, compared with 0.449, 0.528 and 0.359 for TF-IDF. These retrieval scores remain separate from the later end-to-end dialogue comparison.
 
@@ -125,7 +125,7 @@ The full no-RAG versus RAG comparison will be repeated after Long-term Memory RA
 |---|---|---|---|
 | **Week 1 — complete** | Memory schema and data preparation | Define short- and long-term memory types; design schemas for emotions, events, goals, assignments, cognitive patterns and corrections; prepare multi-session test cases | Memory Schema v1, four structured examples and ten multi-session extraction cases |
 | **Week 2 — core complete** | Memory writing and lifecycle management | Implement candidate extraction, validation, deduplication, conflict detection, updating, user correction, expiry and forgetting | Memory Manager v1, correction workflow and unit-test results |
-| **Week 3 — core complete** | Long-term Memory RAG and Agent integration | Build user-scoped memory indexes; implement semantic retrieval, temporal reranking and relevance gating; integrate both RAG channels with short-term context | Long-term Memory RAG v1, dual-retrieval context builder, 27 tests and official LoCoMo CPU baseline |
+| **Week 3 — core complete** | Long-term Memory RAG and Agent integration | Build user-scoped memory indexes; implement semantic retrieval, temporal reranking and relevance gating; integrate both RAG channels with short-term context | Long-term Memory RAG v1, dual-retrieval context builder, 32 tests and official LoCoMo comparison |
 | **Week 4** | Comparative evaluation and reporting | Compare the three memory conditions; evaluate continuity, latest-state accuracy, assignment tracking, correction, safety, latency and token cost | Evaluation results, error analysis, system demo and progress report |
 
 ## Documentation

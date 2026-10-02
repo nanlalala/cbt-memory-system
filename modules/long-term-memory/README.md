@@ -40,6 +40,6 @@ Each returned item should include:
 
 Memory Schema v1 is implemented in `schema/` with executable validation, four structured examples and ten synthetic multi-session extraction cases. The cases cover goals, assignment outcomes, corrections, changing emotion intensity, inferred patterns, transient small talk, restricted safety context, preference updates, expiry and deletion.
 
-Memory Manager v1 adds an evidence-checked extraction contract, SQLite persistence, duplicate and conflict handling, user confirmation, correction, superseding, expiry, hard deletion, audit events and user/sensitivity isolation. No real user conversations are included.
+Memory Manager v1 adds an evidence-checked extraction contract, SQLite persistence, duplicate and conflict handling, user confirmation, correction, superseding, expiry, hard deletion, audit events and user/sensitivity isolation. Model-generated summaries remain unconfirmed candidates, validity follows a shared half-open interval, and lifecycle transitions are atomic with their audit records. No real user conversations are included.
 
 Formal evaluation is separated from local development fixtures. The repository includes adapters and a frozen protocol for the official LongMemEval and LoCoMo benchmarks; their released answers and evidence annotations, rather than locally invented answers, will be used for research metrics.

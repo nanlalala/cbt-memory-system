@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 for relative in (
     "modules/long-term-memory/schema",
     "modules/long-term-memory/retrieval",
+    "modules/long-term-memory/storage",
+    "modules/long-term-memory/lifecycle",
     "modules/agent-integration",
     "evaluation/memory-retrieval",
 ):
@@ -18,7 +20,9 @@ from benchmark_adapters import RetrievalExample  # noqa: E402
 from context_builder import KnowledgeEvidence, build_context  # noqa: E402
 from memory_models import MemoryRecord, SourceEvidence  # noqa: E402
 from memory_retriever import MemoryRetriever, RetrievalPolicy  # noqa: E402
+from memory_manager import MemoryManager  # noqa: E402
 from run_memory_retrieval_benchmark import documents_for_example  # noqa: E402
+from sqlite_store import SQLiteMemoryStore  # noqa: E402
 
 
 def record(
@@ -89,6 +93,42 @@ class MemoryRetrieverTests(unittest.TestCase):
             "What is my walking goal?", user_id="alice", as_of="2026-10-02T10:00:00Z"
         )
         self.assertEqual([item.record.memory_id for item in results], ["relevant"])
+
+    def test_chinese_lexical_retrieval_matches_overlapping_concepts(self) -> None:
+        retriever = MemoryRetriever(
+            [record("walk-goal", "我的目标是在午饭后散步。")],
+            policy=RetrievalPolicy(minimum_relevance=0.05),
+        )
+        results = retriever.search(
+            "我本周的散步目标是什么？",
+            user_id="alice",
+            as_of="2026-10-02T10:00:00Z",
+        )
+        self.assertEqual([item.record.memory_id for item in results], ["walk-goal"])
+
+    def test_valid_to_is_exclusive_in_manager_and_retriever(self) -> None:
+        expiring = record("expiry", "The temporary walking goal", updated_at="2026-09-01T10:00:00Z")
+        expiring.valid_to = "2026-10-02T10:00:00Z"
+
+        store = SQLiteMemoryStore()
+        self.addCleanup(store.close)
+        store.put(expiring)
+        manager_ids = [
+            item.memory_id
+            for item in MemoryManager(store).eligible_context(
+                "alice", as_of="2026-10-02T10:00:00Z"
+            )
+        ]
+        retriever_ids = [
+            item.record.memory_id
+            for item in MemoryRetriever(
+                [expiring], policy=RetrievalPolicy(minimum_relevance=0.01)
+            ).search(
+                "walking goal", user_id="alice", as_of="2026-10-02T10:00:00Z"
+            )
+        ]
+        self.assertEqual(manager_ids, [])
+        self.assertEqual(retriever_ids, [])
 
 
 class ContextBuilderTests(unittest.TestCase):

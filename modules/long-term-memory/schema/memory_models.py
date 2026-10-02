@@ -237,3 +237,23 @@ class MemoryRecord:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+
+def is_valid_at(record: MemoryRecord, timestamp: str | datetime) -> bool:
+    """Return validity using the shared half-open interval [valid_from, valid_to)."""
+
+    moment = (
+        datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        if isinstance(timestamp, str)
+        else timestamp
+    )
+    if moment.tzinfo is None:
+        raise ValueError("timestamp must include a timezone")
+    if record.valid_from:
+        start = datetime.fromisoformat(record.valid_from.replace("Z", "+00:00"))
+        if moment < start:
+            return False
+    if record.valid_to:
+        end = datetime.fromisoformat(record.valid_to.replace("Z", "+00:00"))
+        if moment >= end:
+            return False
+    return True

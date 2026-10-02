@@ -19,10 +19,11 @@ Required operations:
 
 - exact duplicate rejection;
 - slot-based conflict detection with user confirmation;
-- inferred patterns held as candidates until confirmed;
+- all model-extracted summaries held as candidates until separately confirmed;
 - correction and superseding with audit events;
+- atomic correction, confirmation, expiry and deletion transitions;
 - time-based expiry;
 - user-requested hard deletion;
 - active-context filtering by user, validity and sensitivity.
 
-Semantic duplicate detection and retrieval ranking are intentionally deferred to the Long-term Memory RAG stage. The v1 manager never silently resolves a semantic conflict.
+Validity uses one shared half-open interval rule: `valid_from <= time < valid_to`. Semantic duplicate detection and retrieval ranking are handled by the Long-term Memory RAG stage. The v1 manager never silently resolves a semantic conflict.

@@ -13,6 +13,7 @@ from memory_models import (
     MemoryType,
     Origin,
     Sensitivity,
+    is_valid_at,
 )
 from sqlite_store import SQLiteMemoryStore
 
@@ -71,6 +72,30 @@ class MemoryManager:
             )
 
         if record.memory_type == MemoryType.USER_CORRECTION.value:
+            if record.confirmation_state != ConfirmationState.USER_CORRECTED.value:
+                candidate = replace(
+                    record,
+                    lifecycle_status=LifecycleStatus.CANDIDATE.value,
+                    confirmation_state=ConfirmationState.UNCONFIRMED.value,
+                )
+                self.store.atomic_write(
+                    records=[candidate],
+                    audits=[
+                        {
+                            "user_id": candidate.user_id,
+                            "memory_id": candidate.memory_id,
+                            "action": "correction_requires_confirmation",
+                            "occurred_at": candidate.updated_at,
+                            "actor": actor,
+                            "details": {"target_memory_id": candidate.supersedes_memory_id},
+                        }
+                    ],
+                )
+                return WriteResult(
+                    "correction_requires_confirmation",
+                    candidate.memory_id,
+                    candidate.supersedes_memory_id,
+                )
             return self._apply_correction(record, actor=actor)
 
         conflict = self._find_slot_conflict(record, active)
@@ -80,14 +105,18 @@ class MemoryManager:
                 lifecycle_status=LifecycleStatus.CANDIDATE.value,
                 confirmation_state=ConfirmationState.UNCONFIRMED.value,
             )
-            self.store.put(candidate)
-            self.store.append_audit(
-                user_id=record.user_id,
-                memory_id=record.memory_id,
-                action="conflict_requires_confirmation",
-                occurred_at=record.updated_at,
-                actor=actor,
-                details={"conflicts_with": conflict.memory_id},
+            self.store.atomic_write(
+                records=[candidate],
+                audits=[
+                    {
+                        "user_id": record.user_id,
+                        "memory_id": record.memory_id,
+                        "action": "conflict_requires_confirmation",
+                        "occurred_at": record.updated_at,
+                        "actor": actor,
+                        "details": {"conflicts_with": conflict.memory_id},
+                    }
+                ],
             )
             return WriteResult(
                 "conflict_requires_confirmation",
@@ -97,9 +126,10 @@ class MemoryManager:
             )
 
         status = record.lifecycle_status
-        if record.origin == Origin.AGENT_INFERENCE.value and (
-            record.confirmation_state != ConfirmationState.USER_CONFIRMED.value
-        ):
+        if record.confirmation_state not in {
+            ConfirmationState.USER_CONFIRMED.value,
+            ConfirmationState.USER_CORRECTED.value,
+        }:
             status = LifecycleStatus.CANDIDATE.value
         elif status == LifecycleStatus.CANDIDATE.value and record.origin in {
             Origin.EXPLICIT_USER_STATEMENT.value,
@@ -108,14 +138,18 @@ class MemoryManager:
             status = LifecycleStatus.ACTIVE.value
 
         stored = replace(record, lifecycle_status=status)
-        self.store.put(stored)
-        self.store.append_audit(
-            user_id=stored.user_id,
-            memory_id=stored.memory_id,
-            action="created",
-            occurred_at=stored.updated_at,
-            actor=actor,
-            details={"status": status, "origin": stored.origin},
+        self.store.atomic_write(
+            records=[stored],
+            audits=[
+                {
+                    "user_id": stored.user_id,
+                    "memory_id": stored.memory_id,
+                    "action": "created",
+                    "occurred_at": stored.updated_at,
+                    "actor": actor,
+                    "details": {"status": status, "origin": stored.origin},
+                }
+            ],
         )
         return WriteResult("created", stored.memory_id, reason=f"stored as {status}")
 
@@ -154,23 +188,26 @@ class MemoryManager:
             lifecycle_status=LifecycleStatus.ACTIVE.value,
             confirmation_state=ConfirmationState.USER_CORRECTED.value,
         )
-        self.store.put(superseded)
-        self.store.put(active_correction)
-        self.store.append_audit(
-            user_id=correction.user_id,
-            memory_id=target.memory_id,
-            action="superseded",
-            occurred_at=timestamp,
-            actor=actor,
-            details={"replacement_memory_id": correction.memory_id},
-        )
-        self.store.append_audit(
-            user_id=correction.user_id,
-            memory_id=correction.memory_id,
-            action="correction_applied",
-            occurred_at=timestamp,
-            actor=actor,
-            details={"supersedes": target.memory_id},
+        self.store.atomic_write(
+            records=[superseded, active_correction],
+            audits=[
+                {
+                    "user_id": correction.user_id,
+                    "memory_id": target.memory_id,
+                    "action": "superseded",
+                    "occurred_at": timestamp,
+                    "actor": actor,
+                    "details": {"replacement_memory_id": correction.memory_id},
+                },
+                {
+                    "user_id": correction.user_id,
+                    "memory_id": correction.memory_id,
+                    "action": "correction_applied",
+                    "occurred_at": timestamp,
+                    "actor": actor,
+                    "details": {"supersedes": target.memory_id},
+                },
+            ],
         )
         return WriteResult("correction_applied", correction.memory_id, target.memory_id)
 
@@ -181,7 +218,18 @@ class MemoryManager:
         if record.lifecycle_status != LifecycleStatus.CANDIDATE.value:
             raise ValueError("only candidate memories can be confirmed")
         timestamp = confirmed_at or utc_now()
+        if record.memory_type == MemoryType.USER_CORRECTION.value:
+            correction = replace(
+                record,
+                confirmation_state=ConfirmationState.USER_CORRECTED.value,
+                updated_at=timestamp,
+            )
+            self._apply_correction(correction, actor="user")
+            return self._require(user_id, memory_id)
+
         slot = record.structured_payload.get("slot_key")
+        changed: list[MemoryRecord] = []
+        audits: list[dict] = []
         if slot:
             for current in self.store.list_for_user(
                 user_id,
@@ -189,20 +237,22 @@ class MemoryManager:
                 memory_types={record.memory_type},
             ):
                 if current.structured_payload.get("slot_key") == slot:
-                    self.store.put(
+                    changed.append(
                         replace(
                             current,
                             lifecycle_status=LifecycleStatus.SUPERSEDED.value,
                             updated_at=timestamp,
                         )
                     )
-                    self.store.append_audit(
-                        user_id=user_id,
-                        memory_id=current.memory_id,
-                        action="superseded_after_confirmation",
-                        occurred_at=timestamp,
-                        actor="user",
-                        details={"replacement_memory_id": memory_id},
+                    audits.append(
+                        {
+                            "user_id": user_id,
+                            "memory_id": current.memory_id,
+                            "action": "superseded_after_confirmation",
+                            "occurred_at": timestamp,
+                            "actor": "user",
+                            "details": {"replacement_memory_id": memory_id},
+                        }
                     )
         confirmed = replace(
             record,
@@ -210,20 +260,26 @@ class MemoryManager:
             lifecycle_status=LifecycleStatus.ACTIVE.value,
             updated_at=timestamp,
         )
-        self.store.put(confirmed)
-        self.store.append_audit(
-            user_id=user_id,
-            memory_id=memory_id,
-            action="user_confirmed",
-            occurred_at=timestamp,
-            actor="user",
+        changed.append(confirmed)
+        audits.append(
+            {
+                "user_id": user_id,
+                "memory_id": memory_id,
+                "action": "user_confirmed",
+                "occurred_at": timestamp,
+                "actor": "user",
+                "details": {},
+            }
         )
+        self.store.atomic_write(records=changed, audits=audits)
         return confirmed
 
     def expire_due(self, *, as_of: str | None = None) -> list[str]:
         timestamp = as_of or utc_now()
         cutoff = _parse_time(timestamp)
         expired: list[str] = []
+        changed: list[MemoryRecord] = []
+        audits: list[dict] = []
         for user_id in self.store.list_user_ids():
             for record in self.store.list_for_user(
                 user_id, lifecycle_statuses={LifecycleStatus.ACTIVE.value}
@@ -234,31 +290,39 @@ class MemoryManager:
                         lifecycle_status=LifecycleStatus.EXPIRED.value,
                         updated_at=timestamp,
                     )
-                    self.store.put(updated)
-                    self.store.append_audit(
-                        user_id=user_id,
-                        memory_id=record.memory_id,
-                        action="expired",
-                        occurred_at=timestamp,
-                        actor="system",
+                    changed.append(updated)
+                    audits.append(
+                        {
+                            "user_id": user_id,
+                            "memory_id": record.memory_id,
+                            "action": "expired",
+                            "occurred_at": timestamp,
+                            "actor": "system",
+                            "details": {},
+                        }
                     )
                     expired.append(record.memory_id)
+        if changed:
+            self.store.atomic_write(records=changed, audits=audits)
         return expired
 
     def delete(self, user_id: str, memory_id: str, *, deleted_at: str | None = None) -> bool:
         record = self._require(user_id, memory_id)
         timestamp = deleted_at or utc_now()
-        removed = self.store.hard_delete(user_id, memory_id)
-        if removed:
-            self.store.append_audit(
-                user_id=user_id,
-                memory_id=memory_id,
-                action="hard_deleted",
-                occurred_at=timestamp,
-                actor="user",
-                details={"memory_type": record.memory_type},
-            )
-        return removed
+        removed = self.store.atomic_write(
+            deletes=[(user_id, memory_id)],
+            audits=[
+                {
+                    "user_id": user_id,
+                    "memory_id": memory_id,
+                    "action": "hard_deleted",
+                    "occurred_at": timestamp,
+                    "actor": "user",
+                    "details": {"memory_type": record.memory_type},
+                }
+            ],
+        )
+        return removed == 1
 
     def eligible_context(
         self,
@@ -278,9 +342,7 @@ class MemoryManager:
         for record in records:
             if record.sensitivity == Sensitivity.RESTRICTED.value and not allow_restricted:
                 continue
-            if record.valid_from and _parse_time(record.valid_from) > timestamp:
-                continue
-            if record.valid_to and _parse_time(record.valid_to) <= timestamp:
+            if not is_valid_at(record, timestamp):
                 continue
             eligible.append(record)
         return eligible

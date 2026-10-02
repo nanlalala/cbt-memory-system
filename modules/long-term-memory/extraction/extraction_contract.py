@@ -22,7 +22,8 @@ Return JSON only: {"candidates": [...]}. Store only information supported by quo
 Do not store transient small talk, assistant suggestions, diagnoses, or unsupported interpretations.
 Allowed memory types: explicit_fact, preference, episodic_event, emotion_record, goal,
 cbt_assignment, assignment_outcome, cognitive_pattern, user_correction, safety_signal.
-Cognitive patterns are agent_inference and must remain unconfirmed candidates.
+Every extracted record is an unconfirmed candidate until a separate user-confirmation step.
+Cognitive patterns must additionally be labelled as agent_inference.
 Safety signals must use restricted sensitivity. Include source_turn_ids and an exact supporting_text quote.
 If nothing is appropriate, return {"candidates": []}."""
 
@@ -68,13 +69,14 @@ def parse_extraction_output(
         memory_type = MemoryType(str(item["memory_type"]))
         if memory_type == MemoryType.COGNITIVE_PATTERN:
             origin = Origin.AGENT_INFERENCE.value
-            confirmation = ConfirmationState.UNCONFIRMED.value
         elif memory_type == MemoryType.USER_CORRECTION:
             origin = Origin.USER_CORRECTION.value
-            confirmation = ConfirmationState.USER_CORRECTED.value
         else:
             origin = Origin.EXPLICIT_USER_STATEMENT.value
-            confirmation = ConfirmationState.USER_CONFIRMED.value
+        # An extraction model can identify provenance, but it cannot confirm that
+        # its own summary is entailed by the quote.  All model-produced records
+        # therefore remain candidates until a separate user-confirmation step.
+        confirmation = ConfirmationState.UNCONFIRMED.value
 
         sensitivity = str(item.get("sensitivity", Sensitivity.STANDARD.value))
         if memory_type == MemoryType.SAFETY_SIGNAL:
