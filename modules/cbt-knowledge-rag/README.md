@@ -42,7 +42,8 @@ Do not upload copyrighted full books. The two commercial sources in this prototy
 The cleaned `hybrid_rerank` system achieved Recall@5 **0.80**, Recall@10 **0.84**, MRR@10 **0.583**, context precision@5 **0.44**, and safety Recall@5 **1.00** on the 50-query pilot. See `CBT_Knowledge_RAG_v1_Evaluation.ipynb` and `CBT_RAG_v1_Report.md` for limitations and interpretation.
 
 
-## Expanded dialogue test
+## Dialogue tests
 
-`run_expanded_dialogue_v3.py` adds 16 multi-turn scenarios and blinded model-assisted A/B scoring. A recovery configuration using only legally downloadable WHO material and official Beck/Tolin sample chapters is defined in `knowledge_sources_public_test.yaml`. Its result was 11.875/12 for no RAG and 11.313/12 for public-reference RAG; see `CBT_RAG_v3_Expanded_Evaluation.md`. This is a model-assisted development score, not a human clinical rating.
+`run_expanded_dialogue_v3.py` is a recovery experiment using only downloadable WHO material and official Beck/Tolin sample chapters. It scored 11.875/12 for no RAG and 11.313/12 for the limited public-reference configuration, helping identify coverage and irrelevant-context failures.
 
+`run_full_rag_dialogue_v4.py` is the current full-corpus comparison. Across the same 16 scenarios, hybrid-and-reranked RAG scored 11.6875/12 versus 11.375/12 for no RAG, with six RAG wins, two no-RAG wins and eight ties. The difference is small; the result supports using RAG as a grounded professional reference, especially for citations and boundaries, but does not establish broad clinical or conversational superiority. All scores are model-assisted development results, not human clinical ratings.

@@ -35,3 +35,9 @@ Each returned item should include:
 - lifecycle status;
 - retrieval score and score components;
 - sensitivity and access decision.
+
+## Current implementation
+
+Memory Schema v1 is implemented in `schema/` with executable validation, four structured examples and ten synthetic multi-session extraction cases. The cases cover goals, assignment outcomes, corrections, changing emotion intensity, inferred patterns, transient small talk, restricted safety context, preference updates, expiry and deletion.
+
+The schema and test set are the contract for the next implementation stage: candidate extraction and lifecycle management. No real user conversations are included.

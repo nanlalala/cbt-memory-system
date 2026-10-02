@@ -1,0 +1,125 @@
+[
+  {
+    "schema_version": "1.0",
+    "memory_id": "mem-goal-001",
+    "user_id": "synthetic-user-001",
+    "memory_type": "goal",
+    "content": "Prepare one slide before Friday's seminar.",
+    "origin": "explicit_user_statement",
+    "confirmation_state": "user_confirmed",
+    "lifecycle_status": "active",
+    "sensitivity": "standard",
+    "confidence": 1.0,
+    "importance": 0.8,
+    "created_at": "2026-10-05T10:05:00Z",
+    "observed_at": "2026-10-05T10:04:00Z",
+    "updated_at": "2026-10-05T10:05:00Z",
+    "valid_from": "2026-10-05T10:04:00Z",
+    "valid_to": "2026-10-09T17:00:00Z",
+    "supersedes_memory_id": null,
+    "related_memory_ids": [],
+    "tags": ["study", "presentation"],
+    "structured_payload": {
+      "description": "Prepare one slide before Friday's seminar.",
+      "status": "active",
+      "target_date": "2026-10-09"
+    },
+    "source_evidence": {
+      "session_id": "session-001",
+      "turn_ids": ["s001-u03"],
+      "supporting_text": "This week I want to prepare one slide before Friday's seminar."
+    }
+  },
+  {
+    "schema_version": "1.0",
+    "memory_id": "mem-emotion-001",
+    "user_id": "synthetic-user-001",
+    "memory_type": "emotion_record",
+    "content": "Anxiety was 7/10 while preparing to speak in the seminar.",
+    "origin": "explicit_user_statement",
+    "confirmation_state": "user_confirmed",
+    "lifecycle_status": "active",
+    "sensitivity": "sensitive",
+    "confidence": 1.0,
+    "importance": 0.7,
+    "created_at": "2026-10-05T10:06:00Z",
+    "observed_at": "2026-10-05T10:03:00Z",
+    "updated_at": "2026-10-05T10:06:00Z",
+    "valid_from": "2026-10-05T10:03:00Z",
+    "valid_to": null,
+    "supersedes_memory_id": null,
+    "related_memory_ids": ["mem-goal-001"],
+    "tags": ["anxiety", "seminar"],
+    "structured_payload": {
+      "emotion": "anxiety",
+      "intensity": 7,
+      "situation": "preparing to speak in a seminar"
+    },
+    "source_evidence": {
+      "session_id": "session-001",
+      "turn_ids": ["s001-u02"],
+      "supporting_text": "When I think about speaking in the seminar, my anxiety is about 7 out of 10."
+    }
+  },
+  {
+    "schema_version": "1.0",
+    "memory_id": "mem-pattern-001",
+    "user_id": "synthetic-user-001",
+    "memory_type": "cognitive_pattern",
+    "content": "Possible all-or-nothing thinking around public performance.",
+    "origin": "agent_inference",
+    "confirmation_state": "unconfirmed",
+    "lifecycle_status": "candidate",
+    "sensitivity": "sensitive",
+    "confidence": 0.62,
+    "importance": 0.6,
+    "created_at": "2026-10-12T10:10:00Z",
+    "observed_at": "2026-10-12T10:08:00Z",
+    "updated_at": "2026-10-12T10:10:00Z",
+    "valid_from": "2026-10-12T10:08:00Z",
+    "valid_to": null,
+    "supersedes_memory_id": null,
+    "related_memory_ids": ["mem-goal-001", "mem-emotion-001"],
+    "tags": ["candidate-pattern", "performance"],
+    "structured_payload": {
+      "pattern_label": "all_or_nothing_thinking",
+      "evidence_count": 2,
+      "review_state": "needs_user_confirmation"
+    },
+    "source_evidence": {
+      "session_id": "session-002",
+      "turn_ids": ["s002-u02"],
+      "supporting_text": "If the slide is not perfect, I feel the whole presentation will be a failure."
+    }
+  },
+  {
+    "schema_version": "1.0",
+    "memory_id": "mem-correction-001",
+    "user_id": "synthetic-user-001",
+    "memory_type": "user_correction",
+    "content": "The seminar is on Thursday, not Friday.",
+    "origin": "user_correction",
+    "confirmation_state": "user_corrected",
+    "lifecycle_status": "active",
+    "sensitivity": "standard",
+    "confidence": 1.0,
+    "importance": 0.9,
+    "created_at": "2026-10-12T10:12:00Z",
+    "observed_at": "2026-10-12T10:11:00Z",
+    "updated_at": "2026-10-12T10:12:00Z",
+    "valid_from": "2026-10-12T10:11:00Z",
+    "valid_to": null,
+    "supersedes_memory_id": "mem-goal-001",
+    "related_memory_ids": [],
+    "tags": ["correction", "presentation"],
+    "structured_payload": {
+      "corrected_content": "Prepare one slide before Thursday's seminar.",
+      "correction_reason": "The previous date was incorrect."
+    },
+    "source_evidence": {
+      "session_id": "session-002",
+      "turn_ids": ["s002-u04"],
+      "supporting_text": "Small correction: the seminar is Thursday, not Friday."
+    }
+  }
+]
