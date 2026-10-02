@@ -1,0 +1,24 @@
+{
+  "manifest_version": "1.0",
+  "verified_on": "2026-10-02",
+  "benchmarks": {
+    "longmemeval_oracle_cleaned": {
+      "paper": "https://openreview.net/forum?id=pZiyCaVuti",
+      "source": "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_oracle.json",
+      "sha256": "821a2034d219ab45846873dd14c14f12cfe7776e73527a483f9dac095d38620c",
+      "bytes": 15388478,
+      "expected_examples": 500,
+      "expected_abstention_examples": 30
+    },
+    "locomo10": {
+      "paper": "https://aclanthology.org/2024.acl-long.747/",
+      "source": "https://raw.githubusercontent.com/snap-research/locomo/main/data/locomo10.json",
+      "upstream_commit": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+      "sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+      "bytes": 2805274,
+      "expected_conversations": 10,
+      "expected_qa_examples": 1986,
+      "expected_adversarial_examples": 446
+    }
+  }
+}

@@ -94,7 +94,7 @@ The response model, CBT Knowledge RAG, safety rules and evaluation scenarios wil
 
 ## Current status
 
-The CBT Knowledge RAG module is complete. Memory Schema v1 is now implemented with provenance-aware records, executable validation, structured examples and a ten-case synthetic multi-session extraction set.
+The CBT Knowledge RAG module is complete. Memory Schema v1 and Memory Manager v1 are now implemented, including provenance-aware extraction, SQLite storage, correction, conflict confirmation, expiry, deletion and user/sensitivity isolation. The current suite contains 21 deterministic tests, and the benchmark adapters have been verified against the official 500-example LongMemEval release and all 1,986 LoCoMo QA items.
 
 Current retrieval results:
 
@@ -114,7 +114,7 @@ The full no-RAG versus RAG comparison will be repeated after Long-term Memory RA
 | Week | Main goal | Key tasks | Deliverables |
 |---|---|---|---|
 | **Week 1 — complete** | Memory schema and data preparation | Define short- and long-term memory types; design schemas for emotions, events, goals, assignments, cognitive patterns and corrections; prepare multi-session test cases | Memory Schema v1, four structured examples and ten multi-session extraction cases |
-| **Week 2** | Memory writing and lifecycle management | Implement candidate extraction, validation, deduplication, conflict detection, updating, user correction, expiry and forgetting | Memory Manager v1, correction workflow and unit-test results |
+| **Week 2 — core complete** | Memory writing and lifecycle management | Implement candidate extraction, validation, deduplication, conflict detection, updating, user correction, expiry and forgetting | Memory Manager v1, correction workflow and unit-test results |
 | **Week 3** | Long-term Memory RAG and Agent integration | Build user-scoped memory indexes; implement semantic retrieval, temporal reranking and relevance gating; integrate both RAG channels with short-term context | Long-term Memory RAG v1, dual-retrieval pipeline and an end-to-end prototype |
 | **Week 4** | Comparative evaluation and reporting | Compare the three memory conditions; evaluate continuity, latest-state accuracy, assignment tracking, correction, safety, latency and token cost | Evaluation results, error analysis, system demo and progress report |
 
