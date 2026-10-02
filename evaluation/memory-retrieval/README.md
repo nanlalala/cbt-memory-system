@@ -18,16 +18,17 @@ Formal evaluation uses the official LongMemEval and LoCoMo datasets, which provi
 
 `run_memory_retrieval_benchmark.py` converts LongMemEval sessions or LoCoMo dialogue turns into retrieval documents and scores predictions against the released evidence IDs. It supports lexical, multilingual E5 and hybrid backends. The accompanying Colab notebook runs the neural backends on a GPU without a paid generation API.
 
-The first reproducible CPU baseline on all 1,986 LoCoMo questions achieved:
+The complete v1 comparison on all 1,986 LoCoMo questions produced:
 
-| Metric | TF-IDF baseline |
-|---|---:|
-| Evidence Recall@1 | 0.241 |
-| Evidence Recall@5 | 0.449 |
-| Evidence Recall@10 | 0.528 |
-| MRR@10 | 0.359 |
+| Method | Recall@1 | Recall@5 | Recall@10 | MRR@10 |
+|---|---:|---:|---:|---:|
+| TF-IDF | 0.241 | 0.449 | 0.528 | 0.359 |
+| Multilingual E5 | 0.255 | 0.459 | 0.543 | 0.381 |
+| TF-IDF + E5 Hybrid | **0.280** | **0.520** | **0.598** | **0.415** |
 
-Four questions without evidence annotations are excluded from evidence metrics, leaving 1,982 scored questions. This is a retrieval baseline, not an end-to-end dialogue-quality result.
+The hybrid method improved Recall@5 and Recall@10 by about 0.071 absolute and MRR@10 by 0.056 over TF-IDF. Four questions without evidence annotations are excluded from evidence metrics, leaving 1,982 scored questions. Neural runs used a Google Colab Tesla T4.
+
+These are retrieval-only results. They show that the hybrid retriever finds the annotated historical evidence more reliably, but do not yet establish an improvement in final Agent dialogue quality. That comparison belongs to the Week 4 end-to-end evaluation.
 
 Evaluate whether the correct user memories are retrieved across sessions.
 

@@ -1,0 +1,33 @@
+{
+  "dataset": "LoCoMo official locomo10 release",
+  "total_questions": 1986,
+  "questions_with_evidence": 1982,
+  "hardware_for_neural_runs": "Google Colab Tesla T4",
+  "results": {
+    "tfidf": {
+      "evidence_recall_at_1": 0.2413131058312693,
+      "evidence_recall_at_5": 0.4493303548676909,
+      "evidence_recall_at_10": 0.5281213674963304,
+      "mrr_at_10": 0.35868991558951197
+    },
+    "multilingual_e5_small": {
+      "evidence_recall_at_1": 0.2550782909867613,
+      "evidence_recall_at_5": 0.4587452401380697,
+      "evidence_recall_at_10": 0.5426326853515593,
+      "mrr_at_10": 0.38107911681322376
+    },
+    "tfidf_e5_hybrid": {
+      "evidence_recall_at_1": 0.2797927560162676,
+      "evidence_recall_at_5": 0.519941758426277,
+      "evidence_recall_at_10": 0.5984276150506747,
+      "mrr_at_10": 0.41457182099210355
+    }
+  },
+  "hybrid_gain_over_tfidf": {
+    "evidence_recall_at_1_absolute": 0.0384796501849983,
+    "evidence_recall_at_5_absolute": 0.0706114035585861,
+    "evidence_recall_at_10_absolute": 0.0703062475543443,
+    "mrr_at_10_absolute": 0.0558819054025916
+  },
+  "note": "Retrieval-only results using official evidence IDs. They do not by themselves establish improved end-to-end dialogue quality."
+}

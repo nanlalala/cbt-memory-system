@@ -96,7 +96,15 @@ The response model, CBT Knowledge RAG, safety rules and evaluation scenarios wil
 
 The CBT Knowledge RAG module is complete. Memory Schema v1 and Memory Manager v1 are implemented, including provenance-aware extraction, SQLite storage, correction, conflict confirmation, expiry, deletion and user/sensitivity isolation. Long-term Memory RAG v1 and the Agent context builder are now implemented with relevance gating, temporal reranking, strict access filters and separate personal/professional context sections. The current suite contains 27 deterministic tests.
 
-The official LoCoMo CPU baseline over 1,986 questions achieved Evidence Recall@5 = 0.449, Recall@10 = 0.528 and MRR@10 = 0.359. Multilingual E5 and hybrid runs are prepared in the Colab notebook; these retrieval scores remain separate from the later end-to-end dialogue comparison.
+The official LoCoMo comparison over 1,986 questions found that hybrid TF-IDF + multilingual E5 retrieval outperformed either component alone. Hybrid achieved Evidence Recall@5 = 0.520, Recall@10 = 0.598 and MRR@10 = 0.415, compared with 0.449, 0.528 and 0.359 for TF-IDF. These retrieval scores remain separate from the later end-to-end dialogue comparison.
+
+Long-term memory retrieval results:
+
+| Method | Recall@1 | Recall@5 | Recall@10 | MRR@10 |
+|---|---:|---:|---:|---:|
+| TF-IDF | 0.241 | 0.449 | 0.528 | 0.359 |
+| Multilingual E5 | 0.255 | 0.459 | 0.543 | 0.381 |
+| Hybrid | **0.280** | **0.520** | **0.598** | **0.415** |
 
 Current retrieval results:
 
