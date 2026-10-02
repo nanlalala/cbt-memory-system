@@ -1,0 +1,13 @@
+{
+  "dataset": "LoCoMo official locomo10 release",
+  "backend": "TF-IDF word (1,2)-gram baseline",
+  "total_questions": 1986,
+  "questions_with_evidence": 1982,
+  "metrics": {
+    "evidence_recall_at_1": 0.2413131058312693,
+    "evidence_recall_at_5": 0.4493303548676909,
+    "evidence_recall_at_10": 0.5281213674963304,
+    "mrr_at_10": 0.35868991558951197
+  },
+  "note": "Retrieval-only CPU baseline. Full predictions are reproducible with run_memory_retrieval_benchmark.py and are intentionally not committed."
+}

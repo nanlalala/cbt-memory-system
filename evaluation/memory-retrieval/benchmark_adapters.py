@@ -17,6 +17,7 @@ class RetrievalExample:
     evidence_ids: tuple[str, ...]
     sessions: tuple[dict, ...]
     should_abstain: bool = False
+    query_date: str | None = None
 
 
 def load_longmemeval(path: str | Path) -> list[RetrievalExample]:
@@ -55,6 +56,7 @@ def load_longmemeval(path: str | Path) -> list[RetrievalExample]:
                 evidence_ids=tuple(str(value) for value in item["answer_session_ids"]),
                 sessions=packed,
                 should_abstain=question_id.endswith("_abs"),
+                query_date=str(item.get("question_date", "")) or None,
             )
         )
     return examples
@@ -96,6 +98,7 @@ def load_locomo(path: str | Path) -> list[RetrievalExample]:
                     evidence_ids=tuple(str(value) for value in qa.get("evidence", [])),
                     sessions=sessions,
                     should_abstain=False,
+                    query_date=None,
                 )
             )
     return examples

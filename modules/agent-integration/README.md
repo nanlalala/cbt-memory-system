@@ -29,3 +29,7 @@ The two retrieval channels remain distinguishable in the prompt:
 - **personal memory**: memory ID, provenance, time, confidence, confirmation and lifecycle status.
 
 The context builder must allow either channel to return zero items. Deterministic crisis routing runs before retrieval and is not replaced by RAG.
+
+## Current implementation
+
+`context_builder.py` assembles current-session state, provenance-aware personal memory and cited CBT professional evidence as separate sections. Each channel may be empty. An urgent deterministic safety decision bypasses normal context assembly rather than asking either RAG system to make the safety decision.
