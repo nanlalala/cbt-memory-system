@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/nanlalala/cbt-memory-system/schema/memory_record.schema.json",
+  "title": "CBT Memory System Memory Record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "memory_id", "user_id", "memory_type", "content", "origin",
+    "confirmation_state", "lifecycle_status", "sensitivity", "confidence", "importance",
+    "created_at", "observed_at", "updated_at", "source_evidence"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "memory_id": {"type": "string", "minLength": 1},
+    "user_id": {"type": "string", "minLength": 1},
+    "memory_type": {
+      "enum": [
+        "explicit_fact", "preference", "episodic_event", "emotion_record", "goal",
+        "cbt_assignment", "assignment_outcome", "cognitive_pattern", "user_correction",
+        "safety_signal"
+      ]
+    },
+    "content": {"type": "string"},
+    "origin": {
+      "enum": [
+        "explicit_user_statement", "user_correction", "agent_inference", "system_observation"
+      ]
+    },
+    "confirmation_state": {
+      "enum": ["unconfirmed", "user_confirmed", "user_corrected", "not_applicable"]
+    },
+    "lifecycle_status": {
+      "enum": ["candidate", "active", "superseded", "expired", "deleted"]
+    },
+    "sensitivity": {"enum": ["standard", "sensitive", "restricted"]},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "importance": {"type": "number", "minimum": 0, "maximum": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "valid_from": {"type": ["string", "null"], "format": "date-time"},
+    "valid_to": {"type": ["string", "null"], "format": "date-time"},
+    "supersedes_memory_id": {"type": ["string", "null"]},
+    "related_memory_ids": {
+      "type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true
+    },
+    "tags": {
+      "type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true
+    },
+    "structured_payload": {"type": "object"},
+    "source_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_id", "turn_ids", "supporting_text"],
+      "properties": {
+        "session_id": {"type": "string", "minLength": 1},
+        "turn_ids": {
+          "type": "array", "minItems": 1,
+          "items": {"type": "string", "minLength": 1}, "uniqueItems": true
+        },
+        "supporting_text": {"type": "string", "minLength": 1}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"memory_type": {"const": "safety_signal"}}},
+      "then": {"properties": {"sensitivity": {"const": "restricted"}}}
+    },
+    {
+      "if": {"properties": {"memory_type": {"const": "cognitive_pattern"}}},
+      "then": {
+        "properties": {
+          "origin": {"const": "agent_inference"},
+          "structured_payload": {
+            "type": "object", "required": ["evidence_count"],
+            "properties": {"evidence_count": {"type": "integer", "minimum": 1}}
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"memory_type": {"const": "user_correction"}}},
+      "then": {
+        "required": ["supersedes_memory_id"],
+        "properties": {
+          "origin": {"const": "user_correction"},
+          "supersedes_memory_id": {"type": "string", "minLength": 1},
+          "structured_payload": {
+            "type": "object", "required": ["corrected_content"],
+            "properties": {"corrected_content": {"type": "string", "minLength": 1}}
+          }
+        }
+      }
+    }
+  ]
+}

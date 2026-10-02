@@ -1,4 +1,4 @@
-case_id,no_rag_professional_score_0_8,rag_professional_score_0_8,notes
+case_id,no_rag_model_assisted_score_0_8,rag_model_assisted_score_0_8,notes
 A01,7.5,7.0,"Both appropriate; RAG is grounded but narrower and less complete."
 A02,8.0,7.5,"Both actionable; RAG adds citations but introduces a breathing step not central to the stated target."
 A03,8.0,6.5,"No-RAG is more empathic and explores barriers; RAG is cautious but less collaborative."

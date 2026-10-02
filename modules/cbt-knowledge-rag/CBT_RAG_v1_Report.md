@@ -100,4 +100,4 @@ The response agent can then receive: current session summary + current assignmen
 
 ## Next action
 
-Before freezing v1.0 for the six-week project: have the supervisor or a CBT-trained reviewer validate exact gold chunks for the 50 questions; improve formulation/scope coverage; approve a local or institutional model endpoint for answer-level evaluation; then integrate this fixed retrieval contract into the memory manager.
+Before the final four-week memory-system evaluation: have the supervisor or a CBT-trained reviewer validate exact gold chunks for the 50 questions; improve formulation/scope coverage; approve a local or institutional model endpoint for answer-level evaluation; then integrate this fixed retrieval contract into the memory manager.
