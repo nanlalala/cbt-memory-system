@@ -12,3 +12,7 @@ The storage layer should support:
 - rebuildable local indexes that are excluded from Git.
 
 Real user memories, credentials and production indexes must never be committed to this repository.
+
+## Reference implementation
+
+`sqlite_store.py` provides a local SQLite implementation with user-scoped reads, indexed lifecycle/type fields and content-free audit events. User deletion removes the memory content rather than retaining a soft-deleted copy. The database file and any real memories must remain outside Git.
