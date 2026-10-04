@@ -347,6 +347,81 @@ class AtomicLifecycleTests(unittest.TestCase):
         self.assertEqual(len(active), 1)
         self.assertEqual(len(candidates), 1)
 
+    def test_expiry_does_not_resurrect_concurrently_deleted_memory(self) -> None:
+        handle = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+        handle.close()
+        database = Path(handle.name)
+        self.addCleanup(database.unlink)
+        initial = SQLiteMemoryStore(database)
+        MemoryManager(initial).ingest(
+            make_record("expiring", valid_to="2026-10-02T00:00:00Z")
+        )
+        initial.close()
+        barrier = threading.Barrier(2)
+
+        def expire() -> list[str]:
+            store = SQLiteMemoryStore(database)
+            try:
+                barrier.wait(timeout=5)
+                return MemoryManager(store).expire_due(as_of="2026-10-03T00:00:00Z")
+            finally:
+                store.close()
+
+        def delete() -> bool:
+            store = SQLiteMemoryStore(database)
+            try:
+                barrier.wait(timeout=5)
+                try:
+                    return MemoryManager(store).delete(
+                        "user-a", "expiring", deleted_at="2026-10-03T00:00:01Z"
+                    )
+                except KeyError:
+                    return False
+            finally:
+                store.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            expire_future = pool.submit(expire)
+            delete_future = pool.submit(delete)
+            expire_future.result()
+            delete_future.result()
+
+        check = SQLiteMemoryStore(database)
+        self.addCleanup(check.close)
+        self.assertIsNone(check.get("user-a", "expiring"))
+        actions = [event["action"] for event in check.audit_for_user("user-a")]
+        self.assertEqual(actions.count("hard_deleted"), 1)
+
+    def test_concurrent_delete_writes_one_hard_delete_audit(self) -> None:
+        handle = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+        handle.close()
+        database = Path(handle.name)
+        self.addCleanup(database.unlink)
+        initial = SQLiteMemoryStore(database)
+        MemoryManager(initial).ingest(make_record("delete-once"))
+        initial.close()
+        barrier = threading.Barrier(2)
+
+        def delete() -> bool:
+            store = SQLiteMemoryStore(database)
+            try:
+                barrier.wait(timeout=5)
+                try:
+                    return MemoryManager(store).delete("user-a", "delete-once")
+                except KeyError:
+                    return False
+            finally:
+                store.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = [future.result() for future in [pool.submit(delete), pool.submit(delete)]]
+
+        self.assertEqual(sorted(outcomes), [False, True])
+        check = SQLiteMemoryStore(database)
+        self.addCleanup(check.close)
+        actions = [event["action"] for event in check.audit_for_user("user-a")]
+        self.assertEqual(actions.count("hard_deleted"), 1)
+
     def test_unconfirmed_correction_waits_then_applies_atomically(self) -> None:
         store = SQLiteMemoryStore()
         self.addCleanup(store.close)

@@ -321,6 +321,12 @@ class MemoryManager:
         return confirmed
 
     def expire_due(self, *, as_of: str | None = None) -> list[str]:
+        """Expire due records without racing a concurrent hard deletion."""
+
+        with self.store.transaction(immediate=True):
+            return self._expire_due_locked(as_of=as_of)
+
+    def _expire_due_locked(self, *, as_of: str | None = None) -> list[str]:
         timestamp = as_of or utc_now()
         cutoff = _parse_time(timestamp)
         expired: list[str] = []
@@ -353,6 +359,14 @@ class MemoryManager:
         return expired
 
     def delete(self, user_id: str, memory_id: str, *, deleted_at: str | None = None) -> bool:
+        """Hard-delete one record and its audit event in one serialized decision."""
+
+        with self.store.transaction(immediate=True):
+            return self._delete_locked(user_id, memory_id, deleted_at=deleted_at)
+
+    def _delete_locked(
+        self, user_id: str, memory_id: str, *, deleted_at: str | None = None
+    ) -> bool:
         record = self._require(user_id, memory_id)
         timestamp = deleted_at or utc_now()
         removed = self.store.atomic_write(
