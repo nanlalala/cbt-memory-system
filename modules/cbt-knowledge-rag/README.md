@@ -25,7 +25,7 @@ cd modules/cbt-knowledge-rag
 ../../.venv/bin/python cbt_rag_v1.py all
 ```
 
-The first run downloads `intfloat/multilingual-e5-small` and `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` from Hugging Face and caches document embeddings locally.
+The first run downloads `intfloat/multilingual-e5-small` and `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` from Hugging Face and caches document embeddings locally. The cache is bound to the exact ordered chunk texts, cache format and model name; any mismatch rebuilds the embeddings instead of silently reusing stale vectors.
 
 For an optional response test, set an OpenAI-compatible endpoint and model locally. The key is requested with hidden input and is never saved:
 

@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import threading
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -95,10 +97,17 @@ class MemoryManagerTests(unittest.TestCase):
         self.assertEqual(self.store.get("user-a", "m2").lifecycle_status, "candidate")
         self.assertEqual(self.manager.eligible_context("user-a"), [])
         confirmed = self.manager.confirm_candidate(
-            "user-a", "m2", confirmed_at="2026-10-02T10:00:00Z"
+            "user-a",
+            "m2",
+            consent_event_id="consent-1",
+            confirmation_turn_ids=["turn-confirm-1"],
+            confirmed_at="2026-10-02T10:00:00Z",
         )
         self.assertEqual(confirmed.confirmation_state, "user_confirmed")
         self.assertEqual([item.memory_id for item in self.manager.eligible_context("user-a")], ["m2"])
+        event = self.store.audit_for_user("user-a")[-1]
+        self.assertEqual(event["details"]["consent_event_id"], "consent-1")
+        self.assertEqual(event["details"]["confirmation_turn_ids"], ["turn-confirm-1"])
 
     def test_duplicate_is_rejected_without_second_record(self) -> None:
         self.manager.ingest(make_record("m1"))
@@ -115,7 +124,12 @@ class MemoryManagerTests(unittest.TestCase):
         result = self.manager.ingest(second)
         self.assertEqual(result.action, "conflict_requires_confirmation")
         self.assertEqual(self.store.get("user-a", "m2").lifecycle_status, "candidate")
-        self.manager.confirm_candidate("user-a", "m2", confirmed_at="2026-10-02T10:00:00Z")
+        self.manager.confirm_candidate(
+            "user-a",
+            "m2",
+            consent_event_id="consent-2",
+            confirmed_at="2026-10-02T10:00:00Z",
+        )
         self.assertEqual(self.store.get("user-a", "m1").lifecycle_status, "superseded")
         self.assertEqual(self.store.get("user-a", "m2").lifecycle_status, "active")
 
@@ -265,6 +279,74 @@ class ExtractionContractTests(unittest.TestCase):
 
 
 class AtomicLifecycleTests(unittest.TestCase):
+    def test_correction_cannot_target_superseded_version(self) -> None:
+        store = SQLiteMemoryStore()
+        self.addCleanup(store.close)
+        manager = MemoryManager(store)
+        manager.ingest(make_record("old", payload={"slot_key": "event:seminar-date"}))
+        first = make_record(
+            "corr-a",
+            memory_type="user_correction",
+            content="The seminar is Thursday.",
+            origin="user_correction",
+            confirmation_state="user_corrected",
+            payload={"corrected_content": "The seminar is Thursday."},
+            supersedes="old",
+        )
+        manager.ingest(first)
+        stale = make_record(
+            "corr-b",
+            memory_type="user_correction",
+            content="The seminar is Wednesday.",
+            origin="user_correction",
+            confirmation_state="user_corrected",
+            payload={"corrected_content": "The seminar is Wednesday."},
+            supersedes="old",
+        )
+        with self.assertRaisesRegex(ValueError, "active current version"):
+            manager.ingest(stale)
+        self.assertEqual(store.get("user-a", "corr-a").lifecycle_status, "active")
+        self.assertIsNone(store.get("user-a", "corr-b"))
+
+    def test_concurrent_slot_writers_leave_only_one_active_version(self) -> None:
+        handle = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+        handle.close()
+        database = Path(handle.name)
+        self.addCleanup(database.unlink)
+        initial = SQLiteMemoryStore(database)
+        initial.close()
+        barrier = threading.Barrier(2)
+
+        def write(memory_id: str, content: str) -> str:
+            store = SQLiteMemoryStore(database)
+            try:
+                barrier.wait(timeout=5)
+                result = MemoryManager(store).ingest(
+                    make_record(
+                        memory_id,
+                        content=content,
+                        payload={"slot_key": "event:seminar-date"},
+                    )
+                )
+                return result.action
+            finally:
+                store.close()
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(write, "concurrent-a", "The seminar is Friday."),
+                pool.submit(write, "concurrent-b", "The seminar is Thursday."),
+            ]
+            actions = sorted(future.result() for future in futures)
+        check = SQLiteMemoryStore(database)
+        self.addCleanup(check.close)
+        records = check.list_for_user("user-a")
+        active = [item for item in records if item.lifecycle_status == "active"]
+        candidates = [item for item in records if item.lifecycle_status == "candidate"]
+        self.assertEqual(actions, ["conflict_requires_confirmation", "created"])
+        self.assertEqual(len(active), 1)
+        self.assertEqual(len(candidates), 1)
+
     def test_unconfirmed_correction_waits_then_applies_atomically(self) -> None:
         store = SQLiteMemoryStore()
         self.addCleanup(store.close)
@@ -284,7 +366,11 @@ class AtomicLifecycleTests(unittest.TestCase):
         self.assertEqual(store.get("user-a", "old").lifecycle_status, "active")
         self.assertEqual(store.get("user-a", "correction").lifecycle_status, "candidate")
         manager.confirm_candidate(
-            "user-a", "correction", confirmed_at="2026-10-02T10:00:00Z"
+            "user-a",
+            "correction",
+            consent_event_id="consent-correction",
+            confirmation_turn_ids=["turn-confirm-correction"],
+            confirmed_at="2026-10-02T10:00:00Z",
         )
         self.assertEqual(store.get("user-a", "old").lifecycle_status, "superseded")
         self.assertEqual(store.get("user-a", "correction").lifecycle_status, "active")
