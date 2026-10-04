@@ -21,10 +21,10 @@ Required operations:
 - slot-based conflict detection with user confirmation;
 - all model-extracted summaries held as candidates until separately confirmed;
 - correction and superseding with audit events, with corrections restricted to the current active version;
-- atomic correction, confirmation, expiry and deletion transitions;
+- serialized, atomic correction, confirmation, expiry and deletion decisions;
 - explicit confirmation evidence recorded through a consent event ID and optional confirmation turn IDs;
 - time-based expiry;
 - user-requested hard deletion;
 - active-context filtering by user, validity and sensitivity.
 
-Validity uses one shared half-open interval rule: `valid_from <= time < valid_to`. Slot reads, conflict decisions and writes execute inside one immediate SQLite transaction, preventing two workers from independently creating conflicting active versions. Semantic duplicate detection and retrieval ranking are handled by the Long-term Memory RAG stage. The v1 manager never silently resolves a semantic conflict.
+Validity uses one shared half-open interval rule: `valid_from <= time < valid_to`. Slot reads, conflict decisions and writes execute inside one immediate SQLite transaction, preventing two workers from independently creating conflicting active versions. Expiry and hard deletion use the same strategy, so an expiry worker cannot reinsert content after a user deletion. Semantic duplicate detection and retrieval ranking are handled by the Long-term Memory RAG stage. The v1 manager never silently resolves a semantic conflict.
