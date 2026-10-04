@@ -54,6 +54,7 @@ for d in (DATA, RESULTS, CACHE):
 
 DENSE_MODEL = "intfloat/multilingual-e5-small"
 RERANK_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
+EMBEDDING_CACHE_VERSION = "2"
 
 TAXONOMY = {
     "automatic_thoughts": ["automatic thought", "automatic thoughts", "hot thought", "cognition", "thought record"],
@@ -211,6 +212,70 @@ def tokens(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]", text.lower())
 
 
+def embedding_cache_fingerprint(texts: list[str], model_name: str) -> str:
+    payload = json.dumps(
+        {
+            "cache_version": EMBEDDING_CACHE_VERSION,
+            "model": model_name,
+            "texts": texts,
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def load_embedding_cache(
+    embedding_path: Path,
+    metadata_path: Path,
+    *,
+    expected_fingerprint: str,
+    expected_count: int,
+) -> np.ndarray | None:
+    if not embedding_path.exists() or not metadata_path.exists():
+        return None
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata.get("fingerprint") != expected_fingerprint:
+            return None
+        array = np.load(embedding_path, allow_pickle=False)
+        if len(array) != expected_count:
+            return None
+        return array
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+
+
+def save_embedding_cache(
+    embedding_path: Path,
+    metadata_path: Path,
+    embeddings: np.ndarray,
+    *,
+    fingerprint: str,
+    model_name: str,
+) -> None:
+    embedding_temp = embedding_path.with_suffix(embedding_path.suffix + ".tmp")
+    metadata_temp = metadata_path.with_suffix(metadata_path.suffix + ".tmp")
+    with embedding_temp.open("wb") as handle:
+        np.save(handle, embeddings)
+    metadata_temp.write_text(
+        json.dumps(
+            {
+                "cache_version": EMBEDDING_CACHE_VERSION,
+                "fingerprint": fingerprint,
+                "model": model_name,
+                "count": len(embeddings),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    os.replace(embedding_temp, embedding_path)
+    os.replace(metadata_temp, metadata_path)
+
+
 class Retriever:
     def __init__(self, chunks: list[dict[str, Any]], download_models: bool = True):
         self.chunks = chunks
@@ -226,14 +291,24 @@ class Retriever:
             from sentence_transformers import CrossEncoder, SentenceTransformer
             self.dense = SentenceTransformer(DENSE_MODEL, device="cpu")
             emb_path = CACHE / "e5_embeddings.npy"
-            if emb_path.exists():
-                arr = np.load(emb_path)
-                if len(arr) == len(chunks):
-                    self.embeddings = arr
+            meta_path = CACHE / "e5_embeddings.meta.json"
+            fingerprint = embedding_cache_fingerprint(self.texts, DENSE_MODEL)
+            self.embeddings = load_embedding_cache(
+                emb_path,
+                meta_path,
+                expected_fingerprint=fingerprint,
+                expected_count=len(chunks),
+            )
             if self.embeddings is None:
                 passages = ["passage: " + t for t in self.texts]
                 self.embeddings = self.dense.encode(passages, batch_size=16, normalize_embeddings=True, show_progress_bar=True)
-                np.save(emb_path, self.embeddings)
+                save_embedding_cache(
+                    emb_path,
+                    meta_path,
+                    self.embeddings,
+                    fingerprint=fingerprint,
+                    model_name=DENSE_MODEL,
+                )
             try:
                 self.reranker = CrossEncoder(RERANK_MODEL, device="cpu")
             except Exception as exc:

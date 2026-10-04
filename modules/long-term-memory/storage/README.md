@@ -15,4 +15,4 @@ Real user memories, credentials and production indexes must never be committed t
 
 ## Reference implementation
 
-`sqlite_store.py` provides a local SQLite implementation with user-scoped reads, indexed lifecycle/type fields and content-free audit events. Multi-record lifecycle changes and their audit events use one transaction, so a failed correction or confirmation cannot leave an intermediate state. User deletion removes the memory content rather than retaining a soft-deleted copy. The database file and any real memories must remain outside Git.
+`sqlite_store.py` provides a local SQLite implementation with user-scoped reads, indexed lifecycle/type fields and content-free audit events. Multi-record lifecycle changes and their audit events use one transaction, so a failed correction or confirmation cannot leave an intermediate state. Memory Manager write decisions use `BEGIN IMMEDIATE`, keeping the slot read, conflict check and write within the same serialized transaction across SQLite connections. User deletion removes the memory content rather than retaining a soft-deleted copy. The database file and any real memories must remain outside Git.

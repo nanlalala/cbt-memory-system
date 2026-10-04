@@ -16,17 +16,29 @@ class SQLiteMemoryStore:
 
     def __init__(self, database: str | Path = ":memory:") -> None:
         self.database = str(database)
-        self.connection = sqlite3.connect(self.database)
+        self.connection = sqlite3.connect(self.database, timeout=10.0)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
+        self.connection.execute("PRAGMA busy_timeout = 10000")
         self._create_schema()
 
     def close(self) -> None:
         self.connection.close()
 
     @contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
+    def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
+        """Open a transaction, nesting safely inside an existing manager operation.
+
+        ``immediate=True`` acquires SQLite's write reservation before predicate
+        reads, preventing two writers from both deciding that the same slot is
+        empty.
+        """
+
+        if self.connection.in_transaction:
+            yield self.connection
+            return
         try:
+            self.connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
             yield self.connection
             self.connection.commit()
         except Exception:

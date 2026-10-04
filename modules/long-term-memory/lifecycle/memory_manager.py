@@ -45,7 +45,13 @@ class MemoryManager:
         self.store = store
 
     def ingest(self, record: MemoryRecord, *, actor: str = "system") -> WriteResult:
+        """Serialize predicate reads and writes for one complete ingest decision."""
+
         record.validate()
+        with self.store.transaction(immediate=True):
+            return self._ingest_locked(record, actor=actor)
+
+    def _ingest_locked(self, record: MemoryRecord, *, actor: str) -> WriteResult:
         existing = self.store.get(record.user_id, record.memory_id)
         if existing:
             raise ValueError(f"memory_id already exists: {record.memory_id}")
@@ -174,8 +180,8 @@ class MemoryManager:
         target = self.store.get(correction.user_id, target_id)
         if target is None:
             raise ValueError("correction target does not exist for this user")
-        if target.lifecycle_status in {LifecycleStatus.DELETED.value, LifecycleStatus.EXPIRED.value}:
-            raise ValueError("cannot correct a deleted or expired memory")
+        if target.lifecycle_status != LifecycleStatus.ACTIVE.value:
+            raise ValueError("correction target must be the active current version")
 
         timestamp = correction.updated_at
         superseded = replace(
@@ -212,7 +218,33 @@ class MemoryManager:
         return WriteResult("correction_applied", correction.memory_id, target.memory_id)
 
     def confirm_candidate(
-        self, user_id: str, memory_id: str, *, confirmed_at: str | None = None
+        self,
+        user_id: str,
+        memory_id: str,
+        *,
+        consent_event_id: str,
+        confirmation_turn_ids: list[str] | None = None,
+        confirmed_at: str | None = None,
+    ) -> MemoryRecord:
+        if not consent_event_id.strip():
+            raise ValueError("consent_event_id is required for user confirmation")
+        with self.store.transaction(immediate=True):
+            return self._confirm_candidate_locked(
+                user_id,
+                memory_id,
+                consent_event_id=consent_event_id,
+                confirmation_turn_ids=confirmation_turn_ids or [],
+                confirmed_at=confirmed_at,
+            )
+
+    def _confirm_candidate_locked(
+        self,
+        user_id: str,
+        memory_id: str,
+        *,
+        consent_event_id: str,
+        confirmation_turn_ids: list[str],
+        confirmed_at: str | None,
     ) -> MemoryRecord:
         record = self._require(user_id, memory_id)
         if record.lifecycle_status != LifecycleStatus.CANDIDATE.value:
@@ -225,6 +257,17 @@ class MemoryManager:
                 updated_at=timestamp,
             )
             self._apply_correction(correction, actor="user")
+            self.store.append_audit(
+                user_id=user_id,
+                memory_id=memory_id,
+                action="confirmation_evidence",
+                occurred_at=timestamp,
+                actor="user",
+                details={
+                    "consent_event_id": consent_event_id,
+                    "confirmation_turn_ids": confirmation_turn_ids,
+                },
+            )
             return self._require(user_id, memory_id)
 
         slot = record.structured_payload.get("slot_key")
@@ -268,7 +311,10 @@ class MemoryManager:
                 "action": "user_confirmed",
                 "occurred_at": timestamp,
                 "actor": "user",
-                "details": {},
+                "details": {
+                    "consent_event_id": consent_event_id,
+                    "confirmation_turn_ids": confirmation_turn_ids,
+                },
             }
         )
         self.store.atomic_write(records=changed, audits=audits)
