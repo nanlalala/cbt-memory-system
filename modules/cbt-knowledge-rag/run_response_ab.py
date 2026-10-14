@@ -79,6 +79,7 @@ def main() -> None:
     for case in CASES:
         # Keep RAG compact: professional reference, not the conversation itself.
         ids,_=retriever.rank(case["query"],"hybrid_rerank",3)
+        retriever.assert_external_transmission(ids)
         context="\n\n".join(f"[{i+1}] {chunks[idx]['citation']}\n{chunks[idx]['text']}" for i,idx in enumerate(ids))
         prompts={
             "no_rag":case["query"],

@@ -1,0 +1,14 @@
+# CPU-only regression environment, verified on CPython 3.12.
+# No model weights, paid API, CUDA, or training dependencies required.
+numpy==2.3.5
+pandas==2.2.3
+pypdf==6.10.0
+PyYAML==6.0.3
+scikit-learn==1.8.0
+scipy==1.17.0
+joblib==1.5.3
+threadpoolctl==3.6.0
+python-dateutil==2.9.0.post0
+pytz==2026.5
+tzdata==2026.5
+six==1.17.0

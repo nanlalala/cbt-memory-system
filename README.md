@@ -41,7 +41,7 @@ The system uses two separate but coordinated retrieval channels:
 - **CBT Knowledge RAG** retrieves professional CBT evidence, methods and safety guidance.
 - **Long-term Memory RAG** retrieves relevant user-specific history, including emotions, goals, events, assignments, outcomes, cognitive patterns and corrections.
 
-Deterministic safety routing runs before both retrieval channels. Qualified knowledge and memory results are combined with the short-term session state by the context builder. Either retriever may return no context when its results are not sufficiently relevant.
+In the target architecture, deterministic safety routing runs before both retrieval channels. A production risk detector and referral workflow have not yet been implemented. Qualified knowledge and memory results are combined with the short-term session state by the context builder. Either retriever may return no context when its results are not sufficiently relevant.
 
 The conversation also has a separate memory write path: supported information is extracted as a candidate, validated, versioned and managed through update, correction and forgetting rules before it becomes retrievable.
 
@@ -79,7 +79,7 @@ cbt-memory-system/
 │   ├── memory-retrieval/
 │   ├── end-to-end-dialogue/
 │   └── safety/
-└── app/                                # Journal, assignments and memory controls
+└── app/                                # Local synthetic lifecycle demo; journal UI planned
 ```
 
 ## Experimental design
@@ -94,7 +94,16 @@ The response model, CBT Knowledge RAG, safety rules and evaluation scenarios wil
 
 ## Current status
 
-The CBT Knowledge RAG module is complete. Memory Schema v1 and Memory Manager v1 are implemented, including provenance-aware extraction, SQLite storage, correction, conflict confirmation, expiry, deletion and user/sensitivity isolation. Model-extracted summaries remain unconfirmed candidates until a separately evidenced confirmation step. Lifecycle decisions and their audit events run in serialized transactions, stale correction targets are rejected, hard deletion remains final during concurrent expiry, and only one active version may occupy a memory slot. Long-term Memory RAG v1 and the Agent context builder are implemented with relevance gating, temporal reranking, strict access filters, bounded personal/professional context sections and accurate inclusion traces. The current suite contains 40 deterministic tests.
+Memory Schema v1 and Memory Manager v1 are implemented, including provenance-aware extraction, SQLite storage, correction, conflict confirmation, expiry, deletion and user/sensitivity isolation. Model-extracted summaries remain unconfirmed candidates until a separately evidenced confirmation step. Lifecycle decisions and their audit events run in serialized transactions, stale correction targets are rejected, hard deletion remains final during concurrent expiry, and only one active version may occupy a memory slot. Long-term Memory RAG v1 and the Agent context builder provide relevance gating, temporal reranking, access filters, bounded personal/professional sections and accurate inclusion traces.
+
+Week 4 implementation is underway:
+
+- Source registration now separates public availability from reviewed reuse permission. New knowledge corpora require approved sources, pinned document bytes and traceable evidence cards. The seven legacy pilot sources are disabled for new runs until review and pinning are complete; the results below remain historical.
+- The three-arm runner prepares external benchmark questions without exposing released answers or gold evidence labels to the response model. Its first condition uses no history, the second a bounded latest-session window, and the third that same window plus retrieved older history. This raw-history QA experiment does not yet evaluate automatic structured-memory extraction or CBT therapy quality.
+- A local interactive demo exercises candidate creation, explicit confirmation, current-version correction, retrieval and deletion on fictional fixtures. It uses no model or API and is a software demonstration, not an effectiveness result.
+- A pinned CPU test environment and GitHub Actions workflow support repeatable regression checks. The repo remains checkout-based rather than an installable Python package.
+
+The pinned clean-environment regression suite now passes **75/75 tests**. The LoCoMo release has been verified and the eligible **1,540 questions / 4,620 three-arm requests** prepared offline. The 446 adversarial distractor questions are excluded from ordinary answer scoring. No model responses have been generated and no new dialogue-effectiveness result is claimed. See the direct runnable entries below.
 
 The official LoCoMo comparison over 1,986 questions found that hybrid TF-IDF + multilingual E5 retrieval outperformed either component alone. Hybrid achieved Evidence Recall@5 = 0.520, Recall@10 = 0.598 and MRR@10 = 0.415, compared with 0.449, 0.528 and 0.359 for TF-IDF. These retrieval scores remain separate from the later end-to-end dialogue comparison.
 
@@ -106,7 +115,7 @@ Long-term memory retrieval results:
 | Multilingual E5 | 0.255 | 0.459 | 0.543 | 0.381 |
 | Hybrid | **0.280** | **0.520** | **0.598** | **0.415** |
 
-Current retrieval results:
+Historical knowledge-retrieval pilot results (not the newly governed corpus):
 
 | Metric | Result |
 |---|---:|
@@ -126,11 +135,26 @@ The full no-RAG versus RAG comparison will be repeated after Long-term Memory RA
 | **Week 1 — complete** | Memory schema and data preparation | Define short- and long-term memory types; design schemas for emotions, events, goals, assignments, cognitive patterns and corrections; prepare multi-session test cases | Memory Schema v1, four structured examples and ten multi-session extraction cases |
 | **Week 2 — core complete** | Memory writing and lifecycle management | Implement candidate extraction, validation, deduplication, conflict detection, updating, user correction, expiry and forgetting | Memory Manager v1, correction workflow and unit-test results |
 | **Week 3 — core complete** | Long-term Memory RAG and Agent integration | Build user-scoped memory indexes; implement semantic retrieval, temporal reranking and relevance gating; integrate both RAG channels with short-term context | Long-term Memory RAG v1, dual-retrieval context builder, 40 tests and official LoCoMo comparison |
-| **Week 4** | Comparative evaluation and reporting | Compare the three memory conditions; evaluate continuity, latest-state accuracy, assignment tracking, correction, safety, latency and token cost | Evaluation results, error analysis, system demo and progress report |
+| **Week 4 — in progress** | Comparative evaluation and reporting | Freeze source policy; prepare three controlled memory conditions; run answer generation and scoring; verify the confirmation/correction/deletion demo | Source registry, evidence cards, evaluation runner and local demo implemented; generated-answer comparison pending |
+
+## Run the new work
+
+```bash
+python -m pip install -r requirements-test.lock
+python -m unittest discover -s tests -v
+python app/memory_demo.py --scripted
+python app/memory_demo.py
+```
+
+The interactive demo only accepts the supplied fictional fixtures. Do not enter real patient information or use it for clinical decisions.
 
 ## Documentation
 
 - [System architecture](docs/architecture.md)
+- [Three-arm experiment: commands and limits](evaluation/end-to-end-dialogue/README.md)
+- [Local memory demo](app/README.md)
+- [Source policy and evidence cards](modules/cbt-knowledge-rag/README.md)
+- [Pinned development environment](docs/development.md)
 - [CBT Knowledge RAG report](modules/cbt-knowledge-rag/CBT_RAG_v1_Report.md)
 - [Full-corpus dialogue comparison](modules/cbt-knowledge-rag/CBT_RAG_v4_Full_Comparison.ipynb)
 - [Limited-corpus recovery experiment](modules/cbt-knowledge-rag/CBT_RAG_v3_Expanded_Evaluation.md)

@@ -75,6 +75,7 @@ def main() -> None:
     audit_rows: list[dict] = []
     for case in CASES:
         ids, latency = retriever.rank(RETRIEVAL_QUERIES[case["id"]], "hybrid_rerank", 3)
+        retriever.assert_external_transmission(ids)
         retrieval[case["id"]] = (ids, latency)
         for rank, idx in enumerate(ids, 1):
             chunk = chunks[idx]
