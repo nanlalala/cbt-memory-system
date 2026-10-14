@@ -1,0 +1,189 @@
+{
+  "schema_version": 1,
+  "registry_version": "2026-10-14-governance-v1",
+  "research_scope": "Nonclinical research prototype. Licensing decisions require a project reviewer; availability alone is not authorization.",
+  "sources": [
+    {
+      "id": "who_mhgap_2023",
+      "title": "WHO mhGAP Guideline, 3rd Edition",
+      "file": "data/raw/who_mhgap_guideline_3rd_edition_2023.pdf",
+      "role": "safety_scope",
+      "access": "official_publication",
+      "coverage": "full_document",
+      "source_url": "https://www.who.int/publications/i/item/9789240084278",
+      "version": "2023 third edition; ISBN 9789240084278; bytes not yet pinned",
+      "content_sha256": null,
+      "retrieval_enabled": false,
+      "disabled_reason": "Official license identified; exact local PDF, third-party material exclusions, noncommercial project scope and attribution obligations still require review.",
+      "license": {
+        "id": "CC-BY-NC-SA-3.0-IGO",
+        "status": "license_identified_scope_pending",
+        "evidence_url": "https://iris.who.int/server/api/core/bitstreams/93e56376-0e64-4a08-bdd0-703313be5354/content",
+        "reviewed_on": "2026-10-14",
+        "approved_by": null,
+        "approval_reference": null,
+        "approved_uses": [],
+        "usage_limits": [
+          "No external model transmission or derived corpus redistribution is approved by this registry.",
+          "Do not enable clinical or commercial use based on this metadata."
+        ]
+      }
+    },
+    {
+      "id": "va_brief_cbt",
+      "title": "Brief Cognitive Behavioral Therapy for Chronic Pain - Provider Guide",
+      "file": "data/raw/va_brief_cbt_provider_guide_2e.pdf",
+      "role": "clinical_workflow",
+      "access": "official_publication",
+      "coverage": "full_document",
+      "source_url": "https://www.mirecc.va.gov/visn16/clinicaleducationproducts_topic.asp",
+      "version": "Legacy pilot label; exact title and edition not yet verified",
+      "content_sha256": null,
+      "retrieval_enabled": false,
+      "disabled_reason": "VA hosting is not a document-specific license determination. Exact publication identity, third-party rights and local PDF pin remain unverified.",
+      "license": {
+        "id": "unverified",
+        "status": "unverified",
+        "evidence_url": "",
+        "reviewed_on": "2026-10-14",
+        "approved_by": null,
+        "approval_reference": null,
+        "approved_uses": [],
+        "usage_limits": [
+          "No external model transmission or derived corpus redistribution is approved by this registry.",
+          "Do not enable clinical or commercial use based on this metadata."
+        ]
+      }
+    },
+    {
+      "id": "va_mybriefcbt",
+      "title": "MyBrief CBT - Provider Manual",
+      "file": "data/raw/va_mybriefcbt_provider_manual.pdf",
+      "role": "clinical_workflow",
+      "access": "official_publication",
+      "coverage": "full_document",
+      "source_url": "https://www.mirecc.va.gov/visn16/mybriefcbt.asp",
+      "version": "Provider manual version 2.3 listed publicly; legacy local bytes not yet pinned",
+      "content_sha256": null,
+      "retrieval_enabled": false,
+      "disabled_reason": "Public download confirmed, but document-specific reuse/RAG permission and exact local version remain unverified.",
+      "license": {
+        "id": "unverified",
+        "status": "unverified",
+        "evidence_url": "",
+        "reviewed_on": "2026-10-14",
+        "approved_by": null,
+        "approval_reference": null,
+        "approved_uses": [],
+        "usage_limits": [
+          "No external model transmission or derived corpus redistribution is approved by this registry.",
+          "Do not enable clinical or commercial use based on this metadata."
+        ]
+      }
+    },
+    {
+      "id": "va_cbt_depression",
+      "title": "Cognitive Behavioral Therapy for Depression - Therapist Manual",
+      "file": "data/raw/va_cbt_depression_therapist_manual.pdf",
+      "role": "depression_cbt",
+      "access": "official_publication",
+      "coverage": "full_document",
+      "source_url": "https://mirecc.va.gov/MIRECC/docs/CBT-D_Manual_Depression.pdf",
+      "version": "VA therapist manual; exact local edition and bytes not yet pinned",
+      "content_sha256": null,
+      "retrieval_enabled": false,
+      "disabled_reason": "Document-specific rights, contributors/third-party content and local PDF pin require review; public VA availability is not sufficient authorization.",
+      "license": {
+        "id": "unverified",
+        "status": "unverified",
+        "evidence_url": "",
+        "reviewed_on": "2026-10-14",
+        "approved_by": null,
+        "approval_reference": null,
+        "approved_uses": [],
+        "usage_limits": [
+          "No external model transmission or derived corpus redistribution is approved by this registry.",
+          "Do not enable clinical or commercial use based on this metadata."
+        ]
+      }
+    },
+    {
+      "id": "cci_lipi",
+      "title": "Low Intensity Psychological Interventions - Clinician Guide",
+      "file": "data/raw/cci_lipi_clinician_guide.pdf",
+      "role": "low_intensity_cbt",
+      "access": "official_publication",
+      "coverage": "full_document",
+      "source_url": "https://www.cci.health.wa.gov.au/Resources/For-Clinicians",
+      "version": "Legacy pilot clinician guide; exact edition and bytes not yet pinned",
+      "content_sha256": null,
+      "retrieval_enabled": false,
+      "disabled_reason": "Official notice restricts reproduction/publication outside personal downloading and uses permitted by applicable law. Project RAG permission has not been established.",
+      "license": {
+        "id": "Copyright-State-of-Western-Australia",
+        "status": "permission_pending",
+        "evidence_url": "https://www.cci.health.wa.gov.au/Utilities/Copyright-and-Disclaimer",
+        "reviewed_on": "2026-10-14",
+        "approved_by": null,
+        "approval_reference": null,
+        "approved_uses": [],
+        "usage_limits": [
+          "No external model transmission or derived corpus redistribution is approved by this registry.",
+          "Do not enable clinical or commercial use based on this metadata."
+        ]
+      }
+    },
+    {
+      "id": "beck_cbt_3e_sample",
+      "title": "Cognitive Behavior Therapy - Basics and Beyond, 3rd Edition (official sample chapter 11)",
+      "file": "data/raw/beck_cbt_3e_sample_ch11.pdf",
+      "role": "core_methodology",
+      "access": "official_publisher_sample",
+      "coverage": "sample_only",
+      "source_url": "https://www.guilford.com/excerpts/beck4_ch11.pdf",
+      "version": "Third edition; official chapter 11 excerpt; copyright 2021; bytes not yet pinned",
+      "content_sha256": null,
+      "retrieval_enabled": false,
+      "disabled_reason": "Publisher sample download does not establish RAG, adaptation or redistribution permission. Written permission/project-specific review is pending.",
+      "license": {
+        "id": "Copyright-Guilford-Press",
+        "status": "permission_pending",
+        "evidence_url": "https://www.guilford.com/excerpts/beck4_ch11.pdf",
+        "reviewed_on": "2026-10-14",
+        "approved_by": null,
+        "approval_reference": null,
+        "approved_uses": [],
+        "usage_limits": [
+          "No external model transmission or derived corpus redistribution is approved by this registry.",
+          "Do not enable clinical or commercial use based on this metadata."
+        ]
+      }
+    },
+    {
+      "id": "tolin_doing_cbt_2e_sample",
+      "title": "Doing CBT, 2nd Edition (official sample chapter 1)",
+      "file": "data/raw/tolin_doing_cbt_2e_sample_ch1.pdf",
+      "role": "cbt_workflow",
+      "access": "official_publisher_sample",
+      "coverage": "sample_only",
+      "source_url": "https://www.guilford.com/excerpts/tolin_ch1.pdf",
+      "version": "Second edition; official chapter 1 excerpt; exact local bytes not yet pinned",
+      "content_sha256": null,
+      "retrieval_enabled": false,
+      "disabled_reason": "Publisher sample download does not establish RAG, adaptation or redistribution permission. Written permission/project-specific review is pending.",
+      "license": {
+        "id": "Copyright-Guilford-Press",
+        "status": "permission_pending",
+        "evidence_url": "https://www.guilford.com/excerpts/tolin_ch1.pdf",
+        "reviewed_on": "2026-10-14",
+        "approved_by": null,
+        "approval_reference": null,
+        "approved_uses": [],
+        "usage_limits": [
+          "No external model transmission or derived corpus redistribution is approved by this registry.",
+          "Do not enable clinical or commercial use based on this metadata."
+        ]
+      }
+    }
+  ]
+}

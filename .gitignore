@@ -17,3 +17,7 @@ cache/
 **/results/reference_context_v2_results.csv
 evaluation/memory-retrieval/data/
 evaluation/memory-retrieval/outputs/
+evaluation/end-to-end-dialogue/outputs/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

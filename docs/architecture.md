@@ -1,5 +1,12 @@
 # System architecture
 
+These diagrams describe the target research design, not a production deployment.
+The memory manager, retrievers and context builder are implemented; the current
+application is a fictional-data CLI lifecycle demo. A real risk detector,
+referral workflow, authenticated journal UI and production privacy controls
+remain unimplemented. The first three-arm runner tests released memory QA with
+raw history, not CBT treatment quality or automatic confirmed-memory extraction.
+
 [Back to project overview](../README.md)
 
 This page contains the overall architecture and all module-level diagrams in one continuous document.

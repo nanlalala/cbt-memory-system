@@ -41,6 +41,7 @@ def main() -> None:
             print(case["id"], "kept")
             continue
         ids, retrieval_ms = retriever.rank(case["query"], "hybrid_rerank", 3)
+        retriever.assert_external_transmission(ids)
         context = "\n\n".join(
             f"[{rank}] {chunks[idx]['citation']}\n{chunks[idx]['text']}"
             for rank, idx in enumerate(ids, 1)

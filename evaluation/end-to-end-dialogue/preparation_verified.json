@@ -1,0 +1,27 @@
+{
+  "verified_on": "2026-10-14",
+  "status": "prepared_not_generated",
+  "python": "3.12.14",
+  "clean_environment_regression_tests": {"passed": 75, "total": 75},
+  "source_dataset": "locomo10 pinned official release",
+  "released_examples": 1986,
+  "eligible_examples": 1540,
+  "excluded_adversarial_distractors": 446,
+  "prepared_three_arm_requests": 4620,
+  "completed_responses": 0,
+  "distinct_conversation_scopes": 10,
+  "response_model": "YOUR_RESPONSE_MODEL (unselected placeholder)",
+  "input_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+  "protocol_sha256": "a94efb3fd2ea82782a61f2b20ab9cbaa4a0e7c9c941344fb3d2f409af940a9b8",
+  "prompt_records_sha256": "8e6b45ba884b833934089137aeadc43c72d78f59b54c2d0d678557ee7b1aa896",
+  "max_prompt_characters": 8940,
+  "category_counts": {"1": 282, "2": 321, "3": 96, "4": 841},
+  "fixed_knowledge": "empty in all arms; raw-history memory ablation only",
+  "knowledge_source_review": "all seven legacy sources disabled pending review and document pinning",
+  "effectiveness_result": "not measured",
+  "limits": [
+    "Offline preparation is not response generation or scoring.",
+    "Raw-history benchmark QA is not structured-memory extraction or CBT clinical evaluation.",
+    "Select a response model and create a new frozen run before any API generation."
+  ]
+}

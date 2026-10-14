@@ -122,6 +122,7 @@ def main() -> None:
     rows=json.loads(checkpoint.read_text()) if checkpoint.exists() else []
     for case in CASES:
         ids,retrieval_ms=retriever.rank(RETRIEVAL_QUERIES[case["id"]],"lexical_hybrid",3)
+        retriever.assert_external_transmission(ids)
         context="\n\n".join(f"[{n}] {chunks[i]['citation']}\n{chunks[i]['text']}" for n,i in enumerate(ids,1))
         for arm,prompt in [("no_rag",plain_prompt(case["dialogue"])),("public_reference_rag",rag_prompt(case["dialogue"],context))]:
             if any(r["case_id"]==case["id"] and r["arm"]==arm and r.get("answer") for r in rows): continue

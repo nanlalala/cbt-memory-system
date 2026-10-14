@@ -44,6 +44,7 @@ except ImportError:
             return scores
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from source_registry import DEFAULT_REGISTRY, SourcePolicyError, SourceRegistry
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -55,6 +56,7 @@ for d in (DATA, RESULTS, CACHE):
 DENSE_MODEL = "intfloat/multilingual-e5-small"
 RERANK_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 EMBEDDING_CACHE_VERSION = "2"
+CORPUS_CHUNKER_CONFIG = {"version": "pdf-cleaning-v1", "target_chars": 1400, "overlap_chars": 180}
 
 TAXONOMY = {
     "automatic_thoughts": ["automatic thought", "automatic thoughts", "hot thought", "cognition", "thought record"],
@@ -188,12 +190,35 @@ def make_chunks(source: dict[str, Any], target_chars: int = 1400, overlap_chars:
     return chunks
 
 
-def build_corpus() -> list[dict[str, Any]]:
-    config_path = Path(os.environ.get("CBT_KB_CONFIG", ROOT / "knowledge_sources.yaml"))
+def configured_registry(config_path: Path | None = None) -> SourceRegistry:
+    """Use the same source policy for the selected build and retrieval config."""
+    config_path = config_path or Path(os.environ.get("CBT_KB_CONFIG", ROOT / "knowledge_sources.yaml"))
+    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    return SourceRegistry.from_path(config_path.parent / config.get("source_registry", DEFAULT_REGISTRY.name))
+
+
+def build_corpus(
+    config_path: Path | None = None,
+    *,
+    registry: SourceRegistry | None = None,
+) -> list[dict[str, Any]]:
+    config_path = config_path or Path(os.environ.get("CBT_KB_CONFIG", ROOT / "knowledge_sources.yaml"))
     config = yaml.safe_load(config_path.read_text())
+    registry = registry or configured_registry(config_path)
+    enabled_sources = []
+    for selected in config["sources"]:
+        source = registry.source(selected["id"])
+        if not source["retrieval_enabled"]:
+            print(f"{source['id']}: skipped (retrieval disabled)")
+            continue
+        registry.require_enabled(source["id"])
+        registry.verify_source_file(source["id"], ROOT / source["file"])
+        enabled_sources.append(source)
+    if not enabled_sources:
+        raise SourcePolicyError("No approved, pinned knowledge sources are enabled. Review source_registry.json before rebuilding; legacy pilot chunks are not authorized by default.")
     all_chunks: list[dict[str, Any]] = []
-    for source in config["sources"]:
-        chunks = make_chunks(source)
+    for source in enabled_sources:
+        chunks = [registry.stamp_chunk(chunk) for chunk in make_chunks(source)]
         print(f"{source['id']}: {len(chunks)} chunks")
         all_chunks.extend(chunks)
     out = DATA / "chunks.jsonl"
@@ -201,6 +226,14 @@ def build_corpus() -> list[dict[str, Any]]:
         for x in all_chunks:
             f.write(json.dumps(x, ensure_ascii=False) + "\n")
     pd.DataFrame([{k: v for k, v in x.items() if k != "text"} for x in all_chunks]).to_csv(DATA / "chunk_catalog.csv", index=False)
+    chunker_config = CORPUS_CHUNKER_CONFIG
+    (DATA / "corpus_manifest.json").write_text(json.dumps({
+        "registry_fingerprint": registry.fingerprint,
+        "corpus_fingerprint": registry.corpus_fingerprint(all_chunks, chunker_config=chunker_config),
+        "chunker_config": chunker_config,
+        "source_ids": [source["id"] for source in enabled_sources],
+        "chunk_count": len(all_chunks),
+    }, sort_keys=True, indent=2), encoding="utf-8")
     return all_chunks
 
 
@@ -277,7 +310,19 @@ def save_embedding_cache(
 
 
 class Retriever:
-    def __init__(self, chunks: list[dict[str, Any]], download_models: bool = True):
+    def __init__(
+        self,
+        chunks: list[dict[str, Any]],
+        download_models: bool = True,
+        *,
+        registry: SourceRegistry | None = None,
+    ):
+        self.registry = registry or configured_registry()
+        for chunk in chunks:
+            self.registry.validate_chunk(chunk)
+        if not chunks:
+            raise SourcePolicyError("Knowledge retriever requires a nonempty approved corpus")
+        self.corpus_fingerprint = self.registry.corpus_fingerprint(chunks, chunker_config=CORPUS_CHUNKER_CONFIG)
         self.chunks = chunks
         self.texts = [f"{c['title']} {c['section']} {' '.join(c['cbt_topics'])} {c['text']}" for c in chunks]
         self.tfidf = TfidfVectorizer(lowercase=True, ngram_range=(1, 2), min_df=1, max_features=80000).fit(self.texts)
@@ -376,6 +421,21 @@ class Retriever:
         latency = (time.perf_counter() - t0) * 1000
         self._rank_cache[(query, mode)] = (result, latency)
         return result[:k], latency
+
+    def evidence_cards(
+        self, indices: list[int], *, max_excerpt_chars: int = 600,
+        for_external_model: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Return reviewed-source provenance for ranked chunks, with bounded excerpts."""
+        return [self.registry.evidence_card(
+            self.chunks[index], retrieval_rank=rank, max_excerpt_chars=max_excerpt_chars,
+            for_external_model=for_external_model,
+        ).to_dict() for rank, index in enumerate(indices, 1)]
+
+    def assert_external_transmission(self, indices: list[int]) -> None:
+        """Gate excerpts before existing response pilots send them to an API."""
+        for source_id in {self.chunks[index]["source_id"] for index in indices}:
+            self.registry.require_use(source_id, "external_model_transmission")
 
 
 def relevant(chunk: dict[str, Any], item: dict[str, Any]) -> bool:
