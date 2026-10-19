@@ -103,9 +103,23 @@ Week 4 implementation is underway:
 - A local interactive demo exercises candidate creation, explicit confirmation, current-version correction, retrieval and deletion on fictional fixtures. It uses no model or API and is a software demonstration, not an effectiveness result.
 - A pinned CPU test environment and GitHub Actions workflow support repeatable regression checks. The repo remains checkout-based rather than an installable Python package.
 
-The pinned clean-environment regression suite now passes **75/75 tests**. The LoCoMo release has been verified and the eligible **1,540 questions / 4,620 three-arm requests** prepared offline. The 446 adversarial distractor questions are excluded from ordinary answer scoring. No model responses have been generated and no new dialogue-effectiveness result is claimed. See the direct runnable entries below.
+The regression suite now passes **77/77 tests**. The LoCoMo release has been verified and the eligible **1,540 questions / 4,620 three-arm requests** prepared offline. The 446 adversarial distractor questions are excluded from ordinary answer scoring.
 
-The official LoCoMo comparison over 1,986 questions found that hybrid TF-IDF + multilingual E5 retrieval outperformed either component alone. Hybrid achieved Evidence Recall@5 = 0.520, Recall@10 = 0.598 and MRR@10 = 0.415, compared with 0.449, 0.528 and 0.359 for TF-IDF. These retrieval scores remain separate from the later end-to-end dialogue comparison.
+### 20-question history-QA pilot — 19 October 2026
+
+A seeded sample spanning **20 questions and 9 conversations** completed all **60/60 responses** with DeepSeek Flash. The three arms used the same response model and settings; CBT knowledge was empty throughout. Retrieval used a lexical baseline over raw older dialogue turns, not the confirmed structured-memory pipeline.
+
+| History available | Mean lexical token-F1 proxy | Median API response time |
+|---|---:|---:|
+| None | 0.019 | 1.75 s |
+| Latest-session window | 0.071 | 1.63 s |
+| Same window + retrieved older history | **0.209** | 1.87 s |
+
+Adding older-history retrieval to the short window increased the mean F1 proxy by **0.137**, with **16 higher / 2 tied / 2 lower** per-question proxy scores. This is an encouraging small-sample result for history-dependent question answering, not an official LoCoMo score, accuracy rate or clinical outcome. Lexical overlap is not accuracy: spot checks found correct short answers penalized when embedded in longer wording, and wrong dates receiving higher overlap; semantic correctness still needs reference-based review. API timing excludes retrieval and indexing; official evaluation and model-assisted judging have not run.
+
+Reproduction settings, excluded provider-default failure rounds and the content-free aggregate are recorded directly in the [experiment page](evaluation/end-to-end-dialogue/README.md).
+
+The earlier retrieval comparison using released LoCoMo evidence annotations over 1,986 questions found that hybrid TF-IDF + multilingual E5 retrieval outperformed either component alone. Hybrid achieved Evidence Recall@5 = 0.520, Recall@10 = 0.598 and MRR@10 = 0.415, compared with 0.449, 0.528 and 0.359 for TF-IDF. These evidence-retrieval scores are separate from the answer-overlap proxies above.
 
 Long-term memory retrieval results:
 
@@ -135,7 +149,7 @@ The full no-RAG versus RAG comparison will be repeated after Long-term Memory RA
 | **Week 1 — complete** | Memory schema and data preparation | Define short- and long-term memory types; design schemas for emotions, events, goals, assignments, cognitive patterns and corrections; prepare multi-session test cases | Memory Schema v1, four structured examples and ten multi-session extraction cases |
 | **Week 2 — core complete** | Memory writing and lifecycle management | Implement candidate extraction, validation, deduplication, conflict detection, updating, user correction, expiry and forgetting | Memory Manager v1, correction workflow and unit-test results |
 | **Week 3 — core complete** | Long-term Memory RAG and Agent integration | Build user-scoped memory indexes; implement semantic retrieval, temporal reranking and relevance gating; integrate both RAG channels with short-term context | Long-term Memory RAG v1, dual-retrieval context builder, 40 tests and official LoCoMo comparison |
-| **Week 4 — in progress** | Comparative evaluation and reporting | Freeze source policy; prepare three controlled memory conditions; run answer generation and scoring; verify the confirmation/correction/deletion demo | Source registry, evidence cards, evaluation runner and local demo implemented; generated-answer comparison pending |
+| **Week 4 — pilot complete; further evaluation pending** | Comparative evaluation and reporting | Freeze source policy; prepare three controlled memory conditions; run answer generation and scoring; verify the confirmation/correction/deletion demo | Source registry, evidence cards, local demo and 20-question raw-history pilot complete; full structured-memory comparison and official evaluation pending |
 
 ## Run the new work
 

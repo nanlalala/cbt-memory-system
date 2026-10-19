@@ -61,11 +61,14 @@ class Settings:
     long_chars: int = 12000
     max_context_chars: int = 24000
     max_response_tokens: int = 1024
+    thinking_mode: str = "provider_default"
     seed: int = 20261014
 
     def validate(self) -> None:
         if self.backend not in {"lexical", "dense", "hybrid"}:
             raise ValueError("unknown retrieval backend")
+        if self.thinking_mode not in {"provider_default", "enabled", "disabled"}:
+            raise ValueError("unknown provider thinking mode")
         if min(self.short_turns, self.top_k, self.short_chars, self.long_chars,
                self.max_context_chars, self.max_response_tokens) <= 0:
             raise ValueError("window, budgets, top-k and response tokens must be positive")
@@ -365,9 +368,12 @@ def load_checkpoints(path: Path, requests: Sequence[dict], protocol_sha: str) ->
 
 
 def generate_response(request: dict, settings: Settings, *, api_base: str, key: str) -> dict:
+    settings.validate()
     api_base = validated_api_base(api_base)
     body = {"model": settings.model, "messages": request["messages"],
             "temperature": 0, "max_tokens": settings.max_response_tokens}
+    if settings.thinking_mode != "provider_default":
+        body["thinking"] = {"type": settings.thinking_mode}
     req = Request(api_base + "/chat/completions", data=json.dumps(body).encode("utf-8"),
                   headers={"Content-Type": "application/json", "Authorization": "Bearer " + key}, method="POST")
     started = time.monotonic()
@@ -376,12 +382,26 @@ def generate_response(request: dict, settings: Settings, *, api_base: str, key: 
     latency = time.monotonic() - started
     choice = result["choices"][0]
     content = choice["message"].get("content")
+    usage = result.get("usage")
+    usage = usage if isinstance(usage, dict) else {}
+    completion_details = usage.get("completion_tokens_details")
+    completion_details = completion_details if isinstance(completion_details, dict) else {}
+    reasoning_tokens = completion_details.get("reasoning_tokens", usage.get("reasoning_tokens"))
+    finish_reason = choice.get("finish_reason")
+    # Whitelisted enums and integer counts only: never echo response body or secrets.
+    diagnostic = json.dumps({
+        "finish_reason": finish_reason if finish_reason in {
+            "stop", "length", "content_filter", "tool_calls", "function_call"
+        } else "unknown",
+        "completion_tokens": usage.get("completion_tokens") if type(usage.get("completion_tokens")) is int else None,
+        "reasoning_tokens": reasoning_tokens if type(reasoning_tokens) is int else None,
+    }, sort_keys=True)
     if not isinstance(content, str) or not content.strip():
-        raise RuntimeError("provider returned an empty answer; no score/checkpoint written")
+        raise RuntimeError("provider returned an empty answer; no score/checkpoint written; " + diagnostic)
     if choice.get("finish_reason") != "stop":
-        raise RuntimeError("provider did not finish normally (possibly truncated); no checkpoint written")
+        raise RuntimeError("provider did not finish normally (possibly truncated); no checkpoint written; " + diagnostic)
     return {"hypothesis": content, "latency_seconds": latency,
-            "usage": result.get("usage", {}), "provider_model": result.get("model"),
+            "usage": usage, "provider_model": result.get("model"),
             "finish_reason": choice.get("finish_reason")}
 
 
@@ -402,6 +422,7 @@ def main() -> None:
     parser.add_argument("--long-chars", type=int, default=12000)
     parser.add_argument("--max-context-chars", type=int, default=24000)
     parser.add_argument("--max-response-tokens", type=int, default=1024)
+    parser.add_argument("--thinking-mode", choices=("provider_default", "enabled", "disabled"), default="provider_default")
     parser.add_argument("--seed", type=int, default=20261014)
     parser.add_argument("--generate", action="store_true")
     parser.add_argument("--max-calls", type=int, default=30)

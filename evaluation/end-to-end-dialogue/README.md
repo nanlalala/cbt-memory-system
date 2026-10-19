@@ -13,6 +13,41 @@ system or confirmed structured-memory extraction. Benchmark dialogue is not prom
 to confirmed user facts. Arbitrary knowledge-file input is disabled: later integration
 must check both source retrieval approval and external-model transmission approval.
 
+## Latest pilot — 19 October 2026
+
+The scored run completed **20 questions across 9 LoCoMo conversations, with 60/60
+successful responses**. Mean lexical token-F1 proxies were **0.01887** (no history),
+**0.07130** (short window), and **0.20865** (short window plus retrieved older history).
+The latter exceeded the short-window proxy on 16 questions, tied on 2 and was lower
+on 2; the mean paired difference was +0.13735. These are non-official answer-overlap
+proxies, not accuracy, CBT quality or clinical scores. Spot checks found correct short
+answers penalized when embedded in longer wording, and wrong dates receiving higher
+overlap; semantic correctness still needs reference-based review. Official evaluation
+and model-assisted judging have not run; only judge inputs were prepared.
+
+Reproduction metadata:
+
+- Requested model: `deepseek-v4.1-flash`; every scored response reported
+  `deepseek-v4-1-flash-260910`.
+- Seed `20261014`; CPU lexical retrieval; latest 16-turn window; up to 12 older
+  turns retrieved. CBT reference context was empty in every arm, and the history
+  consisted of raw turns rather than confirmed structured memories.
+- Temperature 0; response budget 4,096 tokens; `--thinking-mode disabled`.
+  All 60 responses reported zero reasoning tokens and normal `stop` completion.
+- Execution commit: `baf5df31ceda6117cbaf8c74b603fd27e0de3777`.
+- Protocol SHA-256: `ce7f6c4f341f40fb1cb320ad8ff157ce2ca2872c1c8c86a739c092e3e3559c30`.
+
+Two earlier provider-default thinking rounds stopped after empty, length-limited
+responses: the 1,024-token round had 24 valid and 2 empty responses; the 4,096-token
+round had 5 valid and 1 empty response. Those rounds are excluded in full, including
+their valid responses, and are not mixed with the scored 60-response protocol.
+
+The single [aggregate JSON](pilot_20261019_summary.json) contains scores, paired
+exploratory intervals and limited reproduction metadata, without prompts, reference
+answers, generated answers or credentials. The full results table is on the
+repository homepage. This pilot does not test general dialogue quality, automatic
+memory extraction, user corrections, safety effectiveness or clinical outcomes.
+
 ## Prepare a run without an API
 
 Use the released files pinned in `evaluation/memory-retrieval/benchmark_manifest.json`:
@@ -67,6 +102,12 @@ Each successful response checkpoints to `responses.jsonl` with prompt/protocol
 hash, provider model, latency and token usage. Resume skips completed calls and
 rejects mismatched or duplicate checkpoints. Empty/truncated provider responses
 stop the run without a success checkpoint or low-score substitution.
+`--thinking-mode provider_default|enabled|disabled` freezes the provider thinking
+setting across all three arms; the default sends no thinking parameter, while an
+explicit mode sends `thinking: {type: ...}` only where the selected provider supports
+it. Changing this setting requires a new protocol/output directory; do not mix prior
+reasoning-budget failures into the new run. Empty/truncated errors expose only finish
+reason and completion/reasoning token counts, not response bodies or credentials.
 
 ## Leakage and chronology controls
 
