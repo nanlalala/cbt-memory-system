@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "evaluation/end-to-end-dialogue"))
 
 from run_three_arm import (  # noqa: E402
     ARMS, SYSTEM_PROMPT, HistoryRanker, HistoryTurn, NoCredentialRedirects, Settings, build_request,
-    fit_turns, freeze_json, generate_response, load_checkpoints, parse_date,
+    build_protocol, fit_turns, freeze_json, generate_response, load_checkpoints, parse_date,
     partition_history, reference_rows, stable_digest, validated_api_base, write_jsonl,
 )
 from benchmark_adapters import RetrievalExample  # noqa: E402
@@ -173,6 +173,66 @@ class ThreeArmProtocolTests(unittest.TestCase):
     def test_api_redirects_cannot_forward_authorization(self) -> None:
         self.assertIsNone(NoCredentialRedirects().redirect_request(
             None, None, 307, "redirect", {}, "https://another-host.example/v1"))
+
+    def test_thinking_parameter_is_opt_in_and_matches_frozen_setting(self) -> None:
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps({"choices": [{"message": {"content": "answer"}, "finish_reason": "stop"}]}).encode()
+
+        for mode in ("provider_default", "disabled", "enabled"):
+            with self.subTest(mode=mode), patch("run_three_arm.build_opener") as opener:
+                opener.return_value.open.return_value = FakeResponse()
+                settings = replace(self.settings, thinking_mode=mode)
+                generate_response(self.request(), settings, api_base="https://example.org/v1", key="test-secret")
+                body = json.loads(opener.return_value.open.call_args.args[0].data)
+                if mode == "provider_default":
+                    self.assertNotIn("thinking", body)
+                else:
+                    self.assertEqual(body["thinking"], {"type": mode})
+
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / "fixture.json"
+            input_path.write_text("[]", encoding="utf-8")
+            default = build_protocol(input_path, "longmemeval", [fixture()], self.settings, "https://example.org/v1")
+            disabled = build_protocol(input_path, "longmemeval", [fixture()],
+                                      replace(self.settings, thinking_mode="disabled"), "https://example.org/v1")
+            self.assertEqual(default["settings"]["thinking_mode"], "provider_default")
+            self.assertEqual(disabled["settings"]["thinking_mode"], "disabled")
+            self.assertNotEqual(stable_digest(default), stable_digest(disabled))
+            with self.assertRaisesRegex(ValueError, "thinking mode"):
+                replace(self.settings, thinking_mode="unexpected").validate()
+
+    def test_empty_answer_diagnostic_contains_only_safe_token_metadata(self) -> None:
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps({
+                    "choices": [{"message": {"content": "", "reasoning_content": "PRIVATE_REASONING_BODY"},
+                                 "finish_reason": "length"}],
+                    "usage": {"completion_tokens": 4096, "completion_tokens_details": {"reasoning_tokens": 4096}},
+                }).encode()
+
+        with patch("run_three_arm.build_opener") as opener:
+            opener.return_value.open.return_value = FakeResponse()
+            with self.assertRaises(RuntimeError) as caught:
+                generate_response(self.request(), self.settings, api_base="https://example.org/v1", key="test-secret")
+            message = str(caught.exception)
+            self.assertIn('"finish_reason": "length"', message)
+            self.assertIn('"completion_tokens": 4096', message)
+            self.assertIn('"reasoning_tokens": 4096', message)
+            self.assertNotIn("PRIVATE_REASONING_BODY", message)
+            self.assertNotIn("test-secret", message)
 
 
 class ThreeArmScoringTests(unittest.TestCase):
