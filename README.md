@@ -98,16 +98,16 @@ Memory Schema v1 and Memory Manager v1 are implemented, including provenance-awa
 
 Week 4 implementation is underway:
 
-- Source registration now separates public availability from reviewed reuse permission. New knowledge corpora require approved sources, pinned document bytes and traceable evidence cards. The seven legacy pilot sources are disabled for new runs until review and pinning are complete; the results below remain historical.
+- Source registration separates public availability from reviewed reuse permission. The selected YAML, registry and complete chunk metadata are bound into a corpus manifest and checked at build, load and retrieval. The seven legacy pilot sources remain disabled until review and document pinning are complete.
 - The three-arm runner prepares external benchmark questions without exposing released answers or gold evidence labels to the response model. Its first condition uses no history, the second a bounded latest-session window, and the third that same window plus retrieved older history. This raw-history QA experiment does not yet evaluate automatic structured-memory extraction or CBT therapy quality.
 - A local interactive demo exercises candidate creation, explicit confirmation, current-version correction, retrieval and deletion on fictional fixtures. It uses no model or API and is a software demonstration, not an effectiveness result.
-- A pinned CPU test environment and GitHub Actions workflow support repeatable regression checks. The repo remains checkout-based rather than an installable Python package.
+- CPU regression dependencies use a platform-specific wheel hash lock; CI actions use immutable commits. Dense/re-ranking models use fixed Hub commits and verified file bytes, with actual model/runtime identities in new caches and run manifests. The repo remains checkout-based rather than an installable Python package.
 
-The regression suite now passes **77/77 tests**. The LoCoMo release has been verified and the eligible **1,540 questions / 4,620 three-arm requests** prepared offline. The 446 adversarial distractor questions are excluded from ordinary answer scoring.
+Regression checks cover the lifecycle, source/configuration, evidence metadata, model identity, caches and offline pilot audit. The LoCoMo release has been verified and the eligible **1,540 questions / 4,620 three-arm requests** prepared offline. The 446 adversarial distractor questions are excluded from ordinary answer scoring.
 
 ### 20-question history-QA pilot — 19 October 2026
 
-A seeded sample spanning **20 questions and 9 conversations** completed all **60/60 responses** with DeepSeek Flash. The three arms used the same response model and settings; CBT knowledge was empty throughout. Retrieval used a lexical baseline over raw older dialogue turns, not the confirmed structured-memory pipeline.
+A seeded sample spanning **20 questions and 9 conversations** completed all **60/60 responses**. All responses reported the same DeepSeek Flash model name, but that historical v1 protocol did not preapprove a provider alias. Its scores remain a legacy audit result, not a run validated under the new strict model-identity policy. CBT knowledge was empty throughout; retrieval used raw older dialogue turns rather than confirmed structured memories.
 
 | History available | Mean lexical token-F1 proxy | Median API response time |
 |---|---:|---:|
@@ -115,9 +115,17 @@ A seeded sample spanning **20 questions and 9 conversations** completed all **60
 | Latest-session window | 0.071 | 1.63 s |
 | Same window + retrieved older history | **0.209** | 1.87 s |
 
-Adding older-history retrieval to the short window increased the mean F1 proxy by **0.137**, with **16 higher / 2 tied / 2 lower** per-question proxy scores. This is an encouraging small-sample result for history-dependent question answering, not an official LoCoMo score, accuracy rate or clinical outcome. Lexical overlap is not accuracy: spot checks found correct short answers penalized when embedded in longer wording, and wrong dates receiving higher overlap; semantic correctness still needs reference-based review. API timing excludes retrieval and indexing; official evaluation and model-assisted judging have not run.
+Adding older-history retrieval to the short window increased the mean F1 proxy by **0.137**, with **16 higher / 2 tied / 2 lower** per-question proxy scores. This small-sample answer-overlap result is not an official LoCoMo score, accuracy rate or clinical outcome. Spot checks found correct short answers penalized for longer wording, and wrong dates receiving higher overlap; semantic correctness still needs reference-based review. API timing excludes retrieval and indexing; official evaluation and model-assisted judging have not run.
 
 Download the [60 per-question score rows](evaluation/end-to-end-dialogue/pilot_20261019_scores.csv) or the [aggregate scores and fixed settings](evaluation/end-to-end-dialogue/pilot_20261019_summary.json). The CSV contains benchmark IDs, condition labels, proxy scores, API latency and reported token use. Commands and excluded failure rounds are on the [experiment page](evaluation/end-to-end-dialogue/README.md).
+
+The [benchmark-only audit ZIP](evaluation/end-to-end-dialogue/pilot_20261019_audit.zip) preserves the actual protocol, prompts, references and responses, with LoCoMo attribution and CC BY-NC 4.0 terms. Its [audit manifest](evaluation/end-to-end-dialogue/pilot_20261019_audit.json) binds archive/member hashes, timestamps and execution code. Recompute raw answers → per-question scores → published aggregates offline:
+
+```bash
+python evaluation/end-to-end-dialogue/verify_pilot_audit.py
+```
+
+This verifies the archived scoring inputs and arithmetic; hashes do not prove provider authenticity, semantic correctness or clinical value. Future real-user data must remain access-controlled and must not be published through this benchmark-only release path.
 
 The earlier retrieval comparison using released LoCoMo evidence annotations over 1,986 questions found that hybrid TF-IDF + multilingual E5 retrieval outperformed either component alone. Hybrid achieved Evidence Recall@5 = 0.520, Recall@10 = 0.598 and MRR@10 = 0.415, compared with 0.449, 0.528 and 0.359 for TF-IDF. These evidence-retrieval scores are separate from the answer-overlap proxies above.
 
@@ -128,6 +136,8 @@ Long-term memory retrieval results:
 | TF-IDF | 0.241 | 0.449 | 0.528 | 0.359 |
 | Multilingual E5 | 0.255 | 0.459 | 0.543 | 0.381 |
 | Hybrid | **0.280** | **0.520** | **0.598** | **0.415** |
+
+These historical retrieval runs were not repeated under the new model snapshot lock. The new loader's lightweight regression checks do not replace an actual pinned-weight inference run.
 
 Historical knowledge-retrieval pilot results (not the newly governed corpus):
 

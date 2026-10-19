@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import math
 import os
 import re
+import sys
 import time
 from collections import Counter
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -44,7 +47,10 @@ except ImportError:
             return scores
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from source_registry import DEFAULT_REGISTRY, SourcePolicyError, SourceRegistry
+from source_registry import DEFAULT_REGISTRY, KnowledgeConfig, SourcePolicyError, SourceRegistry
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from model_snapshots import pinned_model_spec, prepare_model_snapshot
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -55,8 +61,12 @@ for d in (DATA, RESULTS, CACHE):
 
 DENSE_MODEL = "intfloat/multilingual-e5-small"
 RERANK_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
-EMBEDDING_CACHE_VERSION = "2"
-CORPUS_CHUNKER_CONFIG = {"version": "pdf-cleaning-v1", "target_chars": 1400, "overlap_chars": 180}
+EMBEDDING_CACHE_VERSION = "3"
+CORPUS_CHUNKER_CONFIG = {"version": "pdf-cleaning-v2-full-metadata", "target_chars": 1400, "overlap_chars": 180}
+EMBEDDING_PREPROCESSING = {
+    "version": "e5-passage-v1", "passage_prefix": "passage: ",
+    "query_prefix": "query: ", "normalize_embeddings": True,
+}
 
 TAXONOMY = {
     "automatic_thoughts": ["automatic thought", "automatic thoughts", "hot thought", "cognition", "thought record"],
@@ -197,21 +207,51 @@ def configured_registry(config_path: Path | None = None) -> SourceRegistry:
     return SourceRegistry.from_path(config_path.parent / config.get("source_registry", DEFAULT_REGISTRY.name))
 
 
+def load_knowledge_config(
+    config_path: Path | None = None, *, registry: SourceRegistry | None = None,
+) -> KnowledgeConfig:
+    config_path = config_path or Path(os.environ.get("CBT_KB_CONFIG", ROOT / "knowledge_sources.yaml"))
+    registry = registry or configured_registry(config_path)
+    payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    return KnowledgeConfig.from_payload(
+        with_model_config(payload), registry,
+        chunker_config=CORPUS_CHUNKER_CONFIG,
+    )
+
+
+def with_model_config(payload: dict[str, Any]) -> dict[str, Any]:
+    """Bind reviewed model commits and preprocessing, without downloading models."""
+    if not isinstance(payload, dict):
+        raise SourcePolicyError("knowledge configuration must be an object")
+    settings = {
+        "dense": pinned_model_spec(DENSE_MODEL), "reranker": pinned_model_spec(RERANK_MODEL),
+        "embedding_preprocessing": EMBEDDING_PREPROCESSING,
+    }
+    if "retrieval_models" in payload and payload["retrieval_models"] != settings:
+        raise SourcePolicyError("knowledge configuration differs from reviewed model snapshot lock")
+    return {**deepcopy(payload), "retrieval_models": deepcopy(settings)}
+
+
 def build_corpus(
     config_path: Path | None = None,
     *,
     registry: SourceRegistry | None = None,
+    knowledge_config: KnowledgeConfig | None = None,
 ) -> list[dict[str, Any]]:
     config_path = config_path or Path(os.environ.get("CBT_KB_CONFIG", ROOT / "knowledge_sources.yaml"))
-    config = yaml.safe_load(config_path.read_text())
     registry = registry or configured_registry(config_path)
+    knowledge_config = knowledge_config or load_knowledge_config(config_path, registry=registry)
+    knowledge_config.validate_registry(registry)
+    if knowledge_config.chunker_config != CORPUS_CHUNKER_CONFIG:
+        raise SourcePolicyError("unsupported chunker configuration; rebuild using this implementation")
     enabled_sources = []
-    for selected in config["sources"]:
-        source = registry.source(selected["id"])
+    for source_id in knowledge_config.selected_source_ids:
+        source = registry.source(source_id)
         if not source["retrieval_enabled"]:
             print(f"{source['id']}: skipped (retrieval disabled)")
             continue
         registry.require_enabled(source["id"])
+        knowledge_config.require_selected(source["id"], registry)
         registry.verify_source_file(source["id"], ROOT / source["file"])
         enabled_sources.append(source)
     if not enabled_sources:
@@ -221,20 +261,32 @@ def build_corpus(
         chunks = [registry.stamp_chunk(chunk) for chunk in make_chunks(source)]
         print(f"{source['id']}: {len(chunks)} chunks")
         all_chunks.extend(chunks)
+    manifest = knowledge_config.corpus_manifest(all_chunks, registry)
     out = DATA / "chunks.jsonl"
     with out.open("w", encoding="utf-8") as f:
         for x in all_chunks:
             f.write(json.dumps(x, ensure_ascii=False) + "\n")
     pd.DataFrame([{k: v for k, v in x.items() if k != "text"} for x in all_chunks]).to_csv(DATA / "chunk_catalog.csv", index=False)
-    chunker_config = CORPUS_CHUNKER_CONFIG
-    (DATA / "corpus_manifest.json").write_text(json.dumps({
-        "registry_fingerprint": registry.fingerprint,
-        "corpus_fingerprint": registry.corpus_fingerprint(all_chunks, chunker_config=chunker_config),
-        "chunker_config": chunker_config,
-        "source_ids": [source["id"] for source in enabled_sources],
-        "chunk_count": len(all_chunks),
-    }, sort_keys=True, indent=2), encoding="utf-8")
+    (DATA / "corpus_manifest.json").write_text(json.dumps(manifest, sort_keys=True, indent=2), encoding="utf-8")
     return all_chunks
+
+
+def load_corpus(
+    path: Path | None = None, *, manifest_path: Path | None = None,
+    knowledge_config: KnowledgeConfig | None = None, registry: SourceRegistry | None = None,
+) -> list[dict[str, Any]]:
+    """Load only a complete corpus bound to its explicit current source selection."""
+    path = path or DATA / "chunks.jsonl"
+    manifest_path = manifest_path or path.with_name("corpus_manifest.json")
+    registry = registry or configured_registry()
+    knowledge_config = knowledge_config or load_knowledge_config(registry=registry)
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SourcePolicyError("valid corpus manifest required; do not re-stamp legacy chunks") from exc
+    chunks = load_jsonl(path)
+    knowledge_config.validate_manifest(chunks, manifest, registry)
+    return chunks
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -245,11 +297,16 @@ def tokens(text: str) -> list[str]:
     return re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]", text.lower())
 
 
-def embedding_cache_fingerprint(texts: list[str], model_name: str) -> str:
+def embedding_cache_fingerprint(
+    texts: list[str], model_name: str, *, model_identity: dict[str, Any] | None = None,
+    preprocessing: dict[str, Any] | None = None,
+) -> str:
     payload = json.dumps(
         {
             "cache_version": EMBEDDING_CACHE_VERSION,
             "model": model_name,
+            "verified_model_identity": model_identity,
+            "preprocessing": preprocessing or EMBEDDING_PREPROCESSING,
             "texts": texts,
         },
         ensure_ascii=False,
@@ -271,11 +328,14 @@ def load_embedding_cache(
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         if metadata.get("fingerprint") != expected_fingerprint:
             return None
-        array = np.load(embedding_path, allow_pickle=False)
-        if len(array) != expected_count:
+        embedding_bytes = embedding_path.read_bytes()
+        if metadata.get("embedding_sha256") != hashlib.sha256(embedding_bytes).hexdigest():
+            return None
+        array = np.load(io.BytesIO(embedding_bytes), allow_pickle=False)
+        if not isinstance(array, np.ndarray) or array.ndim != 2 or len(array) != expected_count or not np.isfinite(array).all():
             return None
         return array
-    except (OSError, ValueError, json.JSONDecodeError):
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return None
 
 
@@ -286,6 +346,8 @@ def save_embedding_cache(
     *,
     fingerprint: str,
     model_name: str,
+    model_identity: dict[str, Any] | None = None,
+    preprocessing: dict[str, Any] | None = None,
 ) -> None:
     embedding_temp = embedding_path.with_suffix(embedding_path.suffix + ".tmp")
     metadata_temp = metadata_path.with_suffix(metadata_path.suffix + ".tmp")
@@ -297,6 +359,9 @@ def save_embedding_cache(
                 "cache_version": EMBEDDING_CACHE_VERSION,
                 "fingerprint": fingerprint,
                 "model": model_name,
+                "verified_model_identity": model_identity,
+                "preprocessing": preprocessing or EMBEDDING_PREPROCESSING,
+                "embedding_sha256": hashlib.sha256(embedding_temp.read_bytes()).hexdigest(),
                 "count": len(embeddings),
             },
             ensure_ascii=False,
@@ -316,14 +381,30 @@ class Retriever:
         download_models: bool = True,
         *,
         registry: SourceRegistry | None = None,
+        knowledge_config: KnowledgeConfig | None = None,
+        manifest: dict[str, Any] | None = None,
+        dense_snapshot_path: Path | str | None = None,
+        rerank_snapshot_path: Path | str | None = None,
+        model_local_files_only: bool = False,
     ):
         self.registry = registry or configured_registry()
-        for chunk in chunks:
-            self.registry.validate_chunk(chunk)
+        self.knowledge_config = knowledge_config or load_knowledge_config(registry=self.registry)
+        if manifest is None:
+            try:
+                manifest = json.loads((DATA / "corpus_manifest.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise SourcePolicyError("corpus manifest required; rebuild legacy chunks") from exc
+        self.knowledge_config.validate_manifest(chunks, manifest, self.registry)
         if not chunks:
             raise SourcePolicyError("Knowledge retriever requires a nonempty approved corpus")
-        self.corpus_fingerprint = self.registry.corpus_fingerprint(chunks, chunker_config=CORPUS_CHUNKER_CONFIG)
-        self.chunks = chunks
+        self.manifest = deepcopy(manifest)
+        self.corpus_fingerprint = manifest["corpus_fingerprint"]
+        # Runtime invariants, not authentication against a caller modifying
+        # Python internals: an existing index must never silently switch corpus.
+        self._initialized_manifest_json = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+        self._initialized_corpus_fingerprint = self.corpus_fingerprint
+        self.chunks = deepcopy(chunks)
+        chunks = self.chunks
         self.texts = [f"{c['title']} {c['section']} {' '.join(c['cbt_topics'])} {c['text']}" for c in chunks]
         self.tfidf = TfidfVectorizer(lowercase=True, ngram_range=(1, 2), min_df=1, max_features=80000).fit(self.texts)
         self.tfidf_docs = self.tfidf.transform(self.texts)
@@ -332,12 +413,29 @@ class Retriever:
         self._query_embeddings: dict[str, np.ndarray] = {}
         self._bm_scores: dict[str, np.ndarray] = {}
         self._rank_cache: dict[tuple[str, str], tuple[list[int], float]] = {}
+        self.model_identities: dict[str, Any] = {}
         if download_models:
             from sentence_transformers import CrossEncoder, SentenceTransformer
-            self.dense = SentenceTransformer(DENSE_MODEL, device="cpu")
+            recorded_models = json.loads(self.knowledge_config.normalized_config_json).get("retrieval_models")
+            if recorded_models != with_model_config({})["retrieval_models"]:
+                raise SourcePolicyError("frozen knowledge config lacks current reviewed model snapshots")
+            dense_snapshot = prepare_model_snapshot(
+                DENSE_MODEL, local_path=dense_snapshot_path, local_files_only=model_local_files_only,
+            )
+            rerank_snapshot = prepare_model_snapshot(
+                RERANK_MODEL, local_path=rerank_snapshot_path, local_files_only=model_local_files_only,
+            )
+            self.model_identities = {"dense": dense_snapshot.identity, "reranker": rerank_snapshot.identity}
+            self.dense = SentenceTransformer(
+                str(dense_snapshot.path), device="cpu", local_files_only=True,
+                trust_remote_code=False, model_kwargs={"use_safetensors": True},
+            )
             emb_path = CACHE / "e5_embeddings.npy"
             meta_path = CACHE / "e5_embeddings.meta.json"
-            fingerprint = embedding_cache_fingerprint(self.texts, DENSE_MODEL)
+            fingerprint = embedding_cache_fingerprint(
+                self.texts, DENSE_MODEL, model_identity=dense_snapshot.identity,
+                preprocessing=EMBEDDING_PREPROCESSING,
+            )
             self.embeddings = load_embedding_cache(
                 emb_path,
                 meta_path,
@@ -345,7 +443,7 @@ class Retriever:
                 expected_count=len(chunks),
             )
             if self.embeddings is None:
-                passages = ["passage: " + t for t in self.texts]
+                passages = [EMBEDDING_PREPROCESSING["passage_prefix"] + t for t in self.texts]
                 self.embeddings = self.dense.encode(passages, batch_size=16, normalize_embeddings=True, show_progress_bar=True)
                 save_embedding_cache(
                     emb_path,
@@ -353,21 +451,48 @@ class Retriever:
                     self.embeddings,
                     fingerprint=fingerprint,
                     model_name=DENSE_MODEL,
+                    model_identity=dense_snapshot.identity,
+                    preprocessing=EMBEDDING_PREPROCESSING,
                 )
-            try:
-                self.reranker = CrossEncoder(RERANK_MODEL, device="cpu")
-            except Exception as exc:
-                print(f"Reranker unavailable; using metadata rerank: {exc}")
+            self.reranker = CrossEncoder(
+                str(rerank_snapshot.path), device="cpu", local_files_only=True,
+                trust_remote_code=False, model_kwargs={"use_safetensors": True},
+            )
+
+    def available_modes(self) -> tuple[str, ...]:
+        modes = ("tfidf", "bm25", "lexical_hybrid")
+        if self.dense is not None and self.embeddings is not None:
+            modes += ("dense", "hybrid")
+            if self.reranker is not None:
+                modes += ("hybrid_rerank",)
+        return modes
+
+    def validate_corpus(self) -> None:
+        if (json.dumps(self.manifest, sort_keys=True, separators=(",", ":")) != self._initialized_manifest_json
+                or self.corpus_fingerprint != self._initialized_corpus_fingerprint):
+            raise SourcePolicyError("retriever corpus changed after indexing; construct a new Retriever")
+        self.knowledge_config.validate_manifest(self.chunks, self.manifest, self.registry)
+        expected_texts = [f"{chunk['title']} {chunk['section']} {' '.join(chunk['cbt_topics'])} {chunk['text']}"
+                          for chunk in self.chunks]
+        if self.texts != expected_texts:
+            raise SourcePolicyError("retriever indexed texts changed; construct a new Retriever")
 
     def rank(self, query: str, mode: str, k: int = 10) -> tuple[list[int], float]:
+        self.validate_corpus()
+        if mode not in self.available_modes():
+            raise ValueError(f"retrieval mode {mode!r} unavailable; available={self.available_modes()}")
+        if type(k) is not int or k <= 0:
+            raise ValueError("k must be a positive integer")
         cached = self._rank_cache.get((query, mode))
         if cached is not None and len(cached[0]) >= k:
             return cached[0][:k], cached[1]
         t0 = time.perf_counter()
         if query not in self._bm_scores:
             self._bm_scores[query] = np.asarray(self.bm25.get_scores(tokens(query)))
-        if self.dense is not None and query not in self._query_embeddings:
-            self._query_embeddings[query] = self.dense.encode(["query: " + query], normalize_embeddings=True)[0]
+        if mode in {"dense", "hybrid", "hybrid_rerank"} and query not in self._query_embeddings:
+            self._query_embeddings[query] = self.dense.encode(
+                [EMBEDDING_PREPROCESSING["query_prefix"] + query], normalize_embeddings=True,
+            )[0]
         if mode == "tfidf":
             scores = cosine_similarity(self.tfidf.transform([query]), self.tfidf_docs).ravel()
             order = np.argsort(-scores)
@@ -403,12 +528,8 @@ class Retriever:
             order = np.argsort(-scores)
             if mode == "hybrid_rerank":
                 pool = order[:30]
-                if self.reranker is not None:
-                    pairs = [(query, self.texts[i]) for i in pool]
-                    rr = np.asarray(self.reranker.predict(pairs, batch_size=16, show_progress_bar=False))
-                else:
-                    qtags = set(tag_text(query))
-                    rr = np.asarray([scores[i] + .02 * len(qtags.intersection(self.chunks[i]["cbt_topics"])) for i in pool])
+                pairs = [(query, self.texts[i]) for i in pool]
+                rr = np.asarray(self.reranker.predict(pairs, batch_size=16, show_progress_bar=False))
                 # Deterministic safety routing sits above the generative/RAG layer.
                 # A clinical similarity score must not push explicit risk guidance out of context.
                 qtags = set(tag_text(query))
@@ -427,6 +548,7 @@ class Retriever:
         for_external_model: bool = False,
     ) -> list[dict[str, Any]]:
         """Return reviewed-source provenance for ranked chunks, with bounded excerpts."""
+        self.validate_corpus()
         return [self.registry.evidence_card(
             self.chunks[index], retrieval_rank=rank, max_excerpt_chars=max_excerpt_chars,
             for_external_model=for_external_model,
@@ -434,6 +556,7 @@ class Retriever:
 
     def assert_external_transmission(self, indices: list[int]) -> None:
         """Gate excerpts before existing response pilots send them to an API."""
+        self.validate_corpus()
         for source_id in {self.chunks[index]["source_id"] for index in indices}:
             self.registry.require_use(source_id, "external_model_transmission")
 
@@ -448,9 +571,16 @@ def relevant(chunk: dict[str, Any], item: dict[str, Any]) -> bool:
     return source_ok and (topic_ok or keyword_ok)
 
 
-def evaluate(retriever: Retriever, questions: list[dict[str, Any]]) -> pd.DataFrame:
+def evaluate(
+    retriever: Retriever, questions: list[dict[str, Any]], *, modes: list[str] | None = None,
+) -> pd.DataFrame:
+    retriever.validate_corpus()
     rows = []
-    modes = ["tfidf", "bm25", "dense", "hybrid", "hybrid_rerank"]
+    modes = list(retriever.available_modes()) if modes is None else modes
+    if not questions:
+        raise ValueError("at least one evaluation question is required")
+    if not modes or any(mode not in retriever.available_modes() for mode in modes):
+        raise ValueError("requested evaluation mode is unavailable")
     for mode in modes:
         for q in questions:
             ids, latency = retriever.rank(q["query"], mode, 10)
@@ -475,34 +605,52 @@ def evaluate(retriever: Retriever, questions: list[dict[str, Any]]) -> pd.DataFr
     safety = df[df.safety_critical].groupby("method")["recall_at_5"].mean().rename("safety_recall_at_5")
     summary = summary.merge(safety, on="method", how="left")
     summary.to_csv(RESULTS / "retrieval_summary.csv", index=False)
+    (RESULTS / "evaluation_run_manifest.json").write_text(json.dumps({
+        "corpus_manifest": retriever.manifest, "evaluated_modes": modes,
+        "verified_model_identities": retriever.model_identities,
+    }, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
     (RESULTS / "retrieval_summary.json").write_text(summary.to_json(orient="records", indent=2), encoding="utf-8")
     return summary
 
 
-def export_examples(retriever: Retriever, questions: list[dict[str, Any]]) -> None:
+def export_examples(retriever: Retriever, questions: list[dict[str, Any]], *, mode: str | None = None) -> None:
+    retriever.validate_corpus()
+    mode = mode or ("hybrid_rerank" if "hybrid_rerank" in retriever.available_modes() else "lexical_hybrid")
+    if mode not in retriever.available_modes():
+        raise ValueError("requested export retrieval mode is unavailable")
     rows = []
     for q in questions:
-        ids, _ = retriever.rank(q["query"], "hybrid_rerank", 5)
+        ids, _ = retriever.rank(q["query"], mode, 5)
         for rank, i in enumerate(ids, 1):
             c = retriever.chunks[i]
             rows.append({"question_id": q["question_id"], "query": q["query"], "rank": rank,
                          "relevant_by_gold_rule": relevant(c, q), "citation": c["citation"],
                          "topics": ",".join(c["cbt_topics"]), "excerpt": c["text"][:600]})
-    pd.DataFrame(rows).to_csv(RESULTS / "hybrid_rerank_examples.csv", index=False)
+    pd.DataFrame(rows).to_csv(RESULTS / f"{mode}_examples.csv", index=False)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("command", choices=["build", "evaluate", "all"])
     ap.add_argument("--no-models", action="store_true")
+    ap.add_argument("--dense-snapshot", type=Path, help="Read-only predownloaded dense snapshot")
+    ap.add_argument("--rerank-snapshot", type=Path, help="Read-only predownloaded reranker snapshot")
+    ap.add_argument("--model-local-files-only", action="store_true", help="Never download missing model snapshots")
     args = ap.parse_args()
+    registry = configured_registry()
+    knowledge_config = load_knowledge_config(registry=registry)
     if args.command in ("build", "all"):
-        chunks = build_corpus()
+        build_corpus(registry=registry, knowledge_config=knowledge_config)
+        chunks = load_corpus(registry=registry, knowledge_config=knowledge_config)
     else:
-        chunks = load_jsonl(DATA / "chunks.jsonl")
+        chunks = load_corpus(registry=registry, knowledge_config=knowledge_config)
     if args.command in ("evaluate", "all"):
         questions = load_jsonl(ROOT / "rag_eval_set.jsonl")
-        retriever = Retriever(chunks, download_models=not args.no_models)
+        retriever = Retriever(
+            chunks, download_models=not args.no_models, registry=registry, knowledge_config=knowledge_config,
+            dense_snapshot_path=args.dense_snapshot, rerank_snapshot_path=args.rerank_snapshot,
+            model_local_files_only=args.model_local_files_only,
+        )
         print(evaluate(retriever, questions).to_string(index=False))
         export_examples(retriever, questions)
 

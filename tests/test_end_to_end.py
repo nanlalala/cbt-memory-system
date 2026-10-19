@@ -14,9 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "evaluation/end-to-end-dialogue"))
 
 from run_three_arm import (  # noqa: E402
-    ARMS, SYSTEM_PROMPT, HistoryRanker, HistoryTurn, NoCredentialRedirects, Settings, build_request,
+    ARMS, LEGACY_PROTOCOL_VERSION, SYSTEM_PROMPT, VERSION, HistoryRanker, HistoryTurn, NoCredentialRedirects, Settings, build_request,
     build_protocol, fit_turns, freeze_json, generate_response, load_checkpoints, parse_date,
-    partition_history, reference_rows, stable_digest, validated_api_base, write_jsonl,
+    model_identity_policy, partition_history, reference_rows, stable_digest, validated_api_base, write_jsonl,
 )
 from benchmark_adapters import RetrievalExample  # noqa: E402
 from score_three_arm import answer_proxies, score_run  # noqa: E402
@@ -183,7 +183,7 @@ class ThreeArmProtocolTests(unittest.TestCase):
                 return False
 
             def read(self):
-                return json.dumps({"choices": [{"message": {"content": "answer"}, "finish_reason": "stop"}]}).encode()
+                return json.dumps({"model": "test-model", "choices": [{"message": {"content": "answer"}, "finish_reason": "stop"}]}).encode()
 
         for mode in ("provider_default", "disabled", "enabled"):
             with self.subTest(mode=mode), patch("run_three_arm.build_opener") as opener:
@@ -234,8 +234,68 @@ class ThreeArmProtocolTests(unittest.TestCase):
             self.assertNotIn("PRIVATE_REASONING_BODY", message)
             self.assertNotIn("test-secret", message)
 
+    def test_generation_rejects_unapproved_or_missing_identity_and_accepts_approved_alias(self) -> None:
+        class FakeResponse:
+            def __init__(self, name):
+                self.name = name
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps({"model": self.name, "choices": [
+                    {"message": {"content": "answer"}, "finish_reason": "stop"}]}).encode()
+
+        for name in (None, "", "wrong-but-consistent-model"):
+            with self.subTest(name=name), patch("run_three_arm.build_opener") as opener:
+                opener.return_value.open.return_value = FakeResponse(name)
+                with self.assertRaisesRegex(ValueError, "provider model identity"):
+                    generate_response(self.request(), self.settings, api_base="https://example.org/v1", key="test-secret")
+        with patch("run_three_arm.build_opener") as opener:
+            opener.return_value.open.return_value = FakeResponse("approved-alias")
+            result = generate_response(self.request(), replace(self.settings, accepted_provider_models=("approved-alias",)),
+                                       api_base="https://example.org/v1", key="test-secret")
+            self.assertEqual(result["provider_model"], "approved-alias")
+
+    def test_external_alias_list_cannot_mutate_frozen_settings_or_policy(self) -> None:
+        aliases = ["approved-alias"]
+        settings = Settings(model="test-model", accepted_provider_models=aliases)
+        policy_before = model_identity_policy(settings)
+        aliases.append("late-unapproved-alias")
+        self.assertEqual(settings.accepted_provider_models, ("approved-alias",))
+        self.assertEqual(model_identity_policy(settings), policy_before)
+        self.assertNotIn("late-unapproved-alias", policy_before["accepted_provider_models"])
+        with self.assertRaisesRegex(ValueError, "accepted provider model names"):
+            Settings(model="test-model", accepted_provider_models="not-a-list-or-tuple").validate()
+
 
 class ThreeArmScoringTests(unittest.TestCase):
+    def make_run(self, run_dir, *, provider_model="test-model", aliases=(), legacy=False):
+        example, settings = fixture(), Settings(model="test-model", accepted_provider_models=aliases)
+        requests = [build_request(example, "longmemeval", arm, settings, ranker=HistoryRanker(settings)) for arm in ARMS]
+        references = reference_rows([example])
+        protocol = {"protocol_version": VERSION, "question_ids": [example.example_id],
+                    "references_sha256": stable_digest(references), "prompt_records_sha256": stable_digest(requests),
+                    "dataset": "longmemeval", "settings": {"model": settings.model, "seed": 123,
+                        "accepted_provider_models": list(aliases)},
+                    "model_identity_policy": model_identity_policy(settings), "oracle_history_warning": True}
+        if legacy:
+            protocol["protocol_version"] = LEGACY_PROTOCOL_VERSION
+            protocol.pop("model_identity_policy")
+            protocol["settings"].pop("accepted_provider_models")
+        freeze_json(run_dir / "protocol.json", protocol)
+        write_jsonl(run_dir / "prompts.jsonl", requests)
+        write_jsonl(run_dir / "references.jsonl", references)
+        results = [{"example_id": example.example_id, "arm": row["arm"], "hypothesis": example.answer,
+                    "protocol_sha256": stable_digest(protocol), "prompt_sha256": row["prompt_sha256"],
+                    "provider_model": provider_model, "latency_seconds": 1.0,
+                    "usage": {"total_tokens": 10}} for row in requests]
+        write_jsonl(run_dir / "responses.jsonl", results)
+        return protocol, results
+
     def test_proxy_score_is_labelled_and_handles_cjk(self) -> None:
         self.assertEqual(answer_proxies("The ten minutes!", "ten minutes")["exact_match_proxy"], 1.0)
         self.assertEqual(answer_proxies("午饭后散步", "午饭后散步")["token_f1_proxy"], 1.0)
@@ -244,9 +304,11 @@ class ThreeArmScoringTests(unittest.TestCase):
         example, settings = fixture(), Settings(model="test-model")
         requests = [build_request(example, "longmemeval", arm, settings, ranker=HistoryRanker(settings)) for arm in ARMS]
         references = reference_rows([example])
-        protocol = {"question_ids": [example.example_id], "references_sha256": stable_digest(references),
+        protocol = {"protocol_version": VERSION,
+                    "model_identity_policy": model_identity_policy(settings),
+                    "question_ids": [example.example_id], "references_sha256": stable_digest(references),
                     "prompt_records_sha256": stable_digest(requests),
-                    "dataset": "longmemeval", "settings": {"seed": 123}, "oracle_history_warning": True}
+                    "dataset": "longmemeval", "settings": {"model": settings.model, "seed": 123}, "oracle_history_warning": True}
         with tempfile.TemporaryDirectory() as directory:
             run_dir = Path(directory)
             freeze_json(run_dir / "protocol.json", protocol)
@@ -254,6 +316,7 @@ class ThreeArmScoringTests(unittest.TestCase):
             write_jsonl(run_dir / "references.jsonl", references)
             results = [{"example_id": example.example_id, "arm": row["arm"], "hypothesis": example.answer,
                         "protocol_sha256": stable_digest(protocol), "prompt_sha256": row["prompt_sha256"],
+                        "provider_model": "test-model",
                         "latency_seconds": 1.0, "usage": {"total_tokens": 10}} for row in requests]
             write_jsonl(run_dir / "responses.jsonl", results[:2])
             with self.assertRaisesRegex(ValueError, "all three"):
@@ -267,6 +330,56 @@ class ThreeArmScoringTests(unittest.TestCase):
             write_jsonl(run_dir / "references.jsonl", references)
             with self.assertRaisesRegex(ValueError, "checksum"):
                 score_run(run_dir)
+
+    def test_consistently_wrong_or_missing_identity_cannot_write_formal_scores(self) -> None:
+        for name in ("consistently-wrong", None, ""):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as directory:
+                run_dir = Path(directory)
+                self.make_run(run_dir, provider_model=name)
+                with self.assertRaisesRegex(ValueError, "provider model identity"):
+                    score_run(run_dir)
+                self.assertFalse((run_dir / "proxy_summary.json").exists())
+                self.assertFalse((run_dir / "proxy_per_example.jsonl").exists())
+                with self.assertRaisesRegex(ValueError, "provider model identity"):
+                    score_run(run_dir, legacy_audit=True)
+                self.assertFalse((run_dir / "legacy_audit_summary.json").exists())
+
+    def test_explicit_preapproved_alias_is_scored_but_late_protocol_approval_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory)
+            protocol, _ = self.make_run(run_dir, provider_model="approved-alias", aliases=("approved-alias",))
+            summary = score_run(run_dir, write_outputs=False)
+            self.assertEqual(summary["reported_provider_models"], ["approved-alias"])
+            self.assertFalse(summary["legacy_identity_unverified"])
+            self.assertEqual(protocol["model_identity_policy"]["accepted_provider_models"], ["test-model", "approved-alias"])
+            # A changed approval changes the protocol fingerprint; old checkpoints cannot match it.
+            protocol["settings"]["accepted_provider_models"].append("late-approval")
+            protocol["model_identity_policy"]["accepted_provider_models"].append("late-approval")
+            (run_dir / "protocol.json").write_text(json.dumps(protocol), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "does not match frozen"):
+                score_run(run_dir)
+            self.assertFalse((run_dir / "proxy_summary.json").exists())
+
+    def test_legacy_audit_is_explicit_unverified_and_does_not_rewrite_raw_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory)
+            self.make_run(run_dir, provider_model="historical-unapproved-name", legacy=True)
+            names = ("protocol.json", "prompts.jsonl", "references.jsonl", "responses.jsonl")
+            before = {name: (run_dir / name).read_bytes() for name in names}
+            with self.assertRaisesRegex(ValueError, "legacy protocol"):
+                score_run(run_dir)
+            summary = score_run(run_dir, legacy_audit=True, write_outputs=False)
+            self.assertEqual(summary["execution_mode"], "legacy_audit_only")
+            self.assertTrue(summary["legacy_identity_unverified"])
+            self.assertIn("legacy_unverified", summary["provider_identity_status"])
+            self.assertFalse((run_dir / "legacy_audit_summary.json").exists())
+            score_run(run_dir, legacy_audit=True)
+            self.assertTrue((run_dir / "legacy_audit_summary.json").exists())
+            self.assertTrue((run_dir / "legacy_audit_per_example.jsonl").exists())
+            self.assertFalse((run_dir / "proxy_summary.json").exists())
+            self.assertFalse((run_dir / "model_judge_pairs.jsonl").exists())
+            self.assertFalse((run_dir / "official_longmemeval_none.jsonl").exists())
+            self.assertEqual(before, {name: (run_dir / name).read_bytes() for name in names})
 
 
 if __name__ == "__main__":

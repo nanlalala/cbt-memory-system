@@ -13,7 +13,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "modules/cbt-knowledge-rag"))
 
-from source_registry import SourcePolicyError, SourceRegistry  # noqa: E402
+from source_registry import KnowledgeConfig, SourcePolicyError, SourceRegistry  # noqa: E402
 
 
 def fixture_payload() -> dict:
@@ -37,12 +37,23 @@ def fixture_payload() -> dict:
     }
 
 
-def fixture_chunk(registry: SourceRegistry) -> dict:
-    return registry.stamp_chunk({
+def raw_fixture_chunk() -> dict:
+    return {
         "chunk_id": "synthetic:one", "source_id": "synthetic", "title": "Original test fixture",
         "role": "test_only", "section": "Test", "page_start": 1, "page_end": 1,
         "citation": "Original test fixture, p. 1", "cbt_topics": [], "text": "Remember the blue test notebook.",
-    })
+        "access": "project_authored", "coverage": "fixture_only", "risk_level": "low",
+    }
+
+
+def fixture_chunk(registry: SourceRegistry) -> dict:
+    return registry.stamp_chunk(raw_fixture_chunk())
+
+
+def fixture_config(registry: SourceRegistry, ids: tuple[str, ...] = ("synthetic",)) -> KnowledgeConfig:
+    from cbt_rag_v1 import CORPUS_CHUNKER_CONFIG, with_model_config
+    return KnowledgeConfig.from_payload(with_model_config({"sources": [{"id": source_id} for source_id in ids]}), registry,
+                                        chunker_config=CORPUS_CHUNKER_CONFIG)
 
 
 class SourceRegistryTests(unittest.TestCase):
@@ -110,7 +121,7 @@ class SourceRegistryTests(unittest.TestCase):
     def test_corpus_fingerprint_binds_chunk_order_and_configuration(self) -> None:
         registry = SourceRegistry(fixture_payload())
         one = fixture_chunk(registry)
-        two = registry.stamp_chunk({**one, "chunk_id": "synthetic:two", "text": "second fixture"})
+        two = registry.stamp_chunk({**raw_fixture_chunk(), "chunk_id": "synthetic:two", "text": "second fixture"})
         baseline = registry.corpus_fingerprint([one, two], chunker_config={"size": 100})
         self.assertNotEqual(baseline, registry.corpus_fingerprint([two, one], chunker_config={"size": 100}))
         self.assertNotEqual(baseline, registry.corpus_fingerprint([one, two], chunker_config={"size": 200}))
@@ -148,7 +159,9 @@ class SourceRegistryTests(unittest.TestCase):
             Retriever([{"source_id": "beck_cbt_3e_sample"}], download_models=False)
         registry = SourceRegistry(fixture_payload())
         chunk = fixture_chunk(registry)
-        retriever = Retriever([chunk], download_models=False, registry=registry)
+        config = fixture_config(registry)
+        retriever = Retriever([chunk], download_models=False, registry=registry,
+                              knowledge_config=config, manifest=config.corpus_manifest([chunk], registry))
         ids, _ = retriever.rank("blue notebook", "tfidf", 1)
         self.assertEqual(ids, [0])
         self.assertEqual(retriever.evidence_cards(ids)[0]["evidence_id"], chunk["chunk_id"])
@@ -178,16 +191,16 @@ class SourceRegistryTests(unittest.TestCase):
             registry = SourceRegistry(payload)
             config = temporary / "selection.yaml"
             config.write_text("sources:\n  - id: synthetic\n  - id: disabled\n", encoding="utf-8")
-            with patch("cbt_rag_v1.DATA", temporary), patch("cbt_rag_v1.make_chunks", return_value=[fixture_chunk(registry)]) as extract:
+            with patch("cbt_rag_v1.DATA", temporary), patch("cbt_rag_v1.make_chunks", return_value=[raw_fixture_chunk()]) as extract:
                 chunks = build_corpus(config, registry=registry)
             self.assertEqual(extract.call_count, 1)
             self.assertEqual({chunk["source_id"] for chunk in chunks}, {"synthetic"})
             manifest = json.loads((temporary / "corpus_manifest.json").read_text())
             self.assertEqual(manifest["registry_fingerprint"], registry.fingerprint)
-            self.assertEqual(manifest["corpus_fingerprint"], registry.corpus_fingerprint(chunks, chunker_config=CORPUS_CHUNKER_CONFIG))
+            self.assertEqual(manifest["corpus_fingerprint"], fixture_config(registry, ("synthetic", "disabled")).corpus_manifest(chunks, registry)["corpus_fingerprint"])
 
     def test_alternate_selection_config_uses_same_registry_for_retrieval(self) -> None:
-        from cbt_rag_v1 import configured_registry, Retriever
+        from cbt_rag_v1 import configured_registry, load_knowledge_config, Retriever
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory)
             (temporary / "review.json").write_text(json.dumps(fixture_payload()), encoding="utf-8")
@@ -195,8 +208,41 @@ class SourceRegistryTests(unittest.TestCase):
             config.write_text("source_registry: review.json\nsources:\n  - id: synthetic\n", encoding="utf-8")
             with patch.dict("os.environ", {"CBT_KB_CONFIG": str(config)}):
                 registry = configured_registry()
-                retriever = Retriever([fixture_chunk(registry)], download_models=False)
+                config = load_knowledge_config(registry=registry)
+                chunks = [fixture_chunk(registry)]
+                retriever = Retriever(chunks, download_models=False,
+                                      manifest=config.corpus_manifest(chunks, registry))
             self.assertEqual(retriever.registry.fingerprint, registry.fingerprint)
+
+    def test_every_evidence_metadata_field_is_integrity_bound(self) -> None:
+        registry = SourceRegistry(fixture_payload())
+        original = fixture_chunk(registry)
+        changes = {
+            "section": "Forged section", "page_start": 2, "page_end": 3,
+            "citation": "Fabricated citation", "cbt_topics": ["suicide_safety"],
+            "risk_level": "high", "text": "Altered text", "chunk_id": "synthetic:other",
+            "title": "Fake source", "role": "safety", "access": "other", "coverage": "other",
+        }
+        for field, value in changes.items():
+            with self.subTest(field=field), self.assertRaises(SourcePolicyError):
+                registry.evidence_card({**original, field: value})
+
+    def test_invalid_metadata_schema_is_rejected_before_stamping(self) -> None:
+        registry = SourceRegistry(fixture_payload())
+        for changes in ({"page_start": 0}, {"page_start": True}, {"page_start": 3, "page_end": 2},
+                        {"cbt_topics": "unsafe"}, {"cbt_topics": ["one", "one"]},
+                        {"risk_level": "critical"}, {"citation": ""}, {"text": []}):
+            with self.subTest(changes=changes), self.assertRaises(SourcePolicyError):
+                registry.stamp_chunk({**raw_fixture_chunk(), **changes})
+
+    def test_loaded_or_legacy_chunks_are_not_silently_restamped(self) -> None:
+        registry = SourceRegistry(fixture_payload())
+        with self.assertRaisesRegex(SourcePolicyError, "re-stamp"):
+            registry.stamp_chunk(fixture_chunk(registry))
+        legacy = raw_fixture_chunk()
+        legacy["chunk_text_sha256"] = "0" * 64
+        with self.assertRaisesRegex(SourcePolicyError, "re-stamp"):
+            registry.stamp_chunk(legacy)
 
 
 if __name__ == "__main__":

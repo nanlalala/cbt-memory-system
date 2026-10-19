@@ -1,0 +1,16 @@
+# Exact CPU regression dependency closure; retain versions when refreshing hashes.
+# Target: CPython 3.12, Linux x86_64 (Ubuntu 24.04, glibc 2.39).
+# Direct dependencies
+numpy==2.3.5
+pandas==2.2.3
+pypdf==6.10.0
+PyYAML==6.0.3
+scikit-learn==1.8.0
+# Transitive dependencies, pinned explicitly for review
+scipy==1.17.0
+joblib==1.5.3
+threadpoolctl==3.6.0
+python-dateutil==2.9.0.post0
+pytz==2026.5
+tzdata==2026.5
+six==1.17.0

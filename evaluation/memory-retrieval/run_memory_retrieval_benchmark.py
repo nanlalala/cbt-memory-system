@@ -16,6 +16,7 @@ from typing import Any, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "modules"))
 sys.path.insert(0, str(ROOT / "modules/long-term-memory/schema"))
 sys.path.insert(0, str(ROOT / "modules/long-term-memory/retrieval"))
 
@@ -26,6 +27,7 @@ from benchmark_adapters import (  # noqa: E402
     load_longmemeval,
 )
 from memory_retriever import MultilingualE5Encoder  # noqa: E402
+from model_snapshots import pinned_model_spec  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,8 +72,24 @@ def run_benchmark(
     top_k: int = 10,
     model_name: str = "intfloat/multilingual-e5-small",
     device: str | None = None,
+    model_snapshot: Path | None = None,
+    local_files_only: bool = False,
+    run_manifest: dict[str, Any] | None = None,
 ) -> tuple[dict[str, float], list[dict]]:
-    encoder = MultilingualE5Encoder(model_name, device=device) if backend in {"dense", "hybrid"} else None
+    encoder = MultilingualE5Encoder(
+        model_name, device=device, snapshot_path=model_snapshot,
+        local_files_only=local_files_only,
+    ) if backend in {"dense", "hybrid"} else None
+    if run_manifest is not None:
+        run_manifest.update({
+            "model_spec": pinned_model_spec(model_name) if encoder else None,
+            "model_identity": encoder.model_identity if encoder else None,
+            "embedding_preprocessing": {
+                "query_prefix": "query: ", "passage_prefix": "passage: ",
+                "normalize_embeddings": True,
+            } if encoder else None,
+            "requested_device": device,
+        })
     try:
         from sklearn.feature_extraction.text import TfidfVectorizer
     except ImportError as exc:
@@ -135,10 +153,13 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--model", default="intfloat/multilingual-e5-small")
     parser.add_argument("--device", default=None)
+    parser.add_argument("--model-snapshot", type=Path, help="Read-only local snapshot matching the model lock")
+    parser.add_argument("--local-files-only", action="store_true", help="Never download model files")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
     examples = load_longmemeval(args.input) if args.dataset == "longmemeval" else load_locomo(args.input)
+    model_manifest: dict[str, Any] = {}
     metrics, details = run_benchmark(
         examples,
         dataset=args.dataset,
@@ -146,12 +167,16 @@ def main() -> None:
         top_k=args.top_k,
         model_name=args.model,
         device=args.device,
+        model_snapshot=args.model_snapshot,
+        local_files_only=args.local_files_only,
+        run_manifest=model_manifest,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "dataset": args.dataset,
         "backend": args.backend,
         "model": args.model if args.backend != "lexical" else None,
+        "model_manifest": model_manifest,
         "metrics": metrics,
         "predictions": details,
     }
