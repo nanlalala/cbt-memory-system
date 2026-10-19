@@ -80,5 +80,11 @@
   "prior_authentication_failures_excluded": 1,
   "known_total_http_attempts_including_excluded_rounds_and_auth_failure": 93,
   "excluded_round_policy": "Exclude both prior provider-default rounds in full; do not mix their valid responses with the scored thinking-disabled protocol",
-  "interpretation_limits": "Small-sample answer-overlap signals on history-dependent questions; not official LoCoMo scores, accuracy rates, structured-memory effectiveness, CBT clinical quality or safety effectiveness"
+  "interpretation_limits": "Small-sample answer-overlap signals on history-dependent questions; not official LoCoMo scores, accuracy rates, structured-memory effectiveness, CBT clinical quality or safety effectiveness",
+  "provider_identity_policy_predeclared": false,
+  "strict_model_identity_validated": false,
+  "historical_model_identity_audit_status": "legacy: consistent reported name, not preapproved target identity",
+  "public_raw_audit_archive": "pilot_20261019_audit.zip",
+  "audit_manifest": "pilot_20261019_audit.json",
+  "audit_license": "CC-BY-NC-4.0; attribution and change notice inside archive"
 }

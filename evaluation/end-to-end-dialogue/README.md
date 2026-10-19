@@ -28,7 +28,8 @@ and model-assisted judging have not run; only judge inputs were prepared.
 Reproduction metadata:
 
 - Requested model: `deepseek-v4.1-flash`; every scored response reported
-  `deepseek-v4-1-flash-260910`.
+  `deepseek-v4-1-flash-260910`. The historical v1 protocol did not preapprove this
+  alias. These remain identity-unverified legacy scores, not strict v2 results.
 - Seed `20261014`; CPU lexical retrieval; latest 16-turn window; up to 12 older
   turns retrieved. CBT reference context was empty in every arm, and the history
   consisted of raw turns rather than confirmed structured memories.
@@ -51,25 +52,69 @@ percentages of correct answers; token counts cover successful scored responses o
 not the excluded failures. This pilot does not test general dialogue quality,
 automatic memory extraction, user corrections, safety effectiveness or clinical outcomes.
 
-To prepare the same 20-question sample after downloading the pinned LoCoMo file:
+## Audit the published scores offline
+
+The [minimal audit ZIP](pilot_20261019_audit.zip) includes byte-preserved
+`protocol.json`, `prompts.jsonl`, `references.jsonl`, `responses.jsonl`, original
+proxy outputs and code snapshots. `SHA256SUMS` covers its members. The external
+[audit manifest](pilot_20261019_audit.json) binds the ZIP, every member, published
+CSV/JSON, original export time and execution commit. The original full debugging
+archive is also retained separately; it is not needed for the scored-run audit.
+
+```bash
+python evaluation/end-to-end-dialogue/verify_pilot_audit.py
+# Also check question/reference annotations against the pinned upstream release:
+python evaluation/end-to-end-dialogue/verify_pilot_audit.py \
+  --dataset evaluation/memory-retrieval/data/locomo10.json
+```
+
+The verifier runs offline with no API key, does not execute archived source, and
+checks raw answers → all 60 per-question scores → the published aggregates. It
+preserves `legacy_identity_unverified: true`. The raw protocol file's byte SHA
+differs from its canonical JSON protocol hash; both are recorded separately.
+Hashes protect integrity against the published manifest, not provider authenticity,
+semantic correctness or clinical validity.
+
+This named release contains public LoCoMo benchmark material and generated pilot
+answers for noncommercial research. The upstream CC BY-NC 4.0 text, creator
+attribution, pinned source links and modification notice are inside the ZIP.
+This exception does not permit publishing real-user or patient prompts/responses.
+
+## New runs use strict model identity
+
+Protocol v2 freezes the requested model and an explicit reported-name allowlist
+before generation. By default only the requested name is accepted. Repeat
+`--accepted-provider-model NAME` to preapprove a provider alias; unknown, missing,
+empty or inconsistent returned names fail generation/resume/scoring. This checks
+provider-reported names, not cryptographic proof of backend weights.
+
+The historical v1 protocol is not rewritten to add an alias after seeing the
+answers. Default scoring refuses it; `score_three_arm.py --legacy-audit` can
+recompute identity-unverified `legacy_audit_*` outputs without producing a strict
+summary or preparing official/judge inputs. Use the audit verifier above for the
+unchanged published pilot.
+
+To prepare a new v2 run on the same 20-question sample after downloading LoCoMo:
 
 ```bash
 export CBT_EVAL_API_BASE=https://tokendance.space/gateway/v1
 python evaluation/end-to-end-dialogue/run_three_arm.py \
   --dataset locomo --input evaluation/memory-retrieval/data/locomo10.json \
-  --model deepseek-v4.1-flash --backend lexical \
+  --model deepseek-v4.1-flash \
+  --accepted-provider-model deepseek-v4-1-flash-260910 --backend lexical \
   --short-turns 16 --top-k 12 --minimum-relevance 0.05 \
   --short-chars 6000 --long-chars 12000 --max-context-chars 24000 \
   --max-response-tokens 4096 --thinking-mode disabled \
   --seed 20261014 --limit 20 \
-  --output-dir evaluation/end-to-end-dialogue/outputs/locomo-pilot-reproduction
+  --output-dir evaluation/end-to-end-dialogue/outputs/locomo-pilot-v2
 ```
 
 This command prepares prompts without API calls. For a new generation run, supply
 `CBT_EVAL_API_KEY` through the environment and add `--generate --max-calls 60`;
-then score that output directory with `score_three_arm.py`. The model name is a
-provider alias: future runs must check the returned model identity rather than
-assume the provider is unchanged.
+then score that output directory with `score_three_arm.py`. The alias above was
+observed in the historical pilot; a future provider change must fail until a new
+identity policy is reviewed and frozen in a new directory. Preparing this v2 run
+does not claim a repeat of the historical model responses or old protocol hash.
 
 ## Prepare a run without an API
 
@@ -86,7 +131,8 @@ python evaluation/end-to-end-dialogue/run_three_arm.py \
 This validates dataset bytes/SHA-256 and freezes `protocol.json`. It writes
 `prompts.jsonl`, separate `references.jsonl`, and `preparation_summary.json`, without
 generating responses. Output directories are ignored by Git; do not commit full
-benchmark history or reference answers. Fabricated fixtures in unit tests only test
+benchmark inputs or arbitrary generated histories. Only the explicitly licensed,
+named audit release above is published. Fabricated fixtures in unit tests only test
 code invariants and are never used as experimental questions.
 
 For full eligible LoCoMo preparation, set `--limit 1540` (4,620 prompt records).
@@ -147,8 +193,9 @@ reason and completion/reasoning token counts, not response bodies or credentials
 - Ranking uses the question and eligible history, never gold answers or released
   evidence IDs. The reference-file checksum is frozen separately for scoring.
 - Default CPU lexical retrieval is a labelled baseline. `--backend dense` or
-  `hybrid` enables multilingual E5 through the existing encoder; dense dependencies
-  are optional. Corpus caches bind subject, text sequence and model.
+  `hybrid` uses the reviewed, file-hashed E5 snapshot. New protocols bind the planned
+  immutable snapshot and actual model/runtime identity; caches bind subject, text
+  sequence, model bytes and preprocessing. Dense dependencies remain optional.
 - System rules stay fixed. History is escaped and marked `data_only`, not
   executable instructions. Whole entries must fit their channel budget before their
   IDs appear in trace; dropped entries are recorded separately. Total context budget

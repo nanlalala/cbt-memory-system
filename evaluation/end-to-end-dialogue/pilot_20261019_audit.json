@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "pilot_id": "locomo-20261019",
+  "created_at": "2026-10-19T15:25:41.598814+00:00",
+  "archive": {
+    "path": "pilot_20261019_audit.zip",
+    "sha256": "07e0f65a5024b4eaea8a503d2283492566de31688699790ed3d6d84756538519",
+    "bytes": 74631
+  },
+  "members": {
+    "ATTRIBUTION.md": {
+      "sha256": "596f7d67c8d5baba6280e446501178c012acd16d9b6405ed4d531b2285a85520",
+      "bytes": 2226
+    },
+    "LICENSE_LOCOMO.txt": {
+      "sha256": "41003d4a74749c0220e33dd415042164b5a1093ed401f36277234f772d22d3d0",
+      "bytes": 19347
+    },
+    "SHA256SUMS": {
+      "sha256": "71740a7ff9076ce3f11246a1430a08aa675fb032fa2801ed5a9328b787cce166",
+      "bytes": 1052
+    },
+    "run/prompts.jsonl": {
+      "sha256": "d9707223b84772a9abe820eadde8c7639e6a101e0b2f042250ecb1b88cf287db",
+      "bytes": 329257
+    },
+    "run/protocol.json": {
+      "sha256": "67b69042207ff57b222b5164e03fa69d0b18e7408cbd2d783a270849253405d5",
+      "bytes": 3704
+    },
+    "run/proxy_per_example.jsonl": {
+      "sha256": "aad59b463dcf29a87e202723137b2ae1e97be7a175550cb47e9b6c8f143cea6d",
+      "bytes": 22460
+    },
+    "run/proxy_summary.json": {
+      "sha256": "b942fbcf767ae86a7a70e2c87a7987e484b90045943290e049cdb553899cd00c",
+      "bytes": 4180
+    },
+    "run/references.jsonl": {
+      "sha256": "8d8f012404d6e129118b37621c89687e2d46ff79282e00afbefd862e2920acaa",
+      "bytes": 3881
+    },
+    "run/responses.jsonl": {
+      "sha256": "2243f46ced738f2c8002e2644d414f2dc7901b81f644fdb4e880ece4d4310c53",
+      "bytes": 42306
+    },
+    "run_info.json": {
+      "sha256": "70c5ab8427370fa40719d352dee8b83704c69ffbdd50cd0610f4c53d89347ed8",
+      "bytes": 1569
+    },
+    "scripts/benchmark_manifest.json": {
+      "sha256": "b0e213c000f71bd0650e6c0a6648cac1cd62c774f9bdf8f646885ee481388a52",
+      "bytes": 967
+    },
+    "scripts/run_three_arm.py": {
+      "sha256": "952f7094e58ffd28780116b4d9fb64287e35625f38af8a3e8d8b78e8b0f42b4e",
+      "bytes": 25474
+    },
+    "scripts/score_three_arm.py": {
+      "sha256": "d1fc097c23d4c69c96804b1d8969e84a088c137040dd30592bf0c44f94d14785",
+      "bytes": 9318
+    }
+  },
+  "public_files": {
+    "pilot_20261019_scores.csv": {
+      "sha256": "a752d6132b9636a29d983e72627adf27dc54a0c6b431a60606011db8d2d7feca",
+      "bytes": 4181
+    },
+    "pilot_20261019_summary.json": {
+      "sha256": "094f92e5c8bae04d5d106d10e0baf89b9ec1ae1224a496d17aa463266b3df560",
+      "bytes": 4789
+    }
+  },
+  "model_identity_mode": "legacy_unverified",
+  "execution": {
+    "code_commit": "baf5df31ceda6117cbaf8c74b603fd27e0de3777",
+    "protocol_sha256": "ce7f6c4f341f40fb1cb320ad8ff157ce2ca2872c1c8c86a739c092e3e3559c30",
+    "protocol_hash_encoding": "SHA256 of json.dumps(protocol,sort_keys=True,ensure_ascii=False), including default separators",
+    "input_sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+    "input_bytes": 2805274,
+    "original_exported_at": "2026-10-19T14:02:14.908854+00:00"
+  },
+  "original_controlled_archive": {
+    "sha256": "b950b82a84ee737ba837ead7215392cffccd1994ed03b7709a9a34bc065d49d2",
+    "bytes": 172696,
+    "retention": "Owner-held project archive; includes excluded debugging rounds; public audit ZIP is the minimum selected scoring artifact"
+  },
+  "publication": {
+    "purpose": "noncommercial research and education",
+    "license": "CC-BY-NC-4.0",
+    "upstream_commit": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+    "upstream_license_url": "https://github.com/snap-research/locomo/blob/3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376/LICENSE.txt",
+    "attribution_and_changes": "ATTRIBUTION.md inside audit ZIP",
+    "scope": "Released synthetic benchmark excerpts and generated pilot answers only; not real user or patient data"
+  },
+  "integrity_limits": "Hashes bind archived bytes to this manifest, not external-provider authenticity, semantic correctness or clinical validity."
+}

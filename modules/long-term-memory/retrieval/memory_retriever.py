@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Protocol, Sequence
 
 from memory_models import LifecycleStatus, MemoryRecord, Sensitivity, is_valid_at
@@ -29,14 +31,28 @@ class DenseEncoder(Protocol):
 
 
 class MultilingualE5Encoder:
-    """Lazy sentence-transformers adapter used by the Colab benchmark."""
+    """Lazy E5 adapter loading only a byte-verified, fixed model snapshot."""
 
-    def __init__(self, model_name: str = "intfloat/multilingual-e5-small", device: str | None = None):
+    def __init__(
+        self, model_name: str = "intfloat/multilingual-e5-small", device: str | None = None,
+        *, snapshot_path: Path | str | None = None, local_files_only: bool = False,
+    ):
+        shared_modules = str(Path(__file__).resolve().parents[2])
+        if shared_modules not in sys.path:
+            sys.path.insert(0, shared_modules)
+        from model_snapshots import prepare_model_snapshot
         try:
             from sentence_transformers import SentenceTransformer
         except ImportError as exc:  # pragma: no cover - exercised in Colab
             raise RuntimeError("Install sentence-transformers to use the E5 backend") from exc
-        self.model = SentenceTransformer(model_name, device=device)
+        snapshot = prepare_model_snapshot(
+            model_name, local_path=snapshot_path, local_files_only=local_files_only,
+        )
+        self.model = SentenceTransformer(
+            str(snapshot.path), device=device, local_files_only=True,
+            trust_remote_code=False, model_kwargs={"use_safetensors": True},
+        )
+        self.model_identity = snapshot.identity
 
     def encode(self, texts: Sequence[str], *, is_query: bool) -> Sequence[Sequence[float]]:
         prefix = "query: " if is_query else "passage: "

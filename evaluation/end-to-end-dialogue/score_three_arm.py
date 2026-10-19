@@ -12,7 +12,10 @@ import statistics
 from collections import Counter
 from pathlib import Path
 
-from run_three_arm import ARMS, load_checkpoints, read_jsonl, stable_digest, write_jsonl
+from run_three_arm import (
+    ARMS, identity_policy_for_protocol, load_checkpoints, read_jsonl,
+    stable_digest, validate_provider_model, write_jsonl,
+)
 from benchmark_adapters import write_longmemeval_hypotheses
 
 
@@ -44,8 +47,10 @@ def paired_interval(groups: dict[str, list[float]], *, seed: int, resamples: int
     return [values[int(0.025 * (resamples - 1))], values[int(0.975 * (resamples - 1))]]
 
 
-def score_run(run_dir: Path) -> dict:
+def score_run(run_dir: Path, *, legacy_audit: bool = False, write_outputs: bool = True) -> dict:
+    """Strict by default; legacy audit recomputes without approving historical names."""
     protocol = json.loads((run_dir / "protocol.json").read_text(encoding="utf-8"))
+    identity_policy = identity_policy_for_protocol(protocol, legacy_audit=legacy_audit)
     prompts = read_jsonl(run_dir / "prompts.jsonl")
     responses = load_checkpoints(run_dir / "responses.jsonl", prompts, stable_digest(protocol))
     references = read_jsonl(run_dir / "references.jsonl")
@@ -64,9 +69,14 @@ def score_run(run_dir: Path) -> dict:
         (example_id, arm) not in responses for example_id in expected_ids for arm in ARMS
     ):
         raise ValueError("all three successful responses are required per frozen example")
-    reported_models = {row.get("provider_model") for row in responses.values() if row.get("provider_model")}
-    if len(reported_models) > 1:
+    if identity_policy is not None:
+        for response in responses.values():
+            validate_provider_model(response.get("provider_model"), identity_policy)
+    reported_models = {row["provider_model"] for row in responses.values()
+                       if isinstance(row.get("provider_model"), str) and row["provider_model"].strip()}
+    if identity_policy is not None and len(reported_models) > 1:
         raise ValueError("provider model changed across responses; fixed-model comparison is invalid")
+    prefix = "legacy_audit_" if legacy_audit else "proxy_"
     per_example = []
     for example_id in expected_ids:
         reference = reference_map[example_id]
@@ -76,14 +86,21 @@ def score_run(run_dir: Path) -> dict:
                                 "category": reference["category"], "should_abstain": reference["should_abstain"],
                                 **answer_proxies(result["hypothesis"], reference["reference_answer"]),
                                 "latency_seconds": result["latency_seconds"], "usage": result["usage"]})
-    write_jsonl(run_dir / "proxy_per_example.jsonl", per_example)
+    if write_outputs:
+        write_jsonl(run_dir / f"{prefix}per_example.jsonl", per_example)
     summary = {"examples": len(expected_ids), "protocol_sha256": stable_digest(protocol),
                "score_type": "non-official lexical answer proxies",
                "oracle_history_warning": protocol["oracle_history_warning"],
-               "official_evaluator_status": "not executed", "model_judge_status": "input prepared only",
+               "official_evaluator_status": "not executed",
+               "model_judge_status": "not prepared in legacy audit" if legacy_audit else "input prepared only",
+               "execution_mode": "legacy_audit_only" if legacy_audit else "strict_model_identity_score",
+               "legacy_identity_unverified": identity_policy is None,
                "reported_provider_models": sorted(reported_models),
-               "provider_identity_status": "consistent reported name" if len(reported_models) == 1 and all(
-                   row.get("provider_model") for row in responses.values()) else "unverified; provider omitted model identity",
+               "provider_identity_status": ("legacy_unverified; no model aliases were preapproved in the historical protocol"
+                                            if identity_policy is None else "all reported names match frozen preapproved allowlist; backend identity not independently proven"),
+               "missing_provider_model_count": sum(not isinstance(row.get("provider_model"), str)
+                                                    or not row["provider_model"].strip() for row in responses.values()),
+               "model_identity_policy": identity_policy,
                "conditions": {}, "paired_differences": {}}
     by_key = {(row["example_id"], row["arm"]): row for row in per_example}
     for arm in ARMS:
@@ -121,10 +138,14 @@ def score_run(run_dir: Path) -> dict:
             "wins": sum(value > 0 for value in deltas), "ties": sum(value == 0 for value in deltas),
             "losses": sum(value < 0 for value in deltas),
         }
-    if protocol["dataset"] == "longmemeval":
+    if write_outputs and not legacy_audit and protocol["dataset"] == "longmemeval":
         for arm in ARMS:
             write_longmemeval_hypotheses({key: responses[(key, arm)]["hypothesis"] for key in expected_ids},
                                        run_dir / f"official_longmemeval_{arm}.jsonl")
+    if legacy_audit or not write_outputs:
+        if write_outputs:
+            (run_dir / "legacy_audit_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return summary
     judge_pairs, judge_mapping = [], []
     rng = random.Random(protocol["settings"]["seed"])
     for example_id in expected_ids:
@@ -147,8 +168,10 @@ def score_run(run_dir: Path) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=Path, required=True)
+    parser.add_argument("--legacy-audit", action="store_true",
+                        help="Recompute historical v1 proxies as explicitly identity-unverified audit artifacts only")
     args = parser.parse_args()
-    print(json.dumps(score_run(args.run_dir), ensure_ascii=False, indent=2))
+    print(json.dumps(score_run(args.run_dir, legacy_audit=args.legacy_audit), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

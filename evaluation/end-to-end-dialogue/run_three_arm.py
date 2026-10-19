@@ -24,6 +24,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parents[2]
 for relative in (
+    "modules",
     "evaluation/memory-retrieval",
     "modules/long-term-memory/schema",
     "modules/long-term-memory/retrieval",
@@ -35,7 +36,9 @@ from memory_retriever import MultilingualE5Encoder, _tokens  # noqa: E402
 from validate_external_benchmarks import MANIFEST, require_identity  # noqa: E402
 
 
-VERSION = "raw-history-three-arm-v1"
+VERSION = "raw-history-three-arm-v2"
+LEGACY_PROTOCOL_VERSION = "raw-history-three-arm-v1"
+MODEL_IDENTITY_POLICY_VERSION = "reported-name-allowlist-v1"
 ARMS = ("none", "short_term", "short_plus_long_term")
 SYSTEM_PROMPT = (
     "You are a research conversation assistant, not a clinician. Answer the current "
@@ -52,6 +55,7 @@ SYSTEM_PROMPT = (
 @dataclass(frozen=True)
 class Settings:
     model: str
+    accepted_provider_models: tuple[str, ...] = ()
     backend: str = "lexical"
     dense_model: str = "intfloat/multilingual-e5-small"
     short_turns: int = 16
@@ -64,7 +68,19 @@ class Settings:
     thinking_mode: str = "provider_default"
     seed: int = 20261014
 
+    def __post_init__(self) -> None:
+        # JSON protocols decode arrays as lists. Copy them so a caller cannot
+        # mutate a supposedly frozen allowlist through an external reference.
+        if isinstance(self.accepted_provider_models, list):
+            object.__setattr__(self, "accepted_provider_models", tuple(self.accepted_provider_models))
+
     def validate(self) -> None:
+        if not isinstance(self.model, str) or not self.model.strip() or self.model != self.model.strip():
+            raise ValueError("requested model name must be nonempty and have no surrounding whitespace")
+        if (not isinstance(self.accepted_provider_models, (list, tuple))
+                or any(not isinstance(value, str) or not value.strip() or value != value.strip()
+                       for value in self.accepted_provider_models)):
+            raise ValueError("accepted provider model names must be nonempty strings without surrounding whitespace")
         if self.backend not in {"lexical", "dense", "hybrid"}:
             raise ValueError("unknown retrieval backend")
         if self.thinking_mode not in {"provider_default", "enabled", "disabled"}:
@@ -92,6 +108,53 @@ def digest_bytes(value: bytes) -> str:
 
 def stable_digest(value: Any) -> str:
     return digest_bytes(json.dumps(value, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+
+
+def model_identity_policy(settings: Settings) -> dict:
+    """Freeze aliases before generation; a matching reported name is not backend proof."""
+    settings.validate()
+    return {
+        "policy_version": MODEL_IDENTITY_POLICY_VERSION,
+        "requested_model": settings.model,
+        "accepted_provider_models": list(dict.fromkeys([settings.model, *settings.accepted_provider_models])),
+        "verification_boundary": "preapproved reported-name matching only; not cryptographic backend identity",
+    }
+
+
+def validate_provider_model(provider_model: object, policy: dict) -> str:
+    """Fail closed for missing/unapproved names, including consistently wrong names."""
+    if (not isinstance(policy, dict) or policy.get("policy_version") != MODEL_IDENTITY_POLICY_VERSION
+            or not isinstance(policy.get("requested_model"), str) or not policy["requested_model"].strip()
+            or not isinstance(policy.get("accepted_provider_models"), list)
+            or not policy["accepted_provider_models"]
+            or policy["requested_model"] not in policy["accepted_provider_models"]
+            or any(not isinstance(value, str) or not value.strip() or value != value.strip()
+                   for value in policy["accepted_provider_models"])):
+        raise ValueError("missing or invalid frozen model identity policy")
+    if not isinstance(provider_model, str) or not provider_model.strip():
+        raise ValueError("provider model identity is missing; no formal score/checkpoint permitted")
+    if provider_model not in policy["accepted_provider_models"]:
+        # Do not echo a provider-controlled field or arbitrary response body into logs.
+        raise ValueError("provider model identity is not in the frozen preapproved allowlist")
+    return provider_model
+
+
+def identity_policy_for_protocol(protocol: dict, *, legacy_audit: bool = False) -> dict | None:
+    """v1 may only be audited, never retroactively upgraded to identity-verified v2."""
+    if protocol.get("protocol_version") == LEGACY_PROTOCOL_VERSION and "model_identity_policy" not in protocol:
+        if legacy_audit:
+            return None
+        raise ValueError("legacy protocol has no preapproved model identity policy; use --legacy-audit for historical recomputation only")
+    if protocol.get("protocol_version") != VERSION:
+        raise ValueError("unsupported protocol schema; do not retrofit model approvals into historical artifacts")
+    settings_data = protocol.get("settings")
+    if not isinstance(settings_data, dict):
+        raise ValueError("protocol settings are missing")
+    settings = Settings(**settings_data)
+    expected = model_identity_policy(settings)
+    if protocol.get("model_identity_policy") != expected:
+        raise ValueError("frozen model identity policy does not match protocol settings")
+    return expected
 
 
 def parse_date(value: str) -> datetime:
@@ -298,12 +361,20 @@ def build_protocol(input_path: Path, dataset: str, examples: Sequence[RetrievalE
     spec = MANIFEST["benchmarks"][manifest_key]
     code_paths = [Path(__file__), ROOT / "evaluation/memory-retrieval/benchmark_adapters.py",
                   ROOT / "modules/long-term-memory/retrieval/memory_retriever.py"]
+    model_spec = None
+    if settings.backend in {"dense", "hybrid"}:
+        from model_snapshots import pinned_model_spec
+        model_spec = pinned_model_spec(settings.dense_model)
     return {
         "protocol_version": VERSION, "dataset": dataset, "manifest_key": manifest_key,
         "input_sha256": digest_bytes(input_path.read_bytes()), "input_bytes": input_path.stat().st_size,
         "manifest_spec": spec, "question_ids": [item.example_id for item in examples],
         "references_sha256": stable_digest(reference_rows(examples)),
-        "conditions": list(ARMS), "settings": asdict(settings), "api_base": api_base,
+        "conditions": list(ARMS),
+        "settings": {**asdict(settings), "accepted_provider_models": list(settings.accepted_provider_models)},
+        "model_identity_policy": model_identity_policy(settings), "api_base": api_base,
+        "retrieval_model_spec": model_spec, "retrieval_model_identity": None,
+        "retrieval_model_executed": False,
         "temperature": 0, "system_prompt": SYSTEM_PROMPT,
         "fixed_knowledge": "empty in all arms; independent memory ablation, not CBT KB effectiveness",
         "knowledge_input_policy": "arbitrary source files disabled; later integration requires source and transmission approval",
@@ -400,8 +471,9 @@ def generate_response(request: dict, settings: Settings, *, api_base: str, key: 
         raise RuntimeError("provider returned an empty answer; no score/checkpoint written; " + diagnostic)
     if choice.get("finish_reason") != "stop":
         raise RuntimeError("provider did not finish normally (possibly truncated); no checkpoint written; " + diagnostic)
+    provider_model = validate_provider_model(result.get("model"), model_identity_policy(settings))
     return {"hypothesis": content, "latency_seconds": latency,
-            "usage": usage, "provider_model": result.get("model"),
+            "usage": usage, "provider_model": provider_model,
             "finish_reason": choice.get("finish_reason")}
 
 
@@ -411,6 +483,8 @@ def main() -> None:
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--model", required=True)
+    parser.add_argument("--accepted-provider-model", dest="accepted_provider_models", action="append", default=[],
+                        help="Preapprove one reported model alias; repeat for additional aliases (requested name is always allowed)")
     parser.add_argument("--backend", choices=("lexical", "dense", "hybrid"), default="lexical")
     parser.add_argument("--dense-model", default="intfloat/multilingual-e5-small")
     parser.add_argument("--device")
@@ -442,6 +516,7 @@ def main() -> None:
     examples = [item for item in all_examples if not (args.dataset == "locomo" and item.category == "5")]
     random.Random(args.seed).shuffle(examples)
     examples = examples[:args.limit]
+    args.accepted_provider_models = tuple(args.accepted_provider_models)
     settings = Settings(**{field: getattr(args, field) for field in Settings.__dataclass_fields__})
     protocol = build_protocol(args.input, args.dataset, examples, settings, api_base)
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -452,6 +527,12 @@ def main() -> None:
         arms = list(ARMS)
         ordering.shuffle(arms)
         requests.extend(build_request(example, args.dataset, arm, settings, ranker=ranker) for arm in arms)
+    if ranker.encoder is not None:
+        identity = getattr(ranker.encoder, "model_identity", None)
+        if not isinstance(identity, dict) or not identity:
+            raise ValueError("retrieval model was used without a verified pinned snapshot identity")
+        protocol["retrieval_model_identity"] = identity
+        protocol["retrieval_model_executed"] = True
     protocol["prompt_records_sha256"] = stable_digest(requests)
     protocol_sha = stable_digest(protocol)
     freeze_json(args.output_dir / "protocol.json", protocol)
@@ -460,6 +541,8 @@ def main() -> None:
     write_jsonl(args.output_dir / "prompts.jsonl", requests)
     write_jsonl(args.output_dir / "references.jsonl", references)
     completed = load_checkpoints(args.output_dir / "responses.jsonl", requests, protocol_sha)
+    for response in completed.values():
+        validate_provider_model(response.get("provider_model"), protocol["model_identity_policy"])
     pending = [row for row in requests if (row["example_id"], row["arm"]) not in completed]
     preparation = {
         "status": "prepared", "examples": len(examples), "requests": len(requests),
