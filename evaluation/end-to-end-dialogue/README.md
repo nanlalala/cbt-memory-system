@@ -67,6 +67,12 @@ Each successful response checkpoints to `responses.jsonl` with prompt/protocol
 hash, provider model, latency and token usage. Resume skips completed calls and
 rejects mismatched or duplicate checkpoints. Empty/truncated provider responses
 stop the run without a success checkpoint or low-score substitution.
+`--thinking-mode provider_default|enabled|disabled` freezes the provider thinking
+setting across all three arms; the default sends no thinking parameter, while an
+explicit mode sends `thinking: {type: ...}` only where the selected provider supports
+it. Changing this setting requires a new protocol/output directory; do not mix prior
+reasoning-budget failures into the new run. Empty/truncated errors expose only finish
+reason and completion/reasoning token counts, not response bodies or credentials.
 
 ## Leakage and chronology controls
 
