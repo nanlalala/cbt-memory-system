@@ -117,7 +117,7 @@ A seeded sample spanning **20 questions and 9 conversations** completed all **60
 
 Adding older-history retrieval to the short window increased the mean F1 proxy by **0.137**, with **16 higher / 2 tied / 2 lower** per-question proxy scores. This is an encouraging small-sample result for history-dependent question answering, not an official LoCoMo score, accuracy rate or clinical outcome. Lexical overlap is not accuracy: spot checks found correct short answers penalized when embedded in longer wording, and wrong dates receiving higher overlap; semantic correctness still needs reference-based review. API timing excludes retrieval and indexing; official evaluation and model-assisted judging have not run.
 
-Reproduction settings, excluded provider-default failure rounds and the content-free aggregate are recorded directly in the [experiment page](evaluation/end-to-end-dialogue/README.md).
+Download the [60 per-question score rows](evaluation/end-to-end-dialogue/pilot_20261019_scores.csv) or the [aggregate scores and fixed settings](evaluation/end-to-end-dialogue/pilot_20261019_summary.json). The CSV contains benchmark IDs, condition labels, proxy scores, API latency and reported token use. Commands and excluded failure rounds are on the [experiment page](evaluation/end-to-end-dialogue/README.md).
 
 The earlier retrieval comparison using released LoCoMo evidence annotations over 1,986 questions found that hybrid TF-IDF + multilingual E5 retrieval outperformed either component alone. Hybrid achieved Evidence Recall@5 = 0.520, Recall@10 = 0.598 and MRR@10 = 0.415, compared with 0.449, 0.528 and 0.359 for TF-IDF. These evidence-retrieval scores are separate from the answer-overlap proxies above.
 

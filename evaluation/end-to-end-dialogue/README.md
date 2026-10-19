@@ -42,11 +42,34 @@ responses: the 1,024-token round had 24 valid and 2 empty responses; the 4,096-t
 round had 5 valid and 1 empty response. Those rounds are excluded in full, including
 their valid responses, and are not mixed with the scored 60-response protocol.
 
-The single [aggregate JSON](pilot_20261019_summary.json) contains scores, paired
-exploratory intervals and limited reproduction metadata, without prompts, reference
-answers, generated answers or credentials. The full results table is on the
-repository homepage. This pilot does not test general dialogue quality, automatic
-memory extraction, user corrections, safety effectiveness or clinical outcomes.
+The [per-question CSV](pilot_20261019_scores.csv) contains all 60 score rows: benchmark
+ID, condition, category, lexical proxies, API latency and reported total tokens.
+The [aggregate JSON](pilot_20261019_summary.json) contains group scores, paired
+exploratory intervals and fixed settings. Neither file contains prompts, reference
+answers, generated answers or credentials. F1 values are on a 0–1 scale and are not
+percentages of correct answers; token counts cover successful scored responses only,
+not the excluded failures. This pilot does not test general dialogue quality,
+automatic memory extraction, user corrections, safety effectiveness or clinical outcomes.
+
+To prepare the same 20-question sample after downloading the pinned LoCoMo file:
+
+```bash
+export CBT_EVAL_API_BASE=https://tokendance.space/gateway/v1
+python evaluation/end-to-end-dialogue/run_three_arm.py \
+  --dataset locomo --input evaluation/memory-retrieval/data/locomo10.json \
+  --model deepseek-v4.1-flash --backend lexical \
+  --short-turns 16 --top-k 12 --minimum-relevance 0.05 \
+  --short-chars 6000 --long-chars 12000 --max-context-chars 24000 \
+  --max-response-tokens 4096 --thinking-mode disabled \
+  --seed 20261014 --limit 20 \
+  --output-dir evaluation/end-to-end-dialogue/outputs/locomo-pilot-reproduction
+```
+
+This command prepares prompts without API calls. For a new generation run, supply
+`CBT_EVAL_API_KEY` through the environment and add `--generate --max-calls 60`;
+then score that output directory with `score_three_arm.py`. The model name is a
+provider alias: future runs must check the returned model identity rather than
+assume the provider is unchanged.
 
 ## Prepare a run without an API
 
