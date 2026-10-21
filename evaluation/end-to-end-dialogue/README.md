@@ -135,6 +135,17 @@ examples. Preserve the complete cohort/run/judge locks, journals and checkpoints
 in a persistent result export before the Colab session ends. None of these steps
 establishes CBT, safety or clinical effectiveness by itself.
 
+## Colab execution check — 21 October 2026
+
+Both complete benchmark files passed their fixed size/SHA-256 checks in hosted Colab.
+Cohort preparation produced 1,540 eligible LoCoMo questions / 10 conversations and
+500 LongMemEval-S questions / 30 abstention cases. The conservative connected-history
+rule yields only one LongMemEval-S group because of shared background sessions.
+The frozen confirmatory gates therefore remain closed; this is not 500 independent histories.
+No full-cohort responses or reference judgments have been completed.
+The [execution report](../memory-retrieval/colab_20261021_verification.json) records
+these actual input manifests and a separate, completed pinned-weight retrieval rerun.
+
 ## Historical raw-history three-arm experiment
 
 | Arm | Accessible conversation history |

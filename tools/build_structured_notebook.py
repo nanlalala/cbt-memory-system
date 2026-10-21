@@ -75,9 +75,12 @@ def build(revision: str) -> dict:
         The default responder displays selected context deterministically; it is **not an LLM**.
     """)
     code("""
+        from IPython.display import clear_output
         from dialogue_demo import launch_notebook_demo
+        if 'demo' in globals():
+            demo.close()
+        clear_output(wait=True)
         demo = launch_notebook_demo()
-        display(demo)
     """)
     markdown("""
         ### Optional: a capped model-backed fictional demo
@@ -89,7 +92,7 @@ def build(revision: str) -> dict:
     """)
     code("""
         ENABLE_PAID_DEMO = False
-        COLAB_SECRET_NAME = 'CBT_EVAL_API_KEY'  # Secret NAME, not its value
+        COLAB_SECRET_NAME = 'Capstone'  # Existing Secret NAME, never its value
         if ENABLE_PAID_DEMO:
             from colab_provider import ColabChatProvider
             from dialogue_service import DialogueSession
@@ -100,7 +103,6 @@ def build(revision: str) -> dict:
                 max_response_tokens=4096, thinking_mode='disabled')
             live_session = DialogueSession(provider=provider)
             live_demo = launch_notebook_demo(session=live_session)
-            display(live_demo)
         else:
             print('Paid demo disabled. No Secret read and no model request.')
     """)

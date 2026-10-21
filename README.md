@@ -164,7 +164,25 @@ Long-term memory retrieval results:
 | Multilingual E5 | 0.255 | 0.459 | 0.543 | 0.381 |
 | Hybrid | **0.280** | **0.520** | **0.598** | **0.415** |
 
-Pinned-weight retrieval verification is being run on a Colab T4. The published historical table remains separate until the new run artifacts are checked.
+On 21 October, all three retrieval backends were rerun on a **hosted Colab T4**
+with the pinned E5 snapshot and verified model-file bytes. The results matched the
+historical table. The [execution report](evaluation/memory-retrieval/colab_20261021_verification.json)
+records the actual environment/model identities and both full-cohort manifests.
+The [text-free audit ZIP](evaluation/memory-retrieval/colab_20261021_public_audit.zip)
+contains all **5,958 question/backend rankings**, released evidence IDs and checksums;
+it omits question text, dialogue and generated answers. Recompute the retrieval metrics
+without loading a model or downloading the dataset:
+
+```bash
+python evaluation/memory-retrieval/verify_pinned_retrieval.py
+```
+
+Full input preparation also completed in Colab: LoCoMo has 1,540 eligible questions
+in 10 conversations; LongMemEval-S has 500 questions and 30 abstention cases.
+The prespecified conservative shared-history grouping connects all LongMemEval-S
+questions through reused background sessions. Its 500 questions therefore cannot be
+presented as 500 independent history groups. These preparations are not completed
+response experiments or evidence that structured memory improves dialogue.
 
 Historical knowledge-retrieval pilot results (not the newly governed corpus):
 

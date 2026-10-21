@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import random
 import sys
 import tempfile
 import unittest
@@ -20,12 +21,14 @@ from run_three_arm import Settings, read_jsonl, stable_digest, write_jsonl  # no
 from benchmark_adapters import RetrievalExample  # noqa: E402
 from prepare_formal_evaluation import DEFAULT_PLAN, load_plan, prepare_examples  # noqa: E402
 from run_structured_memory import (  # noqa: E402
-    ARMS, ScopeCachedEncoder, attempt_state, execute_extraction, extraction_messages,
+    ARMS, CandidateInventoryWriter, ScopeCachedEncoder, attempt_state, candidate_jsonl_digest,
+    execute_extraction, extraction_messages,
     generate_run, ingest_source, load_cohort, load_run, make_request,
-    prepare_extraction_requests, prepare_structured_run, require_colab,
-    source_inventory, validate_case, validate_extraction_artifact,
+    parse_source_candidates, prepare_extraction_requests, prepare_structured_run, require_colab,
+    source_inventory, streamed_digest, validate_case, validate_extraction_artifact, verbatim_output,
 )
 from score_structured_memory import score_structured_run  # noqa: E402
+from memory_manager import MemoryManager  # noqa: E402
 from sqlite_store import SQLiteMemoryStore  # noqa: E402
 
 
@@ -44,6 +47,24 @@ def fixture(**changes):
                 {"role": "user", "content": "SECRET_FUTURE_INFORMATION"}]},
         ),
     ), **changes)
+
+
+def verbatim_sources():
+    sources = []
+    for session, date, texts in (
+        ("old-a", "2026-10-01T00:00:00Z", ["Walking at noon.", "WALKING at noon!", "Tea after breakfast."]),
+        ("old-b", "2026-10-02T00:00:00Z", ["Tea after breakfast!", "读书 after lunch.  "]),
+    ):
+        source = {"scope_id": "synthetic-scope", "session_id": session, "observed_at": date,
+                  "turns": [{"turn_id": f"{session}-{index}", "speaker": "user", "text": text}
+                            for index, text in enumerate(texts)]}
+        source["source_sha256"] = stable_digest(source)
+        sources.append(source)
+    records = [record for source in sources for record in parse_source_candidates(source, verbatim_output(source))]
+    turns = {(source["session_id"], turn["turn_id"]):
+             {"text": f'{turn["speaker"]}: {turn["text"]}'.strip(), "observed_at": source["observed_at"]}
+             for source in sources for turn in source["turns"]}
+    return sources, records, turns
 
 
 class StructuredMemoryTests(unittest.TestCase):
@@ -90,6 +111,135 @@ class StructuredMemoryTests(unittest.TestCase):
         self.assertIn("user: My walking goal", record["source_evidence"]["supporting_text"])
         self.assertEqual(record["observed_at"], "2026-10-01T00:00:00Z")
         self.assertIn("verbatim_candidate_baseline", json.loads((run_dir / "protocol.json").read_text())["extraction_mode"])
+
+    def test_verbatim_bulk_matches_serial_records_dedup_results_and_audits(self):
+        _, records, turns = verbatim_sources()
+        serial, bulk = SQLiteMemoryStore(), SQLiteMemoryStore()
+        try:
+            existing = replace(records[0], memory_id="earlier-active", lifecycle_status="active",
+                               confirmation_state="user_confirmed")
+            for store in (serial, bulk):
+                store.put(existing)
+            expected = [MemoryManager(serial).ingest(record, actor="synthetic-test") for record in records]
+            with patch.object(bulk, "list_for_user", wraps=bulk.list_for_user) as reads:
+                actual = MemoryManager(bulk).ingest_verbatim_candidates(
+                    records, user_id="synthetic-scope", source_turns=turns, actor="synthetic-test")
+                self.assertEqual(reads.call_count, 1)
+            self.assertEqual(actual, expected)
+            self.assertEqual([record.to_dict() for record in bulk.list_for_user("synthetic-scope")],
+                             [record.to_dict() for record in serial.list_for_user("synthetic-scope")])
+            self.assertEqual(bulk.audit_for_user("synthetic-scope"), serial.audit_for_user("synthetic-scope"))
+            self.assertEqual([result.action for result in actual],
+                             ["duplicate_rejected", "duplicate_rejected", "created", "duplicate_rejected", "created"])
+        finally:
+            serial.close()
+            bulk.close()
+
+    def test_verbatim_bulk_rejects_nonverbatim_slots_confirmation_and_missing_sources(self):
+        _, records, turns = verbatim_sources()
+        record = records[0]
+        invalid = [
+            replace(record, content="An unsupported summary"),
+            replace(record, source_evidence=replace(record.source_evidence, supporting_text="Walking")),
+            replace(record, source_evidence=replace(record.source_evidence, turn_ids=["not-a-source"])),
+            replace(record, source_evidence=replace(record.source_evidence, turn_ids=["a", "b"])),
+            replace(record, source_evidence=replace(record.source_evidence, session_id="")),
+            replace(record, memory_type="preference"), replace(record, origin="agent_inference"),
+            replace(record, lifecycle_status="active"), replace(record, confirmation_state="user_confirmed"),
+            replace(record, structured_payload={"slot_key": "goal"}), replace(record, tags=["inferred"]),
+            replace(record, related_memory_ids=["other"]), replace(record, supersedes_memory_id="other"),
+            replace(record, user_id="other-user"), replace(record, valid_from=None),
+            replace(record, valid_to="2026-11-01T00:00:00Z"),
+            replace(record, observed_at="2026-10-03T00:00:00Z"),
+        ]
+        store = SQLiteMemoryStore()
+        try:
+            for bad in invalid:
+                with self.subTest(record=bad):
+                    with self.assertRaises(ValueError):
+                        MemoryManager(store).ingest_verbatim_candidates(
+                            [records[-1], bad], user_id="synthetic-scope", source_turns=turns)
+                    self.assertEqual(store.list_for_user("synthetic-scope"), [])
+                    self.assertEqual(store.audit_for_user("synthetic-scope"), [])
+            with self.assertRaises(ValueError):
+                MemoryManager(store).ingest_verbatim_candidates([record], user_id="synthetic-scope", source_turns={})
+        finally:
+            store.close()
+
+    def test_verbatim_bulk_write_failure_rolls_back_all_records_and_audits(self):
+        _, records, turns = verbatim_sources()
+        store = SQLiteMemoryStore()
+        try:
+            store.connection.execute("""CREATE TRIGGER fail_batch BEFORE INSERT ON memories
+                WHEN NEW.content = 'user: Tea after breakfast.'
+                BEGIN SELECT RAISE(ABORT, 'synthetic interruption'); END""")
+            with self.assertRaisesRegex(Exception, "synthetic interruption"):
+                MemoryManager(store).ingest_verbatim_candidates(records, user_id="synthetic-scope", source_turns=turns)
+            self.assertEqual(store.list_for_user("synthetic-scope"), [])
+            self.assertEqual(store.audit_for_user("synthetic-scope"), [])
+        finally:
+            store.close()
+
+    def test_verbatim_bulk_id_collision_cannot_overwrite_another_user(self):
+        _, records, turns = verbatim_sources()
+        store = SQLiteMemoryStore()
+        try:
+            foreign = replace(records[2], user_id="other-user")
+            store.put(foreign)
+            with self.assertRaises(PermissionError):
+                MemoryManager(store).ingest_verbatim_candidates(records, user_id="synthetic-scope", source_turns=turns)
+            self.assertEqual(store.list_for_user("synthetic-scope"), [])
+            self.assertEqual(store.audit_for_user("synthetic-scope"), [])
+            self.assertEqual(store.get("other-user", foreign.memory_id).to_dict(), foreign.to_dict())
+        finally:
+            store.close()
+
+    def test_streamed_inventory_hash_preserves_original_canonical_list_format(self):
+        rows = [{"scope_id": "中文", "record": {"z": "quote \\\"", "a": [1, None]}},
+                {"record": {"text": "é\n第二行"}, "scope_id": "other"}]
+        path = self.base / "inventory.jsonl"
+        with path.open("w", encoding="utf-8") as handle:
+            writer = CandidateInventoryWriter(handle)
+            for row in rows:
+                writer.add(row)
+        self.assertEqual(writer.hexdigest(), stable_digest(rows))
+        self.assertEqual(candidate_jsonl_digest(path), (stable_digest(rows), len(rows)))
+        self.assertEqual(streamed_digest({"sources": rows}), stable_digest({"sources": rows}))
+
+    def test_scoped_preparation_preserves_serial_prompts_inventory_and_source_hash(self):
+        cohort = self.cohort(examples=[fixture(), fixture(example_id="fixture-b")])
+        manifest, cases, _ = load_cohort(cohort)
+        sources = source_inventory(cases, manifest["dataset_key"], self.settings)
+        serial = SQLiteMemoryStore()
+        by_scope = {}
+        try:
+            for source in sources.values():
+                by_scope.setdefault(source["scope_id"], []).extend(ingest_source(serial, source, verbatim_output(source)))
+        finally:
+            serial.close()
+        expected_inventory = [{"scope_id": scope, "record": record.to_dict()}
+                              for scope in sorted(by_scope) for record in by_scope[scope]]
+        expected_prompts, ordering = [], random.Random(self.settings.seed)
+        for case in sorted(cases, key=lambda row: (row["scope_id"], row["example_id"])):
+            arms = list(ARMS)
+            ordering.shuffle(arms)
+            expected_prompts.extend(make_request(case, manifest["dataset_key"], arm, self.settings,
+                                                 by_scope[case["scope_id"]]) for arm in arms)
+        closed_scopes = []
+        class ScopedStore(SQLiteMemoryStore):
+            def close(self):
+                closed_scopes.append(self.list_user_ids())
+                super().close()
+        with patch("run_structured_memory.SQLiteMemoryStore", ScopedStore):
+            run_dir = self.prepared(cohort=cohort)
+        self.assertEqual(len(closed_scopes), 2)
+        self.assertTrue(all(len(scopes) == 1 for scopes in closed_scopes))
+        self.assertEqual(read_jsonl(run_dir / "prompts.jsonl"), expected_prompts)
+        self.assertEqual(read_jsonl(run_dir / "candidate_memories.jsonl"), expected_inventory)
+        protocol = json.loads((run_dir / "protocol.json").read_text())
+        self.assertEqual(protocol["candidate_records_sha256"], stable_digest(expected_inventory))
+        self.assertEqual(protocol["source_inventory_sha256"], stable_digest(sources))
+        self.assertEqual(list(run_dir.glob("*.tmp")), [])
 
     def test_gold_future_and_assistant_only_content_do_not_enter_long_candidates(self):
         run_dir = self.prepared()
@@ -338,8 +488,9 @@ class StructuredMemoryTests(unittest.TestCase):
             result = execute_extraction(output, max_calls=1)
         self.assertEqual(result["completed"], 1)
         run_dir = self.base / "model-run"
-        prepare_structured_run(cohort, run_dir, self.settings, self.api_base,
-                               extraction_artifact=output / "extraction_artifact.json")
+        with patch.object(MemoryManager, "ingest_verbatim_candidates", side_effect=AssertionError("model summaries cannot use bulk import")):
+            prepare_structured_run(cohort, run_dir, self.settings, self.api_base,
+                                   extraction_artifact=output / "extraction_artifact.json")
         records = read_jsonl(run_dir / "candidate_memories.jsonl")
         self.assertEqual(records[0]["record"]["confirmation_state"], "unconfirmed")
         self.assertEqual(json.loads((run_dir / "protocol.json").read_text())["extraction_mode"], "model_extracted_unconfirmed_candidates")

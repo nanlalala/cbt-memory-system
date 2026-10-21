@@ -9,11 +9,13 @@ Actual model extraction is a separately frozen, question-independent stage.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
 import random
 import sys
+import tempfile
 import time
 from collections import defaultdict
 from dataclasses import asdict
@@ -77,7 +79,50 @@ def require_colab() -> None:
 
 
 def file_identity(path: Path) -> dict:
-    return {"sha256": digest_bytes(path.read_bytes()), "bytes": path.stat().st_size}
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return {"sha256": digest.hexdigest(), "bytes": path.stat().st_size}
+
+
+def streamed_digest(value: Any) -> str:
+    """The exact stable_digest JSON encoding without a whole serialized copy."""
+    digest = hashlib.sha256()
+    for block in json.JSONEncoder(sort_keys=True, ensure_ascii=False).iterencode(value):
+        digest.update(block.encode("utf-8"))
+    return digest.hexdigest()
+
+
+class CandidateInventoryWriter:
+    """Stream JSONL and the existing canonical JSON-list fingerprint together."""
+
+    def __init__(self, handle):
+        self.handle = handle
+        self.digest = hashlib.sha256(b"[")
+        self.count = 0
+
+    def add(self, row: dict) -> None:
+        if self.count:
+            self.digest.update(b", ")
+        self.digest.update(json.dumps(row, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+        if self.handle is not None:
+            self.handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        self.count += 1
+
+    def hexdigest(self) -> str:
+        digest = self.digest.copy()
+        digest.update(b"]")
+        return digest.hexdigest()
+
+
+def candidate_jsonl_digest(path: Path) -> tuple[str, int]:
+    inventory = CandidateInventoryWriter(None)
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                inventory.add(json.loads(line))
+    return inventory.hexdigest(), inventory.count
 
 
 def freeze_rows(path: Path, rows: Sequence[dict]) -> None:
@@ -299,7 +344,7 @@ def verbatim_output(source: dict) -> str:
     ]}, ensure_ascii=False)
 
 
-def ingest_source(store: SQLiteMemoryStore, source: dict, raw_output: str) -> list[MemoryRecord]:
+def parse_source_candidates(source: dict, raw_output: str) -> list[MemoryRecord]:
     payload = json.loads(raw_output)
     if not isinstance(payload, dict) or not isinstance(payload.get("candidates"), list):
         raise ValueError("extraction output must contain candidates")
@@ -314,17 +359,46 @@ def ingest_source(store: SQLiteMemoryStore, source: dict, raw_output: str) -> li
         json.dumps(payload, ensure_ascii=False), user_id=source["scope_id"],
         session_id=source["session_id"], turns=turns, extracted_at=source["observed_at"],
     )
-    manager = MemoryManager(store)
-    inserted = []
+    checked = []
     for record in records:
         # Normalize all enums/types through the full schema validator as well.
         record = MemoryRecord.from_dict(record.to_dict())
         if record.lifecycle_status != "candidate" or record.confirmation_state != "unconfirmed":
             raise ValueError("benchmark extraction cannot fabricate confirmation")
+        checked.append(record)
+    return checked
+
+
+def ingest_source(store: SQLiteMemoryStore, source: dict, raw_output: str) -> list[MemoryRecord]:
+    manager = MemoryManager(store)
+    inserted = []
+    for record in parse_source_candidates(source, raw_output):
         outcome = manager.ingest(record, actor="external_benchmark_candidate_not_user_consent")
         if outcome.action != "duplicate_rejected":
             inserted.append(record)
     return inserted
+
+
+def ingest_verbatim_scope(store: SQLiteMemoryStore, sources: Sequence[dict]) -> list[MemoryRecord]:
+    """One bounded scope; the manager independently validates the narrow import."""
+    records, source_turns = [], {}
+    scope_ids = {source["scope_id"] for source in sources}
+    if len(scope_ids) != 1:
+        raise ValueError("verbatim import must contain exactly one scope")
+    for source in sources:
+        records.extend(parse_source_candidates(source, verbatim_output(source)))
+        for turn in source["turns"]:
+            key = (source["session_id"], turn["turn_id"])
+            value = {"text": f'{turn["speaker"]}: {turn["text"]}'.strip(),
+                     "observed_at": source["observed_at"]}
+            if key in source_turns and source_turns[key] != value:
+                raise ValueError("a source turn cannot change text or timestamp within a scope")
+            source_turns[key] = value
+    results = MemoryManager(store).ingest_verbatim_candidates(
+        records, user_id=next(iter(scope_ids)), source_turns=source_turns,
+        actor="external_benchmark_candidate_not_user_consent",
+    )
+    return [record for record, result in zip(records, results) if result.action != "duplicate_rejected"]
 
 
 def prepare_extraction_requests(cohort_dir: Path, output_dir: Path, settings: Settings, api_base: str) -> dict:
@@ -556,64 +630,101 @@ def prepare_structured_run(cohort_dir: Path, output_dir: Path, settings: Setting
     lock = json.loads((cohort_dir / "preregistration_lock.json").read_text(encoding="utf-8"))
     sources = source_inventory(cases, cohort["dataset_key"], settings)
     outputs = validate_extraction_artifact(extraction_artifact, sources, cohort) if extraction_artifact else None
-    records_by_scope = defaultdict(list)
-    store = SQLiteMemoryStore()
-    try:
-        for key, source in sources.items():
-            records_by_scope[source["scope_id"]].extend(ingest_source(store, source, outputs[key] if outputs is not None else verbatim_output(source)))
-    finally:
-        store.close()
+    # Only one scope's SQLite rows, record objects and document vectors coexist.
+    # The source inventory contains references to input strings; it is not copied
+    # into a second all-subject candidate inventory.
+    cases_by_scope, sources_by_scope = defaultdict(list), defaultdict(list)
+    for case in cases:
+        cases_by_scope[case["scope_id"]].append(case)
+    for source in sources.values():
+        sources_by_scope[source["scope_id"]].append(source)
     encoder = None
     if settings.backend != "lexical":
         require_colab()
         encoder = ScopeCachedEncoder(MultilingualE5Encoder(settings.dense_model, device=device))
     requests = []
     ordering = random.Random(settings.seed)
-    for case in sorted(cases, key=lambda row: (row["scope_id"], row["example_id"])):
-        if encoder is not None:
-            encoder.set_scope(case["scope_id"])
-        arms = list(ARMS)
-        ordering.shuffle(arms)
-        requests.extend(make_request(case, cohort["dataset_key"], arm, settings, records_by_scope[case["scope_id"]], encoder=encoder) for arm in arms)
-    inventory = [{"scope_id": scope, "record": record.to_dict()} for scope in sorted(records_by_scope) for record in records_by_scope[scope]]
-    code_paths = [Path(__file__), ROOT / "evaluation/end-to-end-dialogue/run_three_arm.py",
-                  ROOT / "modules/long-term-memory/extraction/extraction_contract.py",
-                  ROOT / "modules/long-term-memory/lifecycle/memory_manager.py",
-                  ROOT / "modules/long-term-memory/retrieval/memory_retriever.py",
-                  ROOT / "modules/agent-integration/context_builder.py"]
-    protocol = {
-        "protocol_version": VERSION, "dataset_key": cohort["dataset_key"],
-        "cohort_manifest": cohort, "cohort_manifest_sha256": stable_digest(cohort),
-        "preregistration_lock": lock, "preregistration_lock_sha256": stable_digest(lock),
-        "question_ids": [case["example_id"] for case in cases], "conditions": list(ARMS),
-        "settings": {**asdict(settings), "accepted_provider_models": list(settings.accepted_provider_models)},
-        "model_identity_policy": model_identity_policy(settings), "api_base": validated_api_base(api_base),
-        "temperature": 0, "system_prompt": SYSTEM_PROMPT,
-        "memory_boundary": BOUNDARY, "preprocessing_policy": PREPROCESSING_POLICY,
-        "extraction_mode": "model_extracted_unconfirmed_candidates" if outputs is not None else "verbatim_candidate_baseline_not_semantic_extraction",
-        "extraction_artifact": file_identity(extraction_artifact) if extraction_artifact else None,
-        "source_inventory_sha256": stable_digest(sources), "candidate_records_sha256": stable_digest(inventory),
-        "prompt_records_sha256": stable_digest(requests), "references_sha256": stable_digest(references),
-        "retrieval_model_identity": getattr(encoder, "model_identity", None),
-        "fixed_knowledge": "empty in all arms; governed sources unchanged",
-        "failure_policy": "stop and retain checkpoints; incomplete runs cannot produce a formal summary; no failed example deletion",
-        "code_sha256": {str(path.relative_to(ROOT)): digest_bytes(path.read_bytes()) for path in code_paths},
-        "official_evaluator_status": "not executed", "model_judge_status": "not executed",
-        "effectiveness_claim": "none; preparation is not a completed experiment",
-        "maximum_attempts_per_request": 1 + lock["plan"]["completion_and_failure_policy"]["transient_retry_limit"],
-        "maximum_total_calls": len(requests) * (1 + lock["plan"]["completion_and_failure_policy"]["transient_retry_limit"]),
-    }
     output_dir.mkdir(parents=True, exist_ok=True)
-    freeze_json(output_dir / "protocol.json", protocol)
-    freeze_rows(output_dir / "prompts.jsonl", requests)
-    freeze_rows(output_dir / "references.jsonl", references)
-    freeze_rows(output_dir / "candidate_memories.jsonl", inventory)
-    summary = {"status": "prepared", "examples": len(cases), "requests": len(requests),
-               "candidate_records": len(inventory), "preprocessing_sessions": len(sources),
-               "protocol_sha256": stable_digest(protocol), "extraction_mode": protocol["extraction_mode"],
-               "memory_boundary": BOUNDARY, "model_calls": 0, "effectiveness_result": "not measured"}
-    (output_dir / "preparation_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return summary
+    temporary = tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=output_dir,
+                                           prefix="candidate_memories-", suffix=".tmp", delete=False)
+    temporary_path = Path(temporary.name)
+    try:
+        with temporary as handle:
+            inventory = CandidateInventoryWriter(handle)
+            for scope in sorted(cases_by_scope):
+                store = SQLiteMemoryStore()
+                try:
+                    scoped_sources = sources_by_scope[scope]
+                    if outputs is None:
+                        records = ingest_verbatim_scope(store, scoped_sources) if scoped_sources else []
+                    else:
+                        # Arbitrary model summaries retain the ordinary manager
+                        # decisions; only the exact-quote baseline is batched.
+                        records = []
+                        for source in scoped_sources:
+                            records.extend(ingest_source(store, source, outputs[source["source_sha256"]]))
+                    if encoder is not None:
+                        encoder.set_scope(scope)
+                    for case in sorted(cases_by_scope[scope], key=lambda row: row["example_id"]):
+                        arms = list(ARMS)
+                        ordering.shuffle(arms)
+                        requests.extend(make_request(case, cohort["dataset_key"], arm, settings,
+                                                     records, encoder=encoder) for arm in arms)
+                    for record in records:
+                        inventory.add({"scope_id": scope, "record": record.to_dict()})
+                finally:
+                    store.close()
+                # Do not retain the previous scope while constructing the next.
+                del records
+            candidate_count = inventory.count
+            candidate_sha256 = inventory.hexdigest()
+            handle.flush()
+            os.fsync(handle.fileno())
+        code_paths = [Path(__file__), ROOT / "evaluation/end-to-end-dialogue/run_three_arm.py",
+                      ROOT / "modules/long-term-memory/extraction/extraction_contract.py",
+                      ROOT / "modules/long-term-memory/lifecycle/memory_manager.py",
+                      ROOT / "modules/long-term-memory/retrieval/memory_retriever.py",
+                      ROOT / "modules/agent-integration/context_builder.py"]
+        protocol = {
+            "protocol_version": VERSION, "dataset_key": cohort["dataset_key"],
+            "cohort_manifest": cohort, "cohort_manifest_sha256": stable_digest(cohort),
+            "preregistration_lock": lock, "preregistration_lock_sha256": stable_digest(lock),
+            "question_ids": [case["example_id"] for case in cases], "conditions": list(ARMS),
+            "settings": {**asdict(settings), "accepted_provider_models": list(settings.accepted_provider_models)},
+            "model_identity_policy": model_identity_policy(settings), "api_base": validated_api_base(api_base),
+            "temperature": 0, "system_prompt": SYSTEM_PROMPT,
+            "memory_boundary": BOUNDARY, "preprocessing_policy": PREPROCESSING_POLICY,
+            "extraction_mode": "model_extracted_unconfirmed_candidates" if outputs is not None else "verbatim_candidate_baseline_not_semantic_extraction",
+            "extraction_artifact": file_identity(extraction_artifact) if extraction_artifact else None,
+            "source_inventory_sha256": streamed_digest(sources), "candidate_records_sha256": candidate_sha256,
+            "prompt_records_sha256": stable_digest(requests), "references_sha256": stable_digest(references),
+            "retrieval_model_identity": getattr(encoder, "model_identity", None),
+            "fixed_knowledge": "empty in all arms; governed sources unchanged",
+            "failure_policy": "stop and retain checkpoints; incomplete runs cannot produce a formal summary; no failed example deletion",
+            "code_sha256": {str(path.relative_to(ROOT)): digest_bytes(path.read_bytes()) for path in code_paths},
+            "official_evaluator_status": "not executed", "model_judge_status": "not executed",
+            "effectiveness_claim": "none; preparation is not a completed experiment",
+            "maximum_attempts_per_request": 1 + lock["plan"]["completion_and_failure_policy"]["transient_retry_limit"],
+            "maximum_total_calls": len(requests) * (1 + lock["plan"]["completion_and_failure_policy"]["transient_retry_limit"]),
+        }
+        output_dir.mkdir(parents=True, exist_ok=True)
+        freeze_json(output_dir / "protocol.json", protocol)
+        freeze_rows(output_dir / "prompts.jsonl", requests)
+        freeze_rows(output_dir / "references.jsonl", references)
+        candidate_path = output_dir / "candidate_memories.jsonl"
+        if candidate_path.exists():
+            if candidate_jsonl_digest(candidate_path) != (candidate_sha256, candidate_count):
+                raise ValueError("frozen artifact differs; choose a new output directory")
+        else:
+            os.replace(temporary_path, candidate_path)
+        summary = {"status": "prepared", "examples": len(cases), "requests": len(requests),
+                   "candidate_records": candidate_count, "preprocessing_sessions": len(sources),
+                   "protocol_sha256": stable_digest(protocol), "extraction_mode": protocol["extraction_mode"],
+                   "memory_boundary": BOUNDARY, "model_calls": 0, "effectiveness_result": "not measured"}
+        (output_dir / "preparation_summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return summary
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def validate_protocol(protocol: dict) -> Settings:
@@ -643,13 +754,14 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]:
     require_workload_environment(protocol["cohort_manifest"])
     prompts = read_jsonl(run_dir / "prompts.jsonl")
     references = read_jsonl(run_dir / "references.jsonl")
-    memories = read_jsonl(run_dir / "candidate_memories.jsonl")
     reference_spec = protocol["cohort_manifest"]["files"]["scoring_references.jsonl"]
     if any(reference_spec.get(field) != value for field, value in file_identity(run_dir / "references.jsonl").items()):
         raise ValueError("run reference bytes no longer match the frozen complete cohort")
-    for name, rows in (("prompt_records_sha256", prompts), ("references_sha256", references), ("candidate_records_sha256", memories)):
+    for name, rows in (("prompt_records_sha256", prompts), ("references_sha256", references)):
         if stable_digest(rows) != protocol.get(name):
             raise ValueError("run artifact checksum differs from frozen protocol")
+    if candidate_jsonl_digest(run_dir / "candidate_memories.jsonl")[0] != protocol.get("candidate_records_sha256"):
+        raise ValueError("run artifact checksum differs from frozen protocol")
     expected = {(example_id, arm) for example_id in protocol["question_ids"] for arm in ARMS}
     actual = {(row["example_id"], row["arm"]) for row in prompts}
     if actual != expected or len(prompts) != len(expected):
