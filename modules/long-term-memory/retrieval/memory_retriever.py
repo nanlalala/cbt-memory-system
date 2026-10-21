@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -106,38 +107,35 @@ def _cosine(left: Sequence[float], right: Sequence[float]) -> float:
 
 
 def _lexical_scores(query: str, documents: Sequence[str]) -> list[float]:
-    """Small TF-IDF cosine implementation for reproducible CPU-only tests."""
+    """The same smoothed TF-IDF cosine, computed over nonzero weights only."""
 
-    tokenized = [_tokens(query), *(_tokens(value) for value in documents)]
-    if not tokenized[0]:
+    query_counts = Counter(_tokens(query))
+    if not query_counts:
         return [0.0] * len(documents)
+    document_counts = [Counter(_tokens(value)) for value in documents]
     document_count = len(documents)
-    vocabulary = set(tokenized[0])
-    for values in tokenized[1:]:
-        vocabulary.update(values)
-    document_frequency = {
-        token: sum(token in set(values) for values in tokenized[1:]) for token in vocabulary
-    }
+    # Each document contributes once per token. Rebuilding set(values) for every
+    # vocabulary/document pair dominated large scopes. Sparse counts preserve
+    # exactly the original DF formula.
+    document_frequency = Counter(token for counts in document_counts for token in counts)
     idf = {
         token: math.log((1 + document_count) / (1 + document_frequency[token])) + 1
-        for token in vocabulary
+        for token in query_counts.keys() | document_frequency.keys()
     }
 
-    def vector(values: list[str]) -> dict[str, float]:
-        counts: dict[str, int] = {}
-        for token in values:
-            counts[token] = counts.get(token, 0) + 1
-        total = len(values) or 1
+    def vector(counts: Counter) -> dict[str, float]:
+        total = sum(counts.values()) or 1
         return {token: count / total * idf[token] for token, count in counts.items()}
 
-    query_vector = vector(tokenized[0])
+    query_vector = vector(query_counts)
+    query_norm = math.sqrt(sum(value * value for value in query_vector.values()))
     scores: list[float] = []
-    for values in tokenized[1:]:
-        document_vector = vector(values)
-        scores.append(_cosine(
-            [query_vector.get(token, 0.0) for token in vocabulary],
-            [document_vector.get(token, 0.0) for token in vocabulary],
-        ))
+    for counts in document_counts:
+        document_vector = vector(counts)
+        document_norm = math.sqrt(sum(value * value for value in document_vector.values()))
+        numerator = sum(query_vector[token] * document_vector[token]
+                        for token in query_vector.keys() & document_vector.keys())
+        scores.append(numerator / (query_norm * document_norm) if document_norm else 0.0)
     return scores
 
 

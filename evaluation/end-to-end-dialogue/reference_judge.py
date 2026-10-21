@@ -391,9 +391,13 @@ def execute_reference_judge(run_dir: Path, output_dir: Path, *, max_calls: int) 
             "status": "complete" if len(completed) == len(requests) else "partial_checkpoint_only"}
 
 
-def cluster_interval(group_deltas: list[float], *, seed: int, resamples: int, confidence: float) -> list[float]:
+def cluster_interval(group_deltas: list[float], *, seed: int, resamples: int, confidence: float) -> list[float] | None:
     if not group_deltas:
         raise ValueError("at least one independent history group is required")
+    if len(group_deltas) < 2:
+        # Resampling one cluster repeats the same value and gives a spuriously
+        # exact interval. Keep its descriptive effect, without estimating a CI.
+        return None
     rng = random.Random(seed)
     means = sorted(statistics.mean(rng.choices(group_deltas, k=len(group_deltas))) for _ in range(resamples))
     tail = (1 - confidence) / 2
@@ -456,16 +460,17 @@ def score_reference_judge(run_dir: Path, output_dir: Path, *, write_outputs: boo
                                     confidence=precision["confidence_level"])
         summary["paired_differences"][f"{treatment}_minus_{baseline}"] = {
             "mean_group_accuracy_delta": statistics.mean(deltas), "cluster_bootstrap_interval": interval,
-            "interval_half_width": (interval[1] - interval[0]) / 2,
+            "interval_half_width": (interval[1] - interval[0]) / 2 if interval is not None else None,
+            "interval_status": "estimated" if interval is not None else "not_estimable_fewer_than_two_groups",
             "cluster_count": len(group_ids),
         }
     treatment, baseline = plan["statistics"]["primary_contrast"]
     primary = summary["paired_differences"][f"{treatment}_minus_{baseline}"]
     summary["predeclared_primary_checks"] = {
         "minimum_groups_met": len(group_ids) >= plan["statistics"]["minimum_independent_groups"],
-        "precision_target_met": primary["interval_half_width"] <= precision["target_interval_half_width"],
+        "precision_target_met": primary["interval_half_width"] is not None and primary["interval_half_width"] <= precision["target_interval_half_width"],
         "minimum_point_effect_met": primary["mean_group_accuracy_delta"] >= plan["statistics"]["minimum_effect"],
-        "interval_excludes_zero_in_favor_of_memory": primary["cluster_bootstrap_interval"][0] > 0,
+        "interval_excludes_zero_in_favor_of_memory": primary["cluster_bootstrap_interval"] is not None and primary["cluster_bootstrap_interval"][0] > 0,
         "technical_failure_threshold_met": summary["technical_failure_fraction"] <= protocol["failure_policy"]["maximum_technical_failure_fraction_for_confirmatory_claim"],
         "primary_dataset": protocol["dataset_key"] == plan["statistics"]["primary_dataset"],
     }

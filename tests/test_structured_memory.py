@@ -241,6 +241,25 @@ class StructuredMemoryTests(unittest.TestCase):
         self.assertEqual(protocol["source_inventory_sha256"], stable_digest(sources))
         self.assertEqual(list(run_dir.glob("*.tmp")), [])
 
+    def test_one_shared_history_group_does_not_produce_a_bootstrap_interval(self):
+        cohort = self.cohort(examples=[fixture(), fixture(example_id="fixture-b")])
+        run_dir = self.prepared(cohort=cohort)
+        responses = self.complete_fixture_responses(run_dir)
+        references = {row["example_id"]: row for row in read_jsonl(run_dir / "references.jsonl")}
+        for row in responses:
+            if row["arm"] == ARMS[2]:
+                row["hypothesis"] = references[row["example_id"]]["reference_answer"]
+        write_jsonl(run_dir / "responses.jsonl", responses)
+        with patch("score_structured_memory.paired_interval", side_effect=AssertionError("one group cannot be bootstrapped")):
+            summary = score_structured_run(run_dir, write_outputs=False)
+        self.assertEqual(summary["examples"], 2)
+        self.assertEqual(summary["independent_groups"], 1)
+        comparison = summary["paired_differences"][f"{ARMS[2]}_minus_{ARMS[1]}"]
+        self.assertEqual(comparison["mean_token_f1_delta"], 1.0)
+        self.assertIsNone(comparison["cluster_bootstrap_95_percent_interval"])
+        self.assertEqual(comparison["cluster_count"], 1)
+        self.assertEqual(comparison["interval_status"], "not_estimable_fewer_than_two_groups")
+
     def test_gold_future_and_assistant_only_content_do_not_enter_long_candidates(self):
         run_dir = self.prepared()
         text = (run_dir / "prompts.jsonl").read_text()
