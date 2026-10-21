@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
+from typing import Mapping, Sequence
 
 from memory_models import (
     ConfirmationState,
@@ -50,6 +51,86 @@ class MemoryManager:
         record.validate()
         with self.store.transaction(immediate=True):
             return self._ingest_locked(record, actor=actor)
+
+    def ingest_verbatim_candidates(
+        self,
+        records: Sequence[MemoryRecord],
+        *,
+        user_id: str,
+        source_turns: Mapping[tuple[str, str], Mapping[str, str]],
+        actor: str = "system",
+    ) -> list[WriteResult]:
+        """Import only exact, source-timed quotes as unconfirmed candidates.
+
+        This narrow raw-text baseline avoids repeatedly scanning the same scope
+        during benchmark preparation. Summaries, slots, corrections and inferred
+        records must use ``ingest``. Provenance and the candidate-only boundary
+        are checked here, rather than delegated to a benchmark caller. The whole
+        batch, including duplicate audits, commits or rolls back together.
+        """
+
+        checked = []
+        for item in records:
+            record = MemoryRecord.from_dict(item.to_dict())
+            evidence = record.source_evidence
+            if (
+                record.user_id != user_id
+                or record.memory_type != MemoryType.EXPLICIT_FACT.value
+                or record.origin != Origin.EXPLICIT_USER_STATEMENT.value
+                or record.confirmation_state != ConfirmationState.UNCONFIRMED.value
+                or record.lifecycle_status != LifecycleStatus.CANDIDATE.value
+                or record.structured_payload or record.tags or record.related_memory_ids
+                or record.supersedes_memory_id is not None or record.valid_to is not None
+                or len(evidence.turn_ids) != 1
+            ):
+                raise ValueError("bulk import accepts only unslotted verbatim unconfirmed candidates")
+            source = source_turns.get((evidence.session_id, evidence.turn_ids[0]))
+            if (
+                source is None or record.content != evidence.supporting_text
+                or record.content != source.get("text")
+                or any(timestamp != source.get("observed_at") for timestamp in (
+                    record.created_at, record.observed_at, record.updated_at, record.valid_from
+                ))
+            ):
+                raise ValueError("verbatim candidate requires its exact source quote and timestamp")
+            checked.append(record)
+
+        with self.store.transaction(immediate=True):
+            existing = self.store.list_for_user(user_id)
+            stored_ids = {record.memory_id for record in existing}
+            by_content: dict[str, MemoryRecord] = {}
+            for record in existing:
+                if record.memory_type == MemoryType.EXPLICIT_FACT.value and record.lifecycle_status in {
+                    LifecycleStatus.ACTIVE.value, LifecycleStatus.CANDIDATE.value,
+                }:
+                    # list_for_user uses the same ordering as serial ingest.
+                    by_content.setdefault(_normalise(record.content), record)
+            pending, audits, results = [], [], []
+            for record in checked:
+                if record.memory_id in stored_ids:
+                    raise ValueError(f"memory_id already exists: {record.memory_id}")
+                normalised = _normalise(record.content)
+                duplicate = by_content.get(normalised)
+                if duplicate is not None:
+                    audits.append({
+                        "user_id": user_id, "memory_id": duplicate.memory_id,
+                        "action": "duplicate_rejected", "occurred_at": record.updated_at,
+                        "actor": actor, "details": {"rejected_memory_id": record.memory_id},
+                    })
+                    results.append(WriteResult("duplicate_rejected", record.memory_id,
+                                               duplicate.memory_id, "normalised content match"))
+                    continue
+                pending.append(record)
+                stored_ids.add(record.memory_id)
+                by_content[normalised] = record
+                audits.append({
+                    "user_id": user_id, "memory_id": record.memory_id, "action": "created",
+                    "occurred_at": record.updated_at, "actor": actor,
+                    "details": {"status": LifecycleStatus.CANDIDATE.value, "origin": record.origin},
+                })
+                results.append(WriteResult("created", record.memory_id, reason="stored as candidate"))
+            self.store.atomic_write(records=pending, audits=audits)
+            return results
 
     def _ingest_locked(self, record: MemoryRecord, *, actor: str) -> WriteResult:
         existing = self.store.get(record.user_id, record.memory_id)

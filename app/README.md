@@ -1,4 +1,56 @@
-# Local memory demo
+# Memory demonstrations
+
+## Dialogue and memory controls in Colab
+
+Open [Structured Memory Colab](Structured_Memory_Colab.ipynb) in Colab. The
+notebook runs the dialogue demonstration, with candidate memories and their
+source quotes beside the conversation. Model loading, vector encoding and
+large evaluations belong in Colab, not on the operator's computer.
+
+The notebook UI uses the real extraction contract, memory manager, SQLite
+store, retriever and context builder. It does not start a web server or expose
+a public port. The default store is ephemeral and uses fictional inputs.
+
+1. Check **我只输入虚构演示资料**, enter a fictional fact or goal and send it.
+2. Click **整理本次记忆候选**. Read each candidate and its exact source quote.
+   **确认这条记忆** creates a distinct, operator-triggered confirmation event;
+   extraction alone never activates a memory.
+3. Start the next session and ask about the earlier information. Expand
+   **本次回答用到了什么** to see only the memory IDs included in the final
+   response context, with budget-dropped IDs shown separately.
+4. Submit a correction to an active memory. It remains a candidate until a
+   separate confirmation replaces the current version.
+5. Delete a memory. The service also clears the current short-term context
+   and last response so a forgotten fact cannot return from the old chat
+   context. Deleting one version does not claim to erase a provider's logs,
+   database backups or every related memory.
+
+Two modes are kept explicit:
+
+- **Offline demonstration** copies supported source text into candidates and
+  uses template responses. It makes no model or network calls and does not
+  establish extraction or dialogue quality.
+- **Colab model mode** uses the separately configured Colab provider. A
+  send/extract click can make an API request; the page renders without one.
+  Only fictional inputs are supported. Credentials are handled outside the
+  UI and must never be pasted into the conversation.
+
+The notebook imports the UI from the checkout:
+
+```python
+import sys
+sys.path.insert(0, "/content/cbt-memory-system/app")
+from dialogue_demo import launch_notebook_demo
+demo = launch_notebook_demo()
+```
+
+`launch_notebook_demo(session=...)` also accepts a `DialogueSession` with a
+Colab-configured provider. The UI imports `ipywidgets` lazily and refuses launch
+outside Colab. Importing its rendering helpers does not load models or widgets.
+It is a software demonstration, not a benchmark or clinical result; the small
+research safety gate is not a production crisis-detection/referral service.
+
+## Fixed-fixture CLI
 
 This is a small CLI for showing the memory lifecycle with fictional data. It is
 not a clinical chatbot, a public service, or an outcome experiment. It makes no

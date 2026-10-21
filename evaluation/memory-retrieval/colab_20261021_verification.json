@@ -1,0 +1,611 @@
+{
+  "schema_version": "colab-input-and-pinned-retrieval-verification-v1",
+  "executed_at_utc": "2026-10-21T14:52:10.924157+00:00",
+  "environment": {
+    "location": "hosted Google Colab",
+    "gpu": "Tesla T4 / 15360 MiB",
+    "python": "3.12.13",
+    "packages": {
+      "torch": "2.11.0+cu128",
+      "sentence-transformers": "5.6.0",
+      "transformers": "5.13.1",
+      "huggingface-hub": "1.23.0"
+    }
+  },
+  "retrieval_code_revision": "315de5411fd91e2cb982beb9ac706f1df94e13da",
+  "cohort_preparation_code_revision": "0fcbd6724a8b504ce902e52968f659d82fb59cb2",
+  "response_generation_completed": false,
+  "reference_judging_completed": false,
+  "paid_api_calls": 0,
+  "clinical_claim": false,
+  "retrieval_runs": [
+    {
+      "dataset": "locomo",
+      "backend": "lexical",
+      "model": null,
+      "model_manifest": {
+        "model_spec": null,
+        "model_identity": null,
+        "embedding_preprocessing": null,
+        "requested_device": "cuda"
+      },
+      "metrics": {
+        "examples": 1986,
+        "evidence_recall_at_1": 0.2413131058312693,
+        "mrr_at_1": 0.26084762865792127,
+        "n": 1982,
+        "evidence_recall_at_5": 0.4493303548676909,
+        "mrr_at_5": 0.3476454759502186,
+        "evidence_recall_at_10": 0.5281213674963304,
+        "mrr_at_10": 0.35868991558951197
+      }
+    },
+    {
+      "dataset": "locomo",
+      "backend": "dense",
+      "model": "intfloat/multilingual-e5-small",
+      "model_manifest": {
+        "model_spec": {
+          "repo_id": "intfloat/multilingual-e5-small",
+          "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+          "files": {
+            "1_Pooling/config.json": {
+              "sha256": "987f7a67a38fa564c849bb5d277c52ab9088a84368fc0be31a354125aebb12a0",
+              "size": 200
+            },
+            "config.json": {
+              "sha256": "69137736cab8b8903a07fe8afaafdda25aac55415a12a55d1bffa9f581abf959",
+              "size": 655
+            },
+            "model.safetensors": {
+              "sha256": "1a55775f53449dac10a2bcbc312469fac40b96d53198c407081a831f81c98477",
+              "size": 470641600
+            },
+            "modules.json": {
+              "sha256": "c6e29747481e8b5dd2b58401966aeac910de39092f90cda9a704b1545f902b04",
+              "size": 387
+            },
+            "sentence_bert_config.json": {
+              "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529",
+              "size": 57
+            },
+            "sentencepiece.bpe.model": {
+              "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
+              "size": 5069051
+            },
+            "special_tokens_map.json": {
+              "sha256": "d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7",
+              "size": 167
+            },
+            "tokenizer.json": {
+              "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
+              "size": 17082730
+            },
+            "tokenizer_config.json": {
+              "sha256": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b",
+              "size": 443
+            }
+          }
+        },
+        "model_identity": {
+          "identity_version": "hf-snapshot-sha256-v1",
+          "repo_id": "intfloat/multilingual-e5-small",
+          "resolved_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+          "files": {
+            "1_Pooling/config.json": {
+              "sha256": "987f7a67a38fa564c849bb5d277c52ab9088a84368fc0be31a354125aebb12a0",
+              "size": 200
+            },
+            "config.json": {
+              "sha256": "69137736cab8b8903a07fe8afaafdda25aac55415a12a55d1bffa9f581abf959",
+              "size": 655
+            },
+            "model.safetensors": {
+              "sha256": "1a55775f53449dac10a2bcbc312469fac40b96d53198c407081a831f81c98477",
+              "size": 470641600
+            },
+            "modules.json": {
+              "sha256": "c6e29747481e8b5dd2b58401966aeac910de39092f90cda9a704b1545f902b04",
+              "size": 387
+            },
+            "sentence_bert_config.json": {
+              "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529",
+              "size": 57
+            },
+            "sentencepiece.bpe.model": {
+              "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
+              "size": 5069051
+            },
+            "special_tokens_map.json": {
+              "sha256": "d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7",
+              "size": 167
+            },
+            "tokenizer.json": {
+              "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
+              "size": 17082730
+            },
+            "tokenizer_config.json": {
+              "sha256": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b",
+              "size": 443
+            }
+          },
+          "runtime": {
+            "python": "3.12.13",
+            "packages": {
+              "sentence-transformers": "5.6.0",
+              "transformers": "5.13.1",
+              "torch": "2.11.0+cu128",
+              "huggingface-hub": "1.23.0",
+              "tokenizers": "0.22.2",
+              "safetensors": "0.8.0"
+            }
+          },
+          "loader_policy": {
+            "local_files_only": true,
+            "trust_remote_code": false,
+            "use_safetensors": true
+          },
+          "identity_fingerprint": "996ef83a4aab9668ac94c77bed22b4f25b9060f45c6d8b745b0279caa77956b7"
+        },
+        "embedding_preprocessing": {
+          "query_prefix": "query: ",
+          "passage_prefix": "passage: ",
+          "normalize_embeddings": true
+        },
+        "requested_device": "cuda"
+      },
+      "metrics": {
+        "examples": 1986,
+        "evidence_recall_at_1": 0.2550782909867613,
+        "mrr_at_1": 0.28809283551967707,
+        "n": 1982,
+        "evidence_recall_at_5": 0.4587452401380697,
+        "mrr_at_5": 0.36877732929700635,
+        "evidence_recall_at_10": 0.5426326853515593,
+        "mrr_at_10": 0.38107911681322376
+      }
+    },
+    {
+      "dataset": "locomo",
+      "backend": "hybrid",
+      "model": "intfloat/multilingual-e5-small",
+      "model_manifest": {
+        "model_spec": {
+          "repo_id": "intfloat/multilingual-e5-small",
+          "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+          "files": {
+            "1_Pooling/config.json": {
+              "sha256": "987f7a67a38fa564c849bb5d277c52ab9088a84368fc0be31a354125aebb12a0",
+              "size": 200
+            },
+            "config.json": {
+              "sha256": "69137736cab8b8903a07fe8afaafdda25aac55415a12a55d1bffa9f581abf959",
+              "size": 655
+            },
+            "model.safetensors": {
+              "sha256": "1a55775f53449dac10a2bcbc312469fac40b96d53198c407081a831f81c98477",
+              "size": 470641600
+            },
+            "modules.json": {
+              "sha256": "c6e29747481e8b5dd2b58401966aeac910de39092f90cda9a704b1545f902b04",
+              "size": 387
+            },
+            "sentence_bert_config.json": {
+              "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529",
+              "size": 57
+            },
+            "sentencepiece.bpe.model": {
+              "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
+              "size": 5069051
+            },
+            "special_tokens_map.json": {
+              "sha256": "d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7",
+              "size": 167
+            },
+            "tokenizer.json": {
+              "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
+              "size": 17082730
+            },
+            "tokenizer_config.json": {
+              "sha256": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b",
+              "size": 443
+            }
+          }
+        },
+        "model_identity": {
+          "identity_version": "hf-snapshot-sha256-v1",
+          "repo_id": "intfloat/multilingual-e5-small",
+          "resolved_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+          "files": {
+            "1_Pooling/config.json": {
+              "sha256": "987f7a67a38fa564c849bb5d277c52ab9088a84368fc0be31a354125aebb12a0",
+              "size": 200
+            },
+            "config.json": {
+              "sha256": "69137736cab8b8903a07fe8afaafdda25aac55415a12a55d1bffa9f581abf959",
+              "size": 655
+            },
+            "model.safetensors": {
+              "sha256": "1a55775f53449dac10a2bcbc312469fac40b96d53198c407081a831f81c98477",
+              "size": 470641600
+            },
+            "modules.json": {
+              "sha256": "c6e29747481e8b5dd2b58401966aeac910de39092f90cda9a704b1545f902b04",
+              "size": 387
+            },
+            "sentence_bert_config.json": {
+              "sha256": "948201d8329907aae938fa62f9ceeed53f5694dacc2b87b9f3b78b37ee986529",
+              "size": 57
+            },
+            "sentencepiece.bpe.model": {
+              "sha256": "cfc8146abe2a0488e9e2a0c56de7952f7c11ab059eca145a0a727afce0db2865",
+              "size": 5069051
+            },
+            "special_tokens_map.json": {
+              "sha256": "d05497f1da52c5e09554c0cd874037a083e1dc1b9cfd48034d1c717f1afc07a7",
+              "size": 167
+            },
+            "tokenizer.json": {
+              "sha256": "0b44a9d7b51c3c62626640cda0e2c2f70fdacdc25bbbd68038369d14ebdf4c39",
+              "size": 17082730
+            },
+            "tokenizer_config.json": {
+              "sha256": "a1d6bc8734a6f635dc158508bef000f8e2e5a759c7d92f984b2c86e5ff53425b",
+              "size": 443
+            }
+          },
+          "runtime": {
+            "python": "3.12.13",
+            "packages": {
+              "sentence-transformers": "5.6.0",
+              "transformers": "5.13.1",
+              "torch": "2.11.0+cu128",
+              "huggingface-hub": "1.23.0",
+              "tokenizers": "0.22.2",
+              "safetensors": "0.8.0"
+            }
+          },
+          "loader_policy": {
+            "local_files_only": true,
+            "trust_remote_code": false,
+            "use_safetensors": true
+          },
+          "identity_fingerprint": "996ef83a4aab9668ac94c77bed22b4f25b9060f45c6d8b745b0279caa77956b7"
+        },
+        "embedding_preprocessing": {
+          "query_prefix": "query: ",
+          "passage_prefix": "passage: ",
+          "normalize_embeddings": true
+        },
+        "requested_device": "cuda"
+      },
+      "metrics": {
+        "examples": 1986,
+        "evidence_recall_at_1": 0.2797927560162676,
+        "mrr_at_1": 0.30423814328960647,
+        "n": 1982,
+        "evidence_recall_at_5": 0.519941758426277,
+        "mrr_at_5": 0.4029095190043727,
+        "evidence_recall_at_10": 0.5984276150506747,
+        "mrr_at_10": 0.41457182099210355
+      }
+    }
+  ],
+  "cohorts": {
+    "locomo10": {
+      "schema_version": "formal-cohort-manifest-v1",
+      "dataset_key": "locomo10",
+      "role": "exploratory",
+      "fixture_only": false,
+      "source": {
+        "sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+        "bytes": 2805274,
+        "revision": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+        "source": "https://raw.githubusercontent.com/snap-research/locomo/3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376/data/locomo10.json",
+        "variant": "complete_released_conversations"
+      },
+      "plan_sha256": "45723ba51aa905536ae58f0073b8ac6df787756fd14477068255b352721f0717",
+      "three_arms": [
+        "none",
+        "short_term",
+        "short_plus_structured_candidate"
+      ],
+      "counts": {
+        "released_examples": 1986,
+        "examples": 1540,
+        "independent_groups": 10,
+        "excluded_prespecified_examples": 446,
+        "abstention_examples": 0,
+        "category_counts": {
+          "2": 321,
+          "3": 96,
+          "1": 282,
+          "4": 841
+        }
+      },
+      "grouping_policy": "conversation_id",
+      "development_exposure": {
+        "known_development_group_ids": [
+          "locomo:conv-26",
+          "locomo:conv-41",
+          "locomo:conv-42",
+          "locomo:conv-43",
+          "locomo:conv-44",
+          "locomo:conv-47",
+          "locomo:conv-48",
+          "locomo:conv-49",
+          "locomo:conv-50"
+        ],
+        "overlapping_development_group_ids": [
+          "locomo:conv-26",
+          "locomo:conv-41",
+          "locomo:conv-42",
+          "locomo:conv-43",
+          "locomo:conv-44",
+          "locomo:conv-47",
+          "locomo:conv-48",
+          "locomo:conv-49",
+          "locomo:conv-50"
+        ],
+        "review_complete": true,
+        "ledger_sha256": null,
+        "definition": "Conversation/shared-history exposure, not merely repeated QA IDs; known exposure cannot be removed by an additional ledger"
+      },
+      "development_exposed_group_ids": [
+        "locomo:conv-26",
+        "locomo:conv-41",
+        "locomo:conv-42",
+        "locomo:conv-43",
+        "locomo:conv-44",
+        "locomo:conv-47",
+        "locomo:conv-48",
+        "locomo:conv-49",
+        "locomo:conv-50"
+      ],
+      "preparation_eligible_for_confirmatory_test": false,
+      "confirmatory_claim_allowed": false,
+      "claim_status": "preparation_only_effect_and_precision_not_yet_measured",
+      "confirmatory_preparation_blockers": [
+        "exploratory_dataset_with_prior_development_exposure",
+        "too_few_independent_history_groups_for_predeclared_minimum"
+      ],
+      "final_claim_requirements": [
+        "all frozen cases evaluated",
+        "predeclared independent-group minimum",
+        "frozen reference-based evaluator and judge",
+        "paired cluster confidence interval meets precision target",
+        "directional improvement requires confidence-interval lower bound above zero",
+        "at least meaningful improvement requires confidence-interval lower bound reaching minimum_effect",
+        "technical failures retained and below threshold",
+        "no clinical or authenticated-consent claims"
+      ],
+      "memory_boundary": {
+        "representation": "research_only_unconfirmed_candidate_evidence",
+        "auto_confirm": false,
+        "user_consent_available_in_benchmarks": false,
+        "confirmation_policy": "Never invent user consent or promote benchmark candidates to confirmed user facts",
+        "gold_policy": "Reference answers, category/evidence labels and answerability are scoring-only; never candidate-generation inputs",
+        "scope_policy": "One LoCoMo conversation or LongMemEval question per retrieval scope; statistical clusters never pool retrieval",
+        "clinical_claims": false
+      },
+      "statistics": {
+        "primary_dataset": "longmemeval_s_cleaned",
+        "primary_contrast": [
+          "short_plus_structured_candidate",
+          "short_term"
+        ],
+        "primary_metric": "reference_judge_accuracy",
+        "primary_aggregation": "equal_weight_independent_history_group_means",
+        "minimum_effect": 0.05,
+        "minimum_independent_groups": 30,
+        "success_rules": {
+          "directional_improvement": "Paired cluster confidence-interval lower bound must exceed zero, with precision and all other gates satisfied",
+          "at_least_meaningful_effect": "Paired cluster confidence-interval lower bound must reach the predeclared minimum_effect; a point estimate alone is insufficient"
+        },
+        "precision_plan": {
+          "method": "paired_history_cluster_bootstrap",
+          "resamples": 10000,
+          "seed": 20261021,
+          "confidence_level": 0.95,
+          "target_interval_half_width": 0.05,
+          "failure_interpretation": "If final precision target is missed, report inconclusive; do not add convenient cases after seeing results"
+        },
+        "sample_size_claim": "500 questions do not guarantee adequate power or precision; actual independent groups and final uncertainty must be reported",
+        "pool_datasets": false,
+        "secondary_metrics": [
+          "official_per_category_scores",
+          "abstention",
+          "technical_failure_fraction",
+          "latency",
+          "tokens",
+          "memory_evidence_faithfulness"
+        ],
+        "secondary_inference": "descriptive unless a separate multiplicity-controlled hypothesis was frozen beforehand"
+      },
+      "response_configuration": {
+        "api_base": "https://tokendance.space/gateway/v1",
+        "model": "deepseek-v4.1-flash",
+        "accepted_provider_models": [
+          "deepseek-v4.1-flash",
+          "deepseek-v4-1-flash-260910"
+        ],
+        "temperature": 0,
+        "max_response_tokens": 4096,
+        "thinking_mode": "disabled",
+        "system_prompt_rule": "One identical prompt, recorded with its hash before generation, for all arms",
+        "knowledge_condition": "empty_in_every_arm_until_source_and_external_transmission_governance_approved",
+        "short_window": {
+          "latest_eligible_sessions": 1,
+          "maximum_turns": 16,
+          "maximum_characters": 6000
+        },
+        "long_context_maximum_characters": 12000,
+        "total_context_maximum_characters": 24000,
+        "retrieval_top_k": 12,
+        "minimum_relevance": 0.05,
+        "alias_policy": "Freeze before generation; reject missing, unapproved or inconsistent reported model names"
+      },
+      "files": {
+        "generation_cases.jsonl": {
+          "sha256": "39b40cbfbabe54a871216cc63ffd42b211d6dbaf0b8d04de0fa16af67fae27e5",
+          "bytes": 167463209,
+          "records": 1540
+        },
+        "scoring_references.jsonl": {
+          "sha256": "06927f95232d0bceb301e33d91018c4911f8291310afc5b3fb744e2c305edf21",
+          "bytes": 302369,
+          "records": 1540
+        },
+        "preregistration_lock.json": {
+          "sha256": "436c7fe84c86b6246abd5339d1f6521b36f4d9b5683bdb73288dcd6e19e587e0",
+          "bytes": 9843
+        }
+      },
+      "cohort_sha256": "703476240933abd0cbea05e75828618a058efa3bc14b15c29798c01b84828ab6"
+    },
+    "longmemeval_s_cleaned": {
+      "schema_version": "formal-cohort-manifest-v1",
+      "dataset_key": "longmemeval_s_cleaned",
+      "role": "exploratory",
+      "fixture_only": false,
+      "source": {
+        "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+        "bytes": 277383467,
+        "revision": "98d7416c24c778c2fee6e6f3006e7a073259d48f",
+        "source": "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/98d7416c24c778c2fee6e6f3006e7a073259d48f/longmemeval_s_cleaned.json",
+        "variant": "S_full_cleaned_histories_not_oracle"
+      },
+      "plan_sha256": "45723ba51aa905536ae58f0073b8ac6df787756fd14477068255b352721f0717",
+      "three_arms": [
+        "none",
+        "short_term",
+        "short_plus_structured_candidate"
+      ],
+      "counts": {
+        "released_examples": 500,
+        "examples": 500,
+        "independent_groups": 1,
+        "excluded_prespecified_examples": 0,
+        "abstention_examples": 30,
+        "category_counts": {
+          "single-session-user": 70,
+          "multi-session": 133,
+          "single-session-preference": 30,
+          "temporal-reasoning": 133,
+          "knowledge-update": 78,
+          "single-session-assistant": 56
+        }
+      },
+      "grouping_policy": "connected_components_of_shared_session_ids_or_identical_session_histories",
+      "development_exposure": {
+        "known_development_group_ids": [],
+        "overlapping_development_group_ids": [],
+        "review_complete": false,
+        "ledger_sha256": null,
+        "definition": "Conversation/shared-history exposure, not merely repeated QA IDs; known exposure cannot be removed by an additional ledger"
+      },
+      "development_exposed_group_ids": [],
+      "preparation_eligible_for_confirmatory_test": false,
+      "confirmatory_claim_allowed": false,
+      "claim_status": "preparation_only_effect_and_precision_not_yet_measured",
+      "confirmatory_preparation_blockers": [
+        "exploratory_dataset_with_prior_development_exposure",
+        "too_few_independent_history_groups_for_predeclared_minimum",
+        "development_exposure_review_not_complete"
+      ],
+      "final_claim_requirements": [
+        "all frozen cases evaluated",
+        "predeclared independent-group minimum",
+        "frozen reference-based evaluator and judge",
+        "paired cluster confidence interval meets precision target",
+        "directional improvement requires confidence-interval lower bound above zero",
+        "at least meaningful improvement requires confidence-interval lower bound reaching minimum_effect",
+        "technical failures retained and below threshold",
+        "no clinical or authenticated-consent claims"
+      ],
+      "memory_boundary": {
+        "representation": "research_only_unconfirmed_candidate_evidence",
+        "auto_confirm": false,
+        "user_consent_available_in_benchmarks": false,
+        "confirmation_policy": "Never invent user consent or promote benchmark candidates to confirmed user facts",
+        "gold_policy": "Reference answers, category/evidence labels and answerability are scoring-only; never candidate-generation inputs",
+        "scope_policy": "One LoCoMo conversation or LongMemEval question per retrieval scope; statistical clusters never pool retrieval",
+        "clinical_claims": false
+      },
+      "statistics": {
+        "primary_dataset": "longmemeval_s_cleaned",
+        "primary_contrast": [
+          "short_plus_structured_candidate",
+          "short_term"
+        ],
+        "primary_metric": "reference_judge_accuracy",
+        "primary_aggregation": "equal_weight_independent_history_group_means",
+        "minimum_effect": 0.05,
+        "minimum_independent_groups": 30,
+        "success_rules": {
+          "directional_improvement": "Paired cluster confidence-interval lower bound must exceed zero, with precision and all other gates satisfied",
+          "at_least_meaningful_effect": "Paired cluster confidence-interval lower bound must reach the predeclared minimum_effect; a point estimate alone is insufficient"
+        },
+        "precision_plan": {
+          "method": "paired_history_cluster_bootstrap",
+          "resamples": 10000,
+          "seed": 20261021,
+          "confidence_level": 0.95,
+          "target_interval_half_width": 0.05,
+          "failure_interpretation": "If final precision target is missed, report inconclusive; do not add convenient cases after seeing results"
+        },
+        "sample_size_claim": "500 questions do not guarantee adequate power or precision; actual independent groups and final uncertainty must be reported",
+        "pool_datasets": false,
+        "secondary_metrics": [
+          "official_per_category_scores",
+          "abstention",
+          "technical_failure_fraction",
+          "latency",
+          "tokens",
+          "memory_evidence_faithfulness"
+        ],
+        "secondary_inference": "descriptive unless a separate multiplicity-controlled hypothesis was frozen beforehand"
+      },
+      "response_configuration": {
+        "api_base": "https://tokendance.space/gateway/v1",
+        "model": "deepseek-v4.1-flash",
+        "accepted_provider_models": [
+          "deepseek-v4.1-flash",
+          "deepseek-v4-1-flash-260910"
+        ],
+        "temperature": 0,
+        "max_response_tokens": 4096,
+        "thinking_mode": "disabled",
+        "system_prompt_rule": "One identical prompt, recorded with its hash before generation, for all arms",
+        "knowledge_condition": "empty_in_every_arm_until_source_and_external_transmission_governance_approved",
+        "short_window": {
+          "latest_eligible_sessions": 1,
+          "maximum_turns": 16,
+          "maximum_characters": 6000
+        },
+        "long_context_maximum_characters": 12000,
+        "total_context_maximum_characters": 24000,
+        "retrieval_top_k": 12,
+        "minimum_relevance": 0.05,
+        "alias_policy": "Freeze before generation; reject missing, unapproved or inconsistent reported model names"
+      },
+      "files": {
+        "generation_cases.jsonl": {
+          "sha256": "84e88ee73e8fe0fc04bc6c99fe066053d2037cb7ec6356a14152be9ce142553a",
+          "bytes": 258133035,
+          "records": 500
+        },
+        "scoring_references.jsonl": {
+          "sha256": "2c5602c890437267bd8f3cc0d90ada87fd1b0bd7302df4a5132bbd41815f1490",
+          "bytes": 130373,
+          "records": 500
+        },
+        "preregistration_lock.json": {
+          "sha256": "70510e015be877923744bbaf1cf6c97f234ebe35374f0c83f9a4c6351fa14019",
+          "bytes": 9858
+        }
+      },
+      "cohort_sha256": "57c45e71a5238690ee7b62cf0580e2b5d6be1b166483da22323cad021bc0f176"
+    }
+  }
+}
