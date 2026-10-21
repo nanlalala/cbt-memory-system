@@ -85,7 +85,11 @@ def score_structured_run(run_dir: Path, *, write_outputs: bool = True) -> dict:
             groups.setdefault(group_ids[example_id], []).append(delta)
         summary["paired_differences"][f"{treatment}_minus_{baseline}"] = {
             "mean_token_f1_delta": statistics.mean(deltas.values()),
-            "cluster_bootstrap_95_percent_interval": paired_interval(groups, seed=protocol["settings"]["seed"]),
+            "cluster_bootstrap_95_percent_interval": (
+                paired_interval(groups, seed=protocol["settings"]["seed"]) if len(groups) >= 2 else None
+            ),
+            "interval_status": ("estimated_exploratory_cluster_bootstrap" if len(groups) >= 2
+                                else "not_estimable_fewer_than_two_groups"),
             "cluster_count": len(groups), "interval_interpretation": "exploratory diagnostic, not proof of efficacy",
             "wins": sum(value > 0 for value in deltas.values()),
             "ties": sum(value == 0 for value in deltas.values()),

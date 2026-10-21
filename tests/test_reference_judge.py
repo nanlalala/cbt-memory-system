@@ -58,6 +58,10 @@ class PromptTests(unittest.TestCase):
             with patch.object(judge, "SNAPSHOT", modified), self.assertRaises(ValueError):
                 judge.template_snapshot()
 
+    def test_one_cluster_cannot_estimate_an_interval_but_two_clusters_still_can(self):
+        self.assertIsNone(judge.cluster_interval([0.8], seed=42, resamples=1000, confidence=0.95))
+        self.assertEqual(judge.cluster_interval([0.0, 1.0], seed=42, resamples=1000, confidence=0.95), [0.0, 1.0])
+
 
 class JudgeRunTests(unittest.TestCase):
     def setUp(self):
@@ -296,6 +300,27 @@ class JudgeRunTests(unittest.TestCase):
         long = summary["conditions"][judge.ARMS[2]]
         self.assertAlmostEqual(long["question_micro_accuracy"], 1 / 3)
         self.assertAlmostEqual(long["group_equal_accuracy"], 0.5)
+        primary = summary["paired_differences"][f"{judge.ARMS[2]}_minus_{judge.ARMS[1]}"]
+        self.assertEqual(primary["interval_status"], "estimated")
+        self.assertIsNotNone(primary["cluster_bootstrap_interval"])
+
+    def test_one_history_group_retains_effect_but_cannot_pass_precision_or_confidence_checks(self):
+        self.prepare()
+        mapping = {row["item_id"]: row for row in judge.read_jsonl(self.output_dir / "judge_mapping.jsonl")}
+        def controlled(request, settings, **kwargs):
+            correct = mapping[request["item_id"]]["arm"] == judge.ARMS[2]
+            return {**self.fake_result(request, settings), "hypothesis": "yes" if correct else "no"}
+        self.execute(calls=3, result=controlled)
+        summary = judge.score_reference_judge(self.run_dir, self.output_dir)
+        primary = summary["paired_differences"][f"{judge.ARMS[2]}_minus_{judge.ARMS[1]}"]
+        self.assertEqual(summary["independent_groups"], 1)
+        self.assertEqual(primary["mean_group_accuracy_delta"], 1)
+        self.assertIsNone(primary["cluster_bootstrap_interval"])
+        self.assertIsNone(primary["interval_half_width"])
+        self.assertEqual(primary["interval_status"], "not_estimable_fewer_than_two_groups")
+        self.assertFalse(summary["predeclared_primary_checks"]["precision_target_met"])
+        self.assertFalse(summary["predeclared_primary_checks"]["interval_excludes_zero_in_favor_of_memory"])
+        self.assertFalse(summary["confirmatory_claim"])
 
     def test_real_reader_failure_journal_and_recovered_response_remain_gradeable(self):
         # Use the actual reader/cohort validators here, rather than the loader
