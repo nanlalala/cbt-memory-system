@@ -1,4 +1,141 @@
-# Three-condition conversation-memory experiment
+# Conversation-memory evaluation
+
+## Current work: full-cohort structured-candidate comparison
+
+The new runner connects provenance validation, Memory Manager candidate writing,
+MemoryRetriever and Agent context assembly. **The full-cohort answer generation
+and reference-judge evaluation are not yet completed.** The older 20-question
+raw-history pilot remains unchanged below.
+
+| New condition | Available information |
+| --- | --- |
+| `none` | Current question, no conversation history |
+| `short_term` | Up to 16 turns from the latest eligible session |
+| `short_plus_structured_candidate` | The identical short window plus retrieved older-session candidate records |
+
+All conditions share the response model, system instructions, budgets and empty
+CBT knowledge context. Candidates stay **unconfirmed research evidence**, not
+confirmed user facts. Neither benchmark supplies authentic user consent: no user
+confirmation is invented, and production memory access rules are not relaxed.
+
+### Cohorts and frozen rules
+
+The [frozen-design plan](formal_evaluation_plan.json) specifies effect/precision
+targets, group definitions, failures, retries and model aliases before generation.
+Each prepared cohort saves a plan lock, source checksum, gold-free generation cases
+and a separate scoring-reference file.
+
+| Dataset | Complete eligible cohort | Interpretation |
+| --- | --- | --- |
+| LoCoMo | 1,540 questions / 10 conversations / 4,620 response requests | Exploratory: the earlier 20-question pilot exposed 9 conversations. Removing those questions alone does not create an independent test. The 446 adversarial distractors remain excluded. |
+| LongMemEval S cleaned | 500 questions / 1,500 response requests | Full pinned S histories, not the smaller oracle file. Prior exposure is still under review; use explicit exploratory validation until independence is established. |
+
+Report datasets separately. QA sharing conversation/session histories form one
+statistical cluster; 2,040 questions are not 2,040 independent observations. The
+plan requires at least 30 independent groups and a paired cluster precision
+target; 500 questions do not guarantee either. Directional improvement requires
+the confidence-interval lower bound above zero; “at least a meaningful effect”
+requires that bound to reach the predeclared 0.05 effect. Do not regroup, drop
+failures or add convenient cases after seeing results.
+
+### 1. Prepare in Colab, without model calls
+
+Full data preparation, extraction, retrieval/model batches and grading run only
+in Google Colab—not on the user's computer. Download the immutable source files
+listed in the plan into Colab; the full S file is 277,383,467 bytes. The production
+entry points verify the runtime and refuse local fallback. Tiny unit fixtures
+are software tests, not benchmark samples or permission for paid generation.
+
+Run these commands from the repository root in Colab:
+
+```bash
+python evaluation/end-to-end-dialogue/prepare_formal_evaluation.py \
+  --dataset locomo10 --role exploratory \
+  --input evaluation/memory-retrieval/data/locomo10.json \
+  --output-dir evaluation/end-to-end-dialogue/outputs/formal/locomo-exploratory-v1
+
+python evaluation/end-to-end-dialogue/prepare_formal_evaluation.py \
+  --dataset longmemeval_s_cleaned --role exploratory \
+  --input evaluation/memory-retrieval/data/longmemeval_s_cleaned.json \
+  --output-dir evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-exploratory-v1
+```
+
+The example below prepares the **verbatim candidate baseline**. It wraps original
+statements as sourced candidate records; it does not claim semantic model extraction.
+Choose one cohort/run directory at a time, keeping datasets and extraction modes
+separate. Endpoint and aliases must match the frozen plan.
+
+```bash
+export CBT_EVAL_API_BASE=https://tokendance.space/gateway/v1
+export CBT_COHORT_DIR=evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-exploratory-v1
+export CBT_RUN_DIR=evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-verbatim-v1
+python evaluation/end-to-end-dialogue/run_structured_memory.py \
+  --cohort-dir "$CBT_COHORT_DIR" --output-dir "$CBT_RUN_DIR" \
+  --model deepseek-v4.1-flash \
+  --accepted-provider-model deepseek-v4-1-flash-260910 --backend lexical
+```
+
+For **model-extracted candidates**, first use the same runner with
+`--prepare-extraction` and a separate extraction output directory. This freezes
+source-session-only requests: questions, answers and evidence labels are excluded.
+Add `--extract --max-calls N` only after approving that stage's API budget. When
+all sessions finish, pass its `extraction_artifact.json` using
+`--extraction-artifact PATH` while preparing a **new** response-run directory.
+The artifact's cohort, source, prompt and model identities are verified. Extraction
+calls are additional to the 4,620/1,500 response calls; partial extraction is not
+silently replaced with the verbatim baseline.
+
+### 2. Generate, then score separately
+
+Put `CBT_EVAL_API_KEY` into the Colab environment through Secrets, never a file or
+CLI argument. Repeat the response preparation command with `--generate --max-calls
+30` for an explicitly capped batch. Checkpoints resume the same frozen full cohort;
+a partial batch is not a completed experiment. Attempt journals include failed or
+interrupted requests, and changing model, budget, preprocessing or source requires
+a new run. Both empty answers and identity/integrity failures are recorded, not
+removed to improve scores.
+
+```bash
+python evaluation/end-to-end-dialogue/run_structured_memory.py \
+  --cohort-dir "$CBT_COHORT_DIR" --output-dir "$CBT_RUN_DIR" \
+  --model deepseek-v4.1-flash \
+  --accepted-provider-model deepseek-v4-1-flash-260910 --backend lexical \
+  --generate --max-calls 30
+```
+
+`score_structured_memory.py --run-dir "$CBT_RUN_DIR"` computes diagnostic lexical
+proxies only. Preparing exported hypotheses or anonymous judge inputs is not
+executing a reference evaluator.
+
+The separate `reference_judge.py` preserves the LongMemEval category-specific
+templates from commit `9e0b455f4ef0e2ab8f2e582289761153549043fc`, with a fixed data
+guard, strict yes/no parsing and the declared judge model. This is **adapted
+reference-based model-assisted grading**, not the paper's official score, a human
+rating or clinical evaluation. Applying those templates to LoCoMo is additionally
+a cross-benchmark adaptation. The response and judge share a model family, which
+must remain disclosed.
+
+After the response cohort finishes, prepare grading inputs without model calls,
+then opt into grading batches and aggregate them separately:
+
+```bash
+export CBT_JUDGE_DIR=evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-verbatim-judge-v1
+python evaluation/end-to-end-dialogue/reference_judge.py \
+  --run-dir "$CBT_RUN_DIR" --output-dir "$CBT_JUDGE_DIR"
+python evaluation/end-to-end-dialogue/reference_judge.py \
+  --run-dir "$CBT_RUN_DIR" --output-dir "$CBT_JUDGE_DIR" --generate --max-calls 30
+python evaluation/end-to-end-dialogue/reference_judge.py \
+  --run-dir "$CBT_RUN_DIR" --output-dir "$CBT_JUDGE_DIR" --score
+```
+
+Scoring refuses unresolved rows. The predeclared exhausted/nonretryable reader
+failure path uses `--finalize-reader-failures` during judge preparation and retains
+those rows as zero in the denominator; it is not an option to drop inconvenient
+examples. Preserve the complete cohort/run/judge locks, journals and checkpoints
+in a persistent result export before the Colab session ends. None of these steps
+establishes CBT, safety or clinical effectiveness by itself.
+
+## Historical raw-history three-arm experiment
 
 | Arm | Accessible conversation history |
 | --- | --- |

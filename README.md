@@ -79,7 +79,7 @@ cbt-memory-system/
 │   ├── memory-retrieval/
 │   ├── end-to-end-dialogue/
 │   └── safety/
-└── app/                                # Local synthetic lifecycle demo; journal UI planned
+└── app/                                # Colab dialogue/memory UI and synthetic CLI
 ```
 
 ## Experimental design
@@ -96,11 +96,38 @@ The response model, CBT Knowledge RAG, safety rules and evaluation scenarios wil
 
 Memory Schema v1 and Memory Manager v1 are implemented, including provenance-aware extraction, SQLite storage, correction, conflict confirmation, expiry, deletion and user/sensitivity isolation. Model-extracted summaries remain unconfirmed candidates until a separately evidenced confirmation step. Lifecycle decisions and their audit events run in serialized transactions, stale correction targets are rejected, hard deletion remains final during concurrent expiry, and only one active version may occupy a memory slot. Long-term Memory RAG v1 and the Agent context builder provide relevance gating, temporal reranking, access filters, bounded personal/professional sections and accurate inclusion traces.
 
-Week 4 implementation is underway:
+A Colab dialogue interface now connects the extraction contract, SQLite memory manager,
+retriever and context builder. Fictional inputs can be turned into candidates, explicitly
+confirmed, recalled in a new session, corrected and deleted. The default responder is an
+offline software demonstration; an optional capped provider enables real model responses.
+The small safety gate is a research safeguard, not a complete crisis service.
+
+**Use [the Colab notebook](app/Structured_Memory_Colab.ipynb) for models, GPU work and
+full datasets.** Production benchmark preparation and API adapters refuse ordinary local
+execution. No local model download or personal-computer GPU is required.
+
+The next comparison is specified in a [frozen evaluation plan](evaluation/end-to-end-dialogue/formal_evaluation_plan.json):
+
+- Complete eligible LoCoMo: **1,540 questions**, three conditions, **4,620 planned responses**.
+- LongMemEval-S: **500 questions**, including 30 abstention questions, **1,500 planned responses**.
+- Same response settings and empty CBT knowledge in every condition. Older user statements
+  enter the real memory manager as unconfirmed candidates under a separate research policy;
+  benchmark text is never treated as user consent. Verbatim candidates are a baseline;
+  optional semantic extraction has its own source-only, frozen model artifact.
+- Reference-based model-assisted correctness is the primary endpoint. Lexical overlap is
+  diagnostic. Paired uncertainty is computed by independent history group, with failures
+  retained in the denominator. LoCoMo has development exposure; LongMemEval exposure and
+  shared histories must be audited before any independent-test claim. A large question count
+  alone does not establish adequate evidence.
+
+Formal response generation and reference judging are not yet complete. The historical
+20-question pilot below remains unchanged and is reported separately.
+
+Earlier Week 4 work:
 
 - Source registration separates public availability from reviewed reuse permission. The selected YAML, registry and complete chunk metadata are bound into a corpus manifest and checked at build, load and retrieval. The seven legacy pilot sources remain disabled until review and document pinning are complete.
-- The three-arm runner prepares external benchmark questions without exposing released answers or gold evidence labels to the response model. Its first condition uses no history, the second a bounded latest-session window, and the third that same window plus retrieved older history. This raw-history QA experiment does not yet evaluate automatic structured-memory extraction or CBT therapy quality.
-- A local interactive demo exercises candidate creation, explicit confirmation, current-version correction, retrieval and deletion on fictional fixtures. It uses no model or API and is a software demonstration, not an effectiveness result.
+- The historical raw-history three-arm runner prepares external benchmark questions without exposing released answers or gold evidence labels to the response model. Its first condition uses no history, the second a bounded latest-session window, and the third that same window plus retrieved older history. This raw-history QA experiment does not yet evaluate automatic structured-memory extraction or CBT therapy quality.
+- The fixed-fixture CLI demo exercises candidate creation, explicit confirmation, current-version correction, retrieval and deletion on fictional fixtures. It uses no model or API and is a software demonstration, not an effectiveness result.
 - CPU regression dependencies use a platform-specific wheel hash lock; CI actions use immutable commits. Dense/re-ranking models use fixed Hub commits and verified file bytes, with actual model/runtime identities in new caches and run manifests. The repo remains checkout-based rather than an installable Python package.
 
 Regression checks cover the lifecycle, source/configuration, evidence metadata, model identity, caches and offline pilot audit. The LoCoMo release has been verified and the eligible **1,540 questions / 4,620 three-arm requests** prepared offline. The 446 adversarial distractor questions are excluded from ordinary answer scoring.
@@ -137,7 +164,7 @@ Long-term memory retrieval results:
 | Multilingual E5 | 0.255 | 0.459 | 0.543 | 0.381 |
 | Hybrid | **0.280** | **0.520** | **0.598** | **0.415** |
 
-These historical retrieval runs were not repeated under the new model snapshot lock. The new loader's lightweight regression checks do not replace an actual pinned-weight inference run.
+Pinned-weight retrieval verification is being run on a Colab T4. The published historical table remains separate until the new run artifacts are checked.
 
 Historical knowledge-retrieval pilot results (not the newly governed corpus):
 
@@ -159,7 +186,7 @@ The full no-RAG versus RAG comparison will be repeated after Long-term Memory RA
 | **Week 1 — complete** | Memory schema and data preparation | Define short- and long-term memory types; design schemas for emotions, events, goals, assignments, cognitive patterns and corrections; prepare multi-session test cases | Memory Schema v1, four structured examples and ten multi-session extraction cases |
 | **Week 2 — core complete** | Memory writing and lifecycle management | Implement candidate extraction, validation, deduplication, conflict detection, updating, user correction, expiry and forgetting | Memory Manager v1, correction workflow and unit-test results |
 | **Week 3 — core complete** | Long-term Memory RAG and Agent integration | Build user-scoped memory indexes; implement semantic retrieval, temporal reranking and relevance gating; integrate both RAG channels with short-term context | Long-term Memory RAG v1, dual-retrieval context builder, 40 tests and official LoCoMo comparison |
-| **Week 4 — pilot complete; further evaluation pending** | Comparative evaluation and reporting | Freeze source policy; prepare three controlled memory conditions; run answer generation and scoring; verify the confirmation/correction/deletion demo | Source registry, evidence cards, local demo and 20-question raw-history pilot complete; full structured-memory comparison and official evaluation pending |
+| **Week 4 — pilot complete; further evaluation pending** | Comparative evaluation and reporting | Freeze source policy; prepare three controlled memory conditions; run answer generation and scoring; verify the confirmation/correction/deletion demo | Source registry, evidence cards, Colab dialogue demo and full-cohort experiment code complete; full structured-candidate responses and reference-based scoring pending |
 
 ## Run the new work
 
@@ -176,7 +203,7 @@ The interactive demo only accepts the supplied fictional fixtures. Do not enter 
 
 - [System architecture](docs/architecture.md)
 - [Three-arm experiment: commands and limits](evaluation/end-to-end-dialogue/README.md)
-- [Local memory demo](app/README.md)
+- [Colab dialogue and memory demo](app/README.md)
 - [Source policy and evidence cards](modules/cbt-knowledge-rag/README.md)
 - [Pinned development environment](docs/development.md)
 - [CBT Knowledge RAG report](modules/cbt-knowledge-rag/CBT_RAG_v1_Report.md)
