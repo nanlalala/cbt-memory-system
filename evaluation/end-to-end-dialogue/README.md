@@ -1,6 +1,6 @@
 # Conversation-memory evaluation
 
-## Current work: full-cohort structured-candidate comparison
+## Current work: source-preserving v2 structured-candidate comparison
 
 The new runner connects provenance validation, Memory Manager candidate writing,
 MemoryRetriever and Agent context assembly. **The full-cohort answer generation
@@ -17,6 +17,22 @@ All conditions share the response model, system instructions, budgets and empty
 CBT knowledge context. Candidates stay **unconfirmed research evidence**, not
 confirmed user facts. Neither benchmark supplies authentic user consent: no user
 confirmation is invented, and production memory access rules are not relaxed.
+
+### Sixth-review version boundary — 3 November 2026
+
+Preprocessing v2 preserves signs/operators and retains equal text from different
+source turns. Only same-source assertion replays are deduplicated. This changes
+candidate inventory and potentially retrieved context: rebuild prompts and model
+extraction artifacts in **new v2 directories**. Do not append v2 responses to v1
+runs or reuse their scores. Existing benchmark input releases and the frozen
+statistical plan stay unchanged; the historical audit files remain byte-preserved.
+
+Response generation, extraction and reference grading exclusively lock the output
+directory before checking attempt budgets or contacting a provider. A concurrent
+second writer is rejected; the lock is released on failure or process exit. The
+small lock file deliberately remains in place and is never evidence that a worker
+is still running. Different output directories can run independently. Old code
+that does not acquire this lock must be stopped before new workers start.
 
 ### Cohorts and frozen rules
 
@@ -52,12 +68,12 @@ Run these commands from the repository root in Colab:
 python evaluation/end-to-end-dialogue/prepare_formal_evaluation.py \
   --dataset locomo10 --role exploratory \
   --input evaluation/memory-retrieval/data/locomo10.json \
-  --output-dir evaluation/end-to-end-dialogue/outputs/formal/locomo-exploratory-v1
+  --output-dir evaluation/end-to-end-dialogue/outputs/formal/locomo-exploratory-v2
 
 python evaluation/end-to-end-dialogue/prepare_formal_evaluation.py \
   --dataset longmemeval_s_cleaned --role exploratory \
   --input evaluation/memory-retrieval/data/longmemeval_s_cleaned.json \
-  --output-dir evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-exploratory-v1
+  --output-dir evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-exploratory-v2
 ```
 
 The example below prepares the **verbatim candidate baseline**. It wraps original
@@ -67,8 +83,8 @@ separate. Endpoint and aliases must match the frozen plan.
 
 ```bash
 export CBT_EVAL_API_BASE=https://tokendance.space/gateway/v1
-export CBT_COHORT_DIR=evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-exploratory-v1
-export CBT_RUN_DIR=evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-verbatim-v1
+export CBT_COHORT_DIR=evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-exploratory-v2
+export CBT_RUN_DIR=evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-verbatim-v2
 python evaluation/end-to-end-dialogue/run_structured_memory.py \
   --cohort-dir "$CBT_COHORT_DIR" --output-dir "$CBT_RUN_DIR" \
   --model deepseek-v4.1-flash \
@@ -119,7 +135,7 @@ After the response cohort finishes, prepare grading inputs without model calls,
 then opt into grading batches and aggregate them separately:
 
 ```bash
-export CBT_JUDGE_DIR=evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-verbatim-judge-v1
+export CBT_JUDGE_DIR=evaluation/end-to-end-dialogue/outputs/formal/longmemeval-s-verbatim-judge-v2
 python evaluation/end-to-end-dialogue/reference_judge.py \
   --run-dir "$CBT_RUN_DIR" --output-dir "$CBT_JUDGE_DIR"
 python evaluation/end-to-end-dialogue/reference_judge.py \

@@ -40,6 +40,36 @@ frozen_knowledge_id = retriever.corpus_fingerprint
 
 This example requires an approved schema-2 build and its `data/corpus_manifest.json`; current all-disabled defaults correctly fail closed. For a custom corpus, supply its explicit configuration, registry and manifest. Keep the same config/registry/corpus fingerprints in every memory condition. Until approvals are complete, the end-to-end experiment must declare an empty knowledge layer.
 
+## Review-6 corrections and re-evaluation boundary
+
+The current chunker is `pdf-cleaning-v3-page-spans-short-sections`; embedding
+cache version is `4`. Section changes flush even short tails under their old
+section. Each retained character carries its actual PDF page number, including
+cross-page overlap, so a chunk's citation covers the pages of its included text.
+Existing v2 chunker configurations/manifests are rejected at corpus loading and
+retriever construction. Rebuild from approved source bytes; do not re-stamp old
+chunks to adopt the new version.
+
+Relevance rule `provided-topic-or-keyword-v2` requires the configured source and
+an OR match among **only the content conditions actually supplied**. A topic-only
+or keyword-only mismatch is false; a source-only question checks the source.
+Evaluation rows, summaries and the run manifest record the rule version.
+
+A static check of `rag_eval_set.jsonl` on 3 November 2026 found **50 questions,
+all 50 with both nonempty topic and keyword conditions** (0 topic-only,
+0 keyword-only, 0 neither). Consequently N-05's single-condition bug directly
+changes no gold-condition decision for this existing 50-question file. This is
+not a re-evaluation of retrieval ranks or evidence quality. The new chunking can
+change the corpus, so earlier scores are not validated for the new version.
+
+The regression evaluation uses an original one-chunk fixture and topic-only /
+keyword-only nonmatches; all three no-model methods correctly return zero
+Recall@5, Recall@10 and MRR@10. It is a software regression, not a CBT benchmark.
+Full knowledge re-evaluation has **not** run: all seven historical sources remain
+disabled and there is no currently approved pinned corpus. Historical pilot
+files and numbers are preserved. A future approved rebuild must publish a
+separate versioned evaluation; it must not reuse the archived pilot scores.
+
 ## What is implemented
 
 - Seven historical source candidates: WHO mhGAP, three VA provider/therapist manuals, CCI clinician guide, and official Beck/Tolin sample chapters; currently gated as described above.

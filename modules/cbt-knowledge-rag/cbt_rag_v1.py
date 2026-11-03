@@ -61,8 +61,9 @@ for d in (DATA, RESULTS, CACHE):
 
 DENSE_MODEL = "intfloat/multilingual-e5-small"
 RERANK_MODEL = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
-EMBEDDING_CACHE_VERSION = "3"
-CORPUS_CHUNKER_CONFIG = {"version": "pdf-cleaning-v2-full-metadata", "target_chars": 1400, "overlap_chars": 180}
+EMBEDDING_CACHE_VERSION = "4"
+RELEVANCE_RULE_VERSION = "provided-topic-or-keyword-v2"
+CORPUS_CHUNKER_CONFIG = {"version": "pdf-cleaning-v3-page-spans-short-sections", "target_chars": 1400, "overlap_chars": 180}
 EMBEDDING_PREPROCESSING = {
     "version": "e5-passage-v1", "passage_prefix": "passage: ",
     "query_prefix": "query: ", "normalize_embeddings": True,
@@ -148,6 +149,8 @@ def usable_english_chunk(text: str) -> bool:
 
 
 def make_chunks(source: dict[str, Any], target_chars: int = 1400, overlap_chars: int = 180) -> list[dict[str, Any]]:
+    if target_chars <= 0 or not 0 <= overlap_chars < target_chars:
+        raise ValueError("chunk size must be positive and overlap smaller than chunk size")
     pdf_path = (ROOT / source["file"]).resolve()
     reader = PdfReader(str(pdf_path))
     raw_pages = [(p.extract_text() or "") for p in reader.pages]
@@ -155,19 +158,33 @@ def make_chunks(source: dict[str, Any], target_chars: int = 1400, overlap_chars:
     chunks: list[dict[str, Any]] = []
     section = "Front matter"
     buffer = ""
-    start_page = 1
+    # Track origins with the text itself: an overlap may still contain the
+    # preceding page even after new text from the next page has been appended.
+    buffer_pages: list[int] = []
 
-    def flush(end_page: int, force: bool = False) -> None:
-        nonlocal buffer, start_page
-        while len(buffer) >= target_chars or (force and len(buffer) >= 220):
+    def append(text: str, page_no: int) -> None:
+        nonlocal buffer
+        buffer += text
+        buffer_pages.extend([page_no] * len(text))
+
+    def flush(force: bool = False) -> None:
+        nonlocal buffer, buffer_pages
+        # At a section boundary even a short tail must be emitted under its
+        # existing section/page provenance, before the new heading is assigned.
+        while len(buffer) >= target_chars or (force and buffer.strip()):
             cut = min(len(buffer), target_chars)
             if cut < len(buffer):
                 candidates = [buffer.rfind(x, 0, cut) for x in ("\n\n", ". ", "; ")]
                 best = max(candidates)
                 if best > int(target_chars * .65):
                     cut = best + 1
-            body = buffer[:cut].strip()
-            if usable_english_chunk(section + "\n" + body):
+            raw_body = buffer[:cut]
+            body = raw_body.strip()
+            left = len(raw_body) - len(raw_body.lstrip())
+            right = len(raw_body.rstrip())
+            if body and usable_english_chunk(section + "\n" + body):
+                pages = buffer_pages[left:right]
+                start_page, end_page = min(pages), max(pages)
                 digest = hashlib.sha1(f"{source['id']}:{start_page}:{len(chunks)}:{body[:100]}".encode()).hexdigest()[:12]
                 tags = tag_text(section + "\n" + body)
                 risk = "high" if "suicide_safety" in tags else ("medium" if "scope_referral" in tags else "low")
@@ -179,10 +196,16 @@ def make_chunks(source: dict[str, Any], target_chars: int = 1400, overlap_chars:
                     "citation": f"{source['title']}, pp. {start_page}-{end_page}",
                 })
             if cut >= len(buffer):
-                buffer = ""
+                buffer, buffer_pages = "", []
             else:
-                buffer = buffer[max(0, cut - overlap_chars):].strip()
-                start_page = end_page
+                # Sentence cuts may be shorter than the requested overlap.
+                # Cap the effective overlap to cut - 1 so every flush advances.
+                remaining_at = max(1, cut - overlap_chars)
+                buffer = buffer[remaining_at:]
+                buffer_pages = buffer_pages[remaining_at:]
+        if force:
+            # Whitespace alone has no evidence and must not cross a boundary.
+            buffer, buffer_pages = "", []
 
     for page_no, raw in enumerate(raw_pages, 1):
         page = clean_page(raw, repeated)
@@ -190,13 +213,12 @@ def make_chunks(source: dict[str, Any], target_chars: int = 1400, overlap_chars:
             continue
         for line in page.splitlines():
             if is_heading(line):
-                flush(page_no, force=True)
+                flush(force=True)
                 section = line[:120]
-                start_page = page_no
-            buffer += line + "\n"
-            flush(page_no)
-        buffer += "\n"
-    flush(len(raw_pages), force=True)
+            append(line + "\n", page_no)
+            flush()
+        append("\n", page_no)
+    flush(force=True)
     return chunks
 
 
@@ -284,6 +306,8 @@ def load_corpus(
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise SourcePolicyError("valid corpus manifest required; do not re-stamp legacy chunks") from exc
+    if knowledge_config.chunker_config != CORPUS_CHUNKER_CONFIG:
+        raise SourcePolicyError("unsupported chunker configuration; rebuild with the current page-provenance algorithm")
     chunks = load_jsonl(path)
     knowledge_config.validate_manifest(chunks, manifest, registry)
     return chunks
@@ -389,6 +413,8 @@ class Retriever:
     ):
         self.registry = registry or configured_registry()
         self.knowledge_config = knowledge_config or load_knowledge_config(registry=self.registry)
+        if self.knowledge_config.chunker_config != CORPUS_CHUNKER_CONFIG:
+            raise SourcePolicyError("unsupported chunker configuration; rebuild with the current page-provenance algorithm")
         if manifest is None:
             try:
                 manifest = json.loads((DATA / "corpus_manifest.json").read_text(encoding="utf-8"))
@@ -566,9 +592,14 @@ def relevant(chunk: dict[str, Any], item: dict[str, Any]) -> bool:
     topics = set(item.get("expected_topics", []))
     keywords = [x.lower() for x in item.get("gold_keywords", [])]
     source_ok = not sources or chunk["source_id"] in sources
-    topic_ok = not topics or bool(topics.intersection(chunk["cbt_topics"]))
-    keyword_ok = not keywords or any(x in chunk["text"].lower() for x in keywords)
-    return source_ok and (topic_ok or keyword_ok)
+    # Only supplied content criteria participate. Missing criteria are not
+    # automatic matches that can override a supplied nonmatching criterion.
+    checks = []
+    if topics:
+        checks.append(bool(topics.intersection(chunk["cbt_topics"])))
+    if keywords:
+        checks.append(any(x in chunk["text"].lower() for x in keywords))
+    return source_ok and (any(checks) if checks else True)
 
 
 def evaluate(
@@ -594,6 +625,7 @@ def evaluate(
                 "top_chunk_ids": json.dumps([retriever.chunks[i]["chunk_id"] for i in ids[:5]]),
                 "top_citations": json.dumps([retriever.chunks[i]["citation"] for i in ids[:5]], ensure_ascii=False),
                 "safety_critical": q.get("safety_critical", False),
+                "relevance_rule_version": RELEVANCE_RULE_VERSION,
             })
     df = pd.DataFrame(rows)
     df.to_csv(RESULTS / "retrieval_per_question.csv", index=False)
@@ -604,9 +636,11 @@ def evaluate(
     ).reset_index()
     safety = df[df.safety_critical].groupby("method")["recall_at_5"].mean().rename("safety_recall_at_5")
     summary = summary.merge(safety, on="method", how="left")
+    summary["relevance_rule_version"] = RELEVANCE_RULE_VERSION
     summary.to_csv(RESULTS / "retrieval_summary.csv", index=False)
     (RESULTS / "evaluation_run_manifest.json").write_text(json.dumps({
         "corpus_manifest": retriever.manifest, "evaluated_modes": modes,
+        "relevance_rule_version": RELEVANCE_RULE_VERSION, "chunker_config": CORPUS_CHUNKER_CONFIG,
         "verified_model_identities": retriever.model_identities,
     }, ensure_ascii=False, sort_keys=True, indent=2), encoding="utf-8")
     (RESULTS / "retrieval_summary.json").write_text(summary.to_json(orient="records", indent=2), encoding="utf-8")

@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Any, Sequence
 from urllib.error import HTTPError, URLError
 
+from execution_lock import execution_lock_identity, exclusive_directory
+
 from run_three_arm import (
     ROOT, SYSTEM_PROMPT, Settings, digest_bytes, fit_turns, freeze_json,
     generate_response, model_identity_policy, parse_date, partition_history,
@@ -48,8 +50,8 @@ from memory_retriever import MemoryRetriever, MultilingualE5Encoder, RetrievalPo
 from sqlite_store import SQLiteMemoryStore  # noqa: E402
 
 
-VERSION = "structured-candidate-three-arm-v1"
-EXTRACTION_VERSION = "question-independent-candidate-extraction-v1"
+VERSION = "structured-candidate-three-arm-v2"
+EXTRACTION_VERSION = "question-independent-candidate-extraction-v2"
 ARMS = ("none", "short_term", "short_plus_structured_candidate")
 CASE_FIELDS = {"example_id", "scope_id", "group_id", "query", "query_date", "sessions"}
 TURN_FIELDS = {"dia_id", "role", "speaker", "text", "content"}
@@ -63,6 +65,7 @@ PREPROCESSING_POLICY = {
     "role_policy": "LongMemEval user turns only; LoCoMo peer statements preserve speaker labels",
     "gold_access": "none; source construction never receives question, answer or evidence labels",
     "source_policy": "exact user/peer quote, original speaker, source turn ID and session timestamp",
+    "duplicate_policy": "v2: preserve semantic punctuation; suppress only same-source assertion replays; retain separate rows for repeated text across sources",
     "time_policy": "observed/created/valid-from fixed to source session; no inferred expiry",
     "retrieval_policy": "explicit research-only candidate lifecycle; production policy unchanged",
 }
@@ -402,7 +405,13 @@ def ingest_verbatim_scope(store: SQLiteMemoryStore, sources: Sequence[dict]) -> 
 
 
 def prepare_extraction_requests(cohort_dir: Path, output_dir: Path, settings: Settings, api_base: str) -> dict:
-    manifest, cases, _ = load_cohort(cohort_dir)
+    loaded = load_cohort(cohort_dir)  # Validate the Colab/tiny-fixture boundary first.
+    with exclusive_directory(output_dir):
+        return _prepare_extraction_requests_locked(cohort_dir, output_dir, settings, api_base, loaded)
+
+
+def _prepare_extraction_requests_locked(cohort_dir, output_dir, settings, api_base, loaded) -> dict:
+    manifest, cases, _ = loaded
     validate_response_configuration(manifest, settings, api_base)
     lock = json.loads((cohort_dir / "preregistration_lock.json").read_text(encoding="utf-8"))
     sources = source_inventory(cases, manifest["dataset_key"], settings)
@@ -411,6 +420,7 @@ def prepare_extraction_requests(cohort_dir: Path, output_dir: Path, settings: Se
         raise ValueError("an extraction session exceeds the frozen input budget; use a separately declared splitting policy")
     protocol = {
         "protocol_version": EXTRACTION_VERSION, "cohort_sha256": manifest["cohort_sha256"],
+        "execution_lock_identity": execution_lock_identity(),
         "cohort_manifest": manifest,
         "preregistration_lock": lock,
         "source_inventory_sha256": stable_digest(sources), "requests_sha256": stable_digest(requests),
@@ -428,7 +438,14 @@ def prepare_extraction_requests(cohort_dir: Path, output_dir: Path, settings: Se
 
 def execute_extraction(output_dir: Path, *, max_calls: int) -> dict:
     require_colab()
+    with exclusive_directory(output_dir):
+        return _execute_extraction_locked(output_dir, max_calls=max_calls)
+
+
+def _execute_extraction_locked(output_dir: Path, *, max_calls: int) -> dict:
     protocol = json.loads((output_dir / "extraction_protocol.json").read_text())
+    if protocol.get("execution_lock_identity") != execution_lock_identity():
+        raise ValueError("extraction execution lock differs; prepare a new run")
     require_generation_cohort(protocol["cohort_manifest"])
     requests = read_jsonl(output_dir / "extraction_requests.jsonl")
     if protocol.get("protocol_version") != EXTRACTION_VERSION or stable_digest(requests) != protocol["requests_sha256"]:
@@ -625,7 +642,15 @@ def make_request(case: dict, dataset_key: str, arm: str, settings: Settings,
 def prepare_structured_run(cohort_dir: Path, output_dir: Path, settings: Settings, api_base: str,
                            *, extraction_artifact: Path | None = None, device: str | None = None) -> dict:
     settings.validate()
-    cohort, cases, references = load_cohort(cohort_dir)
+    loaded = load_cohort(cohort_dir)  # Validate the Colab/tiny-fixture boundary first.
+    with exclusive_directory(output_dir):
+        return _prepare_structured_run_locked(cohort_dir, output_dir, settings, api_base,
+                                               extraction_artifact=extraction_artifact, device=device, loaded=loaded)
+
+
+def _prepare_structured_run_locked(cohort_dir, output_dir, settings, api_base, *,
+                                    extraction_artifact, device, loaded) -> dict:
+    cohort, cases, references = loaded
     validate_response_configuration(cohort, settings, api_base)
     lock = json.loads((cohort_dir / "preregistration_lock.json").read_text(encoding="utf-8"))
     sources = source_inventory(cases, cohort["dataset_key"], settings)
@@ -684,9 +709,11 @@ def prepare_structured_run(cohort_dir: Path, output_dir: Path, settings: Setting
                       ROOT / "modules/long-term-memory/extraction/extraction_contract.py",
                       ROOT / "modules/long-term-memory/lifecycle/memory_manager.py",
                       ROOT / "modules/long-term-memory/retrieval/memory_retriever.py",
-                      ROOT / "modules/agent-integration/context_builder.py"]
+                      ROOT / "modules/agent-integration/context_builder.py",
+                      Path(__file__).with_name("execution_lock.py")]
         protocol = {
             "protocol_version": VERSION, "dataset_key": cohort["dataset_key"],
+            "execution_lock_identity": execution_lock_identity(),
             "cohort_manifest": cohort, "cohort_manifest_sha256": stable_digest(cohort),
             "preregistration_lock": lock, "preregistration_lock_sha256": stable_digest(lock),
             "question_ids": [case["example_id"] for case in cases], "conditions": list(ARMS),
@@ -728,6 +755,8 @@ def prepare_structured_run(cohort_dir: Path, output_dir: Path, settings: Setting
 
 
 def validate_protocol(protocol: dict) -> Settings:
+    if protocol.get("execution_lock_identity") != execution_lock_identity():
+        raise ValueError("execution lock differs; prepare a new run")
     if protocol.get("protocol_version") != VERSION or protocol.get("conditions") != list(ARMS):
         raise ValueError("unsupported structured candidate protocol")
     settings = Settings(**protocol["settings"])
@@ -804,6 +833,11 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]:
 
 def generate_run(run_dir: Path, *, max_calls: int) -> dict:
     require_colab()
+    with exclusive_directory(run_dir):
+        return _generate_run_locked(run_dir, max_calls=max_calls)
+
+
+def _generate_run_locked(run_dir: Path, *, max_calls: int) -> dict:
     protocol, prompts, _, completed = load_run(run_dir)
     require_generation_cohort(protocol["cohort_manifest"])
     settings = validate_protocol(protocol)

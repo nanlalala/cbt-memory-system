@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -217,6 +219,131 @@ class DialogueServiceTests(unittest.TestCase):
             self.skipTest("not an outside-Colab environment")
         with self.assertRaisesRegex(RuntimeError, "only.*Colab"):
             session.send_message(QUERY)
+
+
+class DialogueFailureAndSensitiveEvidenceTests(unittest.TestCase):
+    def session(self, **kwargs):
+        session = DialogueSession(**kwargs)
+        self.addCleanup(session.close)
+        return session
+
+    def confirmed_goal(self, session, *, restricted=False):
+        session.send_message(GOAL)
+        record = session.extract_current_session()[0]
+        if restricted:
+            stored = session.store.get(session.user_id, record["memory_id"])
+            stored.sensitivity = "restricted"
+            session.store.put(stored)
+        session.confirm(record["memory_id"], f"CONFIRM {record['memory_id']}")
+        session.new_session()
+        return record
+
+    def assert_business_unchanged(self, before, after):
+        before = dict(before)
+        after = dict(after)
+        before.pop("provider_execution")
+        after.pop("provider_execution")
+        self.assertEqual(before, after)
+
+    def test_restricted_correction_is_neither_chat_context_nor_standard_extraction(self):
+        session = self.session()
+        old = self.confirmed_goal(session, restricted=True)
+        secret = "My restricted fictional family event is Bluebird Friday."
+        correction = session.propose_correction(old["memory_id"], secret)
+        self.assertEqual(correction["sensitivity"], "restricted")
+        self.assertEqual(correction["source_evidence"]["supporting_text"], secret)
+        self.assertEqual(session.snapshot()["turns"], [])
+        session.confirm(correction["memory_id"], f"CONFIRM {correction['memory_id']}")
+        provider = CapturingProvider()
+        session.provider = provider
+        reply = session.send_message("What was the Bluebird family event?")
+        self.assertEqual(reply["memory_ids"], [])
+        self.assertNotIn(secret, json.dumps(provider.calls))
+        session.provider = None
+        self.assertEqual(session.extract_current_session(), [])
+        self.assertFalse(any(record.sensitivity == "standard" for record in session.store.list_for_user(session.user_id)))
+        session.new_session()
+        self.assertEqual(session.send_message("What was the Bluebird family event?")["memory_ids"], [])
+
+    def test_standard_correction_also_cannot_be_reextracted_as_independent_fact(self):
+        session = self.session()
+        old = self.confirmed_goal(session)
+        proposed = session.propose_correction(old["memory_id"], CORRECTION)
+        self.assertEqual(session.snapshot()["turns"], [])
+        self.assertEqual(session.extract_current_session(), [])
+        self.assertEqual(proposed["source_evidence"]["supporting_text"], CORRECTION)
+        self.assertEqual(len(session.snapshot()["records"]), 2)
+
+    def test_correction_database_rejection_preserves_complete_snapshot(self):
+        session = self.session()
+        old = self.confirmed_goal(session)
+        session.store.connection.executescript("""
+            CREATE TRIGGER refuse_correction BEFORE INSERT ON memories
+            WHEN NEW.memory_type = 'user_correction'
+            BEGIN SELECT RAISE(ABORT, 'fixture correction rejection'); END;
+        """)
+        before = session.snapshot()
+        with self.assertRaises(sqlite3.IntegrityError):
+            session.propose_correction(old["memory_id"], CORRECTION)
+        self.assertEqual(before, session.snapshot())
+        self.assertEqual(session.extract_current_session(), [])
+
+    def test_correction_parser_rejection_preserves_complete_snapshot(self):
+        session = self.session()
+        old = self.confirmed_goal(session)
+        before = session.snapshot()
+        with patch("dialogue_service.parse_extraction_output", side_effect=ValueError("fixture invalid extraction")):
+            with self.assertRaises(ValueError):
+                session.propose_correction(old["memory_id"], CORRECTION)
+        self.assertEqual(before, session.snapshot())
+        self.assertEqual(session.extract_current_session(), [])
+
+    def test_failed_provider_does_not_evict_successful_window_or_cached_reply(self):
+        for failure in (TimeoutError("fixture timeout"), ModelOutput(""),
+                        ModelOutput("reply", usage={"total_tokens": -1})):
+            with self.subTest(failure=type(failure).__name__):
+                class Provider:
+                    fail = False
+                    def __call__(self, **kwargs):
+                        if not self.fail:
+                            return ModelOutput("Successful fictional reply.")
+                        if isinstance(failure, Exception):
+                            raise failure
+                        return failure
+                provider = Provider()
+                session = self.session(provider=provider, max_session_turns=2)
+                session.send_message("The successful fictional conversation.")
+                before = session.snapshot()
+                provider.fail = True
+                with self.assertRaises((TimeoutError, ValueError)):
+                    session.send_message("This failed input must never become a memory.")
+                after = session.snapshot()
+                self.assert_business_unchanged(before, after)
+                self.assertEqual(after["provider_execution"]["calls_attempted"], 2)
+                self.assertEqual(after["provider_execution"]["valid_responses_received"], 1)
+                self.assertEqual(after["provider_execution"]["last_call_status"], "attempted_failed")
+                self.assertFalse(after["provider_execution"]["last_call_external"])
+                session.provider = None
+                extracted = session.extract_current_session()
+                self.assertNotIn("This failed input", json.dumps(extracted))
+
+    def test_colab_runtime_refusal_does_not_mark_a_transport_attempt(self):
+        class Provider:
+            requires_colab = True
+            calls_attempted = 0
+            def __call__(self, **kwargs):
+                raise AssertionError("must not run")
+        session = self.session(provider=Provider())
+        before = session.snapshot()
+        with patch.dict(sys.modules, {}, clear=False):
+            existing = sys.modules.pop("google.colab", None)
+            try:
+                with self.assertRaises(RuntimeError):
+                    session.send_message(GOAL)
+            finally:
+                if existing is not None:
+                    sys.modules["google.colab"] = existing
+        self.assertEqual(before, session.snapshot())
 
 
 if __name__ == "__main__":

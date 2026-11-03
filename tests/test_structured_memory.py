@@ -129,8 +129,10 @@ class StructuredMemoryTests(unittest.TestCase):
             self.assertEqual([record.to_dict() for record in bulk.list_for_user("synthetic-scope")],
                              [record.to_dict() for record in serial.list_for_user("synthetic-scope")])
             self.assertEqual(bulk.audit_for_user("synthetic-scope"), serial.audit_for_user("synthetic-scope"))
+            # Only an assertion replay from the same turn is redundant. Different
+            # punctuation or a new source session must retain its own evidence.
             self.assertEqual([result.action for result in actual],
-                             ["duplicate_rejected", "duplicate_rejected", "created", "duplicate_rejected", "created"])
+                             ["duplicate_rejected", "created", "created", "created", "created"])
         finally:
             serial.close()
             bulk.close()

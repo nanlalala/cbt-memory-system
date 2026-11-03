@@ -25,6 +25,13 @@ a public port. The default store is ephemeral and uses fictional inputs.
    context. Deleting one version does not claim to erase a provider's logs,
    database backups or every related memory.
 
+Correction text is management evidence attached to the correction record; it is
+not added to ordinary chat or re-extracted as a standard fact. Failed sends and
+failed correction writes leave the successful conversation untouched. Execution
+status separately reports requests attempted and valid responses, so a timeout or
+rejected empty answer does not appear as “not called.” A failed external request
+may still be billed; errors shown in the interface omit provider response bodies.
+
 Two modes are kept explicit:
 
 - **Offline demonstration** copies supported source text into candidates and

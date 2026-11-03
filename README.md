@@ -120,6 +120,26 @@ The next comparison is specified in a [frozen evaluation plan](evaluation/end-to
   shared histories must be audited before any independent-test claim. A large question count
   alone does not establish adequate evidence.
 
+The sixth-review fixes separate correction evidence from ordinary chat, keep failed
+operations out of the successful session, and report attempted model calls even when
+no valid answer returns. Duplicate detection preserves signs and operators; repeated
+text at another source turn remains a separate observation. Evaluation writers now
+reserve one output directory exclusively across processes before reading attempt budgets.
+
+**Evaluation version boundary:** structured-candidate preprocessing v2 preserves source
+observations that v1 could discard. Its prompts and model-extraction artifacts must be
+rebuilt in a new directory; old structured-candidate outputs cannot be relabelled or
+continued as v2. Knowledge relevance v2 and page-aware chunking also require a new
+corpus and evaluation. The seven legacy knowledge sources remain disabled, so no new
+full-corpus knowledge score is claimed. Archived pilot results and the separately
+verified turn-retrieval table below remain historical results of their recorded code.
+
+Validation after the sixth review: **262 deterministic tests pass**, including
+real two-process contention with a mocked provider, failed dialogue operations,
+and synthetic PDF → evidence-card provenance checks. Both historical audit commands
+still recompute their original published results. These checks use no paid API or
+real model and do not establish improved dialogue quality.
+
 Formal response generation and reference judging are not yet complete. The historical
 20-question pilot below remains unchanged and is reported separately.
 

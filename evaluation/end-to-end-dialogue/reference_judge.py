@@ -20,6 +20,8 @@ from dataclasses import asdict
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 
+from execution_lock import execution_lock_identity, exclusive_directories
+
 from run_structured_memory import ARMS, attempt_state, load_run, require_colab, require_generation_cohort
 from run_three_arm import (Settings, freeze_json, generate_response, model_identity_policy,
                            read_jsonl, stable_digest, validate_provider_model,
@@ -142,7 +144,14 @@ def _reader_failures(run_dir: Path, reader_protocol: dict, prompts: list[dict], 
 
 def prepare_reference_judge(run_dir: Path, output_dir: Path, *, plan_path: Path = DEFAULT_PLAN,
                             finalize_reader_failures: bool = False) -> dict:
-    require_colab()  # Before reading potentially large run artifacts.
+    require_colab()  # Before lock files or potentially large run artifacts.
+    with exclusive_directories(run_dir, output_dir):
+        return _prepare_reference_judge_locked(run_dir, output_dir, plan_path=plan_path,
+                                               finalize_reader_failures=finalize_reader_failures)
+
+
+def _prepare_reference_judge_locked(run_dir: Path, output_dir: Path, *, plan_path: Path,
+                                    finalize_reader_failures: bool) -> dict:
     reader, prompts, references, completed = load_run(run_dir)
     plan = load_frozen_plan(plan_path, reader["cohort_manifest"]["plan_sha256"])
     _validate_failure_policy(plan)
@@ -175,6 +184,7 @@ def prepare_reference_judge(run_dir: Path, output_dir: Path, *, plan_path: Path 
     snapshot = template_snapshot()
     protocol = {
         "schema_version": VERSION, "dataset_key": reader["dataset_key"], "boundary": BOUNDARY,
+        "execution_lock_identity": execution_lock_identity(),
         "reader_protocol_sha256": stable_digest(reader),
         "reader_file_identities": {name: file_identity(run_dir / name) for name in SOURCE_FILES},
         "question_ids": list(reader["question_ids"]), "conditions": list(ARMS),
@@ -213,6 +223,7 @@ def _load_judge(run_dir: Path, output_dir: Path) -> tuple[dict, list[dict], list
             or protocol.get("temperature") != 0 or protocol.get("template_snapshot_sha256") != SNAPSHOT_SHA256
             or protocol.get("upstream_revision") != UPSTREAM_REVISION
             or protocol.get("adapter_code_sha256") != file_identity(Path(__file__))["sha256"]
+            or protocol.get("execution_lock_identity") != execution_lock_identity()
             or protocol.get("model_identity_policy") != model_identity_policy(settings)):
         raise ValueError("judge protocol/policy was changed")
     template_snapshot()
@@ -320,7 +331,12 @@ def _load_judge(run_dir: Path, output_dir: Path) -> tuple[dict, list[dict], list
 
 
 def execute_reference_judge(run_dir: Path, output_dir: Path, *, max_calls: int) -> dict:
-    require_colab()  # Before artifacts, environment key or transport.
+    require_colab()  # Before lock files, artifacts, environment key or transport.
+    with exclusive_directories(run_dir, output_dir):
+        return _execute_reference_judge_locked(run_dir, output_dir, max_calls=max_calls)
+
+
+def _execute_reference_judge_locked(run_dir: Path, output_dir: Path, *, max_calls: int) -> dict:
     if type(max_calls) is not int or max_calls <= 0:
         raise ValueError("provide an explicit positive judge max-calls budget")
     protocol, requests, _, completed, attempts = _load_judge(run_dir, output_dir)
@@ -407,6 +423,11 @@ def cluster_interval(group_deltas: list[float], *, seed: int, resamples: int, co
 
 def score_reference_judge(run_dir: Path, output_dir: Path, *, write_outputs: bool = True) -> dict:
     require_colab()
+    with exclusive_directories(run_dir, output_dir):
+        return _score_reference_judge_locked(run_dir, output_dir, write_outputs=write_outputs)
+
+
+def _score_reference_judge_locked(run_dir: Path, output_dir: Path, *, write_outputs: bool) -> dict:
     protocol, requests, mapping, completed, attempts = _load_judge(run_dir, output_dir)
     retry_limit = protocol["failure_policy"]["transient_retry_limit"]
     unresolved = [row for row in requests if row["item_id"] not in completed]

@@ -201,6 +201,41 @@ class ColabProviderTests(unittest.TestCase):
         self.assertNotIn(KEY, str(caught.exception))
         self.assertIsNone(caught.exception.__context__)
 
+    def test_failed_transport_or_completion_preserves_conversation_and_attempt_truth(self) -> None:
+        sys.path.insert(0, str(ROOT / "modules/agent-integration"))
+        from dialogue_service import DialogueSession
+        for failure in (response(hypothesis=""), response(finish_reason="length"), TimeoutError(KEY)):
+            with self.subTest(failure=type(failure).__name__):
+                provider = self.provider(max_calls=2)
+                session = DialogueSession(provider=provider, max_session_turns=2)
+                self.addCleanup(session.close)
+                with patch.dict(sys.modules, {"google.colab": object()}), \
+                     patch.object(self.runner, "generate_response", return_value=response()):
+                    session.send_message("A successful fictional conversation.")
+                before = session.snapshot()
+                transport_settings = {"side_effect": failure} if isinstance(failure, Exception) else {"return_value": failure}
+                with patch.dict(sys.modules, {"google.colab": object()}), \
+                     patch.object(self.runner, "generate_response", **transport_settings) as transport:
+                    with self.assertRaises(adapter.ProviderRequestError) as caught:
+                        session.send_message("A failed fictional message must not displace prior turns.")
+                self.assertNotIn(KEY, str(caught.exception))
+                transport.assert_called_once()
+                after = session.snapshot()
+                for field in before:
+                    if field != "provider_execution":
+                        self.assertEqual(before[field], after[field], field)
+                execution = after["provider_execution"]
+                self.assertEqual(provider.calls_attempted, 2)
+                self.assertEqual(execution["calls_attempted"], 2)
+                self.assertEqual(execution["valid_responses_received"], 1)
+                self.assertTrue(execution["external_request_attempted"])
+                self.assertTrue(execution["last_call_external"])
+                self.assertEqual(execution["last_call_status"], "attempted_failed")
+                with patch.dict(sys.modules, {"google.colab": object()}):
+                    with self.assertRaises(adapter.ProviderBudgetExceeded):
+                        session.send_message("Budget refusal is not a third request.")
+                self.assertEqual(after, session.snapshot())
+
 
 if __name__ == "__main__":
     unittest.main()

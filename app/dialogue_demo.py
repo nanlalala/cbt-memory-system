@@ -107,7 +107,17 @@ def build_view(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Build a widget-independent presentation for lightweight regression tests."""
     validate_snapshot(snapshot)
     backend_mode = snapshot["backend_mode"]
-    if snapshot["live_model_or_network_used"]:
+    execution = snapshot.get("provider_execution") or {}
+    if execution.get("last_call_status") == "attempted_failed":
+        execution_state = "attempted_failed"
+        mode_label = "请求已尝试 · 本次失败"
+        mode_detail = (
+            "本次外部模型请求已尝试，但没有得到有效结果；失败请求仍可能产生费用。"
+            "已有成功对话不会被失败内容替换。"
+            if execution.get("last_call_external", execution.get("external_request_attempted")) is True else
+            "已尝试调用配置的后端，但没有得到有效结果；这不表示发生了模型或网络调用。"
+        )
+    elif snapshot["live_model_or_network_used"]:
         execution_state = "live_executed"
         mode_label = "Colab 模型请求已执行"
         mode_detail = "此演示已调用外部模型服务；后续发送或整理可能继续产生请求，仅使用虚构资料。"
