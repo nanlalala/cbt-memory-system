@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,10 @@ from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "app"))
+sys.path.insert(0, str(ROOT / "modules/agent-integration"))
+import colab_provider as adapter
+from dialogue_service import DialogueSession
 SPEC = importlib.util.spec_from_file_location("notebook_dialogue_ui", ROOT / "app/dialogue_demo.py")
 ui = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ui)
@@ -113,6 +118,79 @@ class NotebookDialogueUITests(unittest.TestCase):
         modules = {"ipywidgets": fake_widgets(), "IPython.display": SimpleNamespace(display=lambda _: None)}
         with patch.object(ui, "_require_colab"), patch.object(ui.importlib, "import_module", side_effect=lambda name: modules[name]):
             return ui.launch_notebook_demo(session)
+
+    def test_actual_provider_failure_events_show_attempted_not_uncalled(self) -> None:
+        # Use the real adapter/session/UI event path. Only transport and the
+        # hosted-runtime indicators are mocked; no network or model is used.
+        sensitive = "fixture-private-credential-and-provider-body"
+        for failure in ("empty", "timeout"):
+            with self.subTest(failure=failure), patch.object(adapter, "require_colab"), \
+                 patch.dict(sys.modules, {"google.colab": SimpleNamespace()}):
+                provider = adapter.ColabChatProvider(key=sensitive, max_calls=1)
+                runner = adapter._runner()
+                session = DialogueSession(provider=provider)
+                self.addCleanup(session.close)
+                root = self.launch_stub(session)
+                self.assertEqual(ui.build_view(session.snapshot())["execution_state"], "configured_not_called")
+                next(node for node in walk(root) if node.kind == "Checkbox").change(True)
+                next(node for node in walk(root) if node.kind == "Textarea").value = "A fictional walking goal."
+                transport_options = (
+                    {"return_value": {"provider_model": "deepseek-v4-1-flash-260910",
+                                      "finish_reason": "stop", "hypothesis": "", "usage": {}}}
+                    if failure == "empty" else {"side_effect": TimeoutError(sensitive)}
+                )
+                with patch.object(runner, "generate_response", **transport_options) as transport:
+                    next(node for node in walk(root) if node.description == "发送消息").click()
+                self.assertEqual(transport.call_count, 1)
+                self.assertEqual(provider.calls_attempted, 1)
+                view = ui.build_view(session.snapshot())
+                self.assertEqual(view["execution_state"], "attempted_failed")
+                self.assertIn("失败", view["mode_label"])
+                self.assertIn("仍可能产生费用", view["mode_detail"])
+                rendered = "\n".join(str(node.value) for node in walk(root) if node.kind == "HTML")
+                self.assertNotIn("尚未执行", rendered)
+                self.assertNotIn(sensitive, rendered)
+                self.assertIn("ProviderRequestError", rendered)
+
+    def test_latest_failure_is_visible_after_an_earlier_valid_model_reply(self) -> None:
+        data = snapshot()
+        data["backend_mode"] = "colab_model"
+        data["live_model_or_network_used"] = True
+        data["provider_execution"] = {
+            "last_call_status": "attempted_failed", "external_request_attempted": True,
+            "calls_attempted": 2, "valid_responses_received": 1,
+        }
+        view = ui.build_view(data)
+        self.assertEqual(view["execution_state"], "attempted_failed")
+        self.assertIn("本次失败", view["mode_label"])
+        self.assertIn("仍可能产生费用", view["mode_detail"])
+
+    def test_rejection_before_transport_does_not_claim_an_attempt(self) -> None:
+        with patch.object(adapter, "require_colab"), \
+             patch.dict(sys.modules, {"google.colab": SimpleNamespace()}):
+            provider = adapter.ColabChatProvider(key="fixture-only", max_prompt_chars=10)
+            runner = adapter._runner()
+            session = DialogueSession(provider=provider)
+            self.addCleanup(session.close)
+            root = self.launch_stub(session)
+            next(node for node in walk(root) if node.kind == "Checkbox").change(True)
+            next(node for node in walk(root) if node.kind == "Textarea").value = "A fictional message."
+            with patch.object(runner, "generate_response") as transport:
+                next(node for node in walk(root) if node.description == "发送消息").click()
+            transport.assert_not_called()
+            self.assertEqual(provider.calls_attempted, 0)
+            self.assertEqual(ui.build_view(session.snapshot())["execution_state"], "configured_not_called")
+
+    def test_offline_backend_failure_does_not_claim_external_model_usage(self) -> None:
+        data = snapshot()
+        data["provider_execution"] = {
+            "last_call_status": "attempted_failed", "external_request_attempted": False,
+            "calls_attempted": 1, "valid_responses_received": 0,
+        }
+        view = ui.build_view(data)
+        self.assertEqual(view["execution_state"], "attempted_failed")
+        self.assertNotIn("仍可能产生费用", view["mode_detail"])
+        self.assertIn("不表示发生了模型或网络调用", view["mode_detail"])
 
     def test_source_text_and_chat_are_escaped_as_data(self) -> None:
         data = snapshot()

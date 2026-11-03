@@ -136,16 +136,16 @@ def build(revision: str) -> dict:
             print(dataset_key, path.stat().st_size, actual_sha)
     """)
     markdown("""
-        ## 3. Freeze the full cohorts before generation
+        ## 3. Freeze fresh v2 cohorts before generation
 
         LoCoMo has 1,540 eligible questions but only 10 conversation groups, nine already exposed
         during development. Its full result is exploratory. LongMemEval-S has 500 questions; prior
         exposure must be audited before declaring a locked independent test. Both below therefore
-        use the explicit exploratory role. They are reported separately. No score is computed here.
+        use the explicit exploratory role. They are reported separately. No score is computed here. Source-preserving v2 uses a fresh output directory; do not resume v1 prompts or extraction artifacts.
     """)
     code("""
         from prepare_formal_evaluation import prepare_dataset
-        WORK = Path('/content/cbt-structured-evaluation-20261021'); WORK.mkdir(exist_ok=True)
+        WORK = Path('/content/cbt-structured-evaluation-20261103-v2'); WORK.mkdir(exist_ok=True)
         COHORTS = {}
         for dataset_key, filename in (('locomo10', 'locomo10.json'),
                                       ('longmemeval_s_cleaned', 'longmemeval_s_cleaned.json')):

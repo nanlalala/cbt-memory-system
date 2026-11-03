@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import re
+import json
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Mapping, Sequence
@@ -28,7 +28,25 @@ def _parse_time(value: str) -> datetime:
 
 
 def _normalise(text: str) -> str:
-    return re.sub(r"\W+", " ", text.casefold()).strip()
+    # Punctuation can carry fact semantics (for example -5 versus +5).
+    return " ".join(text.casefold().split())
+
+
+def _duplicate_key(record: MemoryRecord) -> tuple:
+    """Only suppress a replay of the same assertion from the same evidence.
+
+    Equal prose at another session/turn is another observation. Retaining that
+    row preserves its date and provenance rather than silently choosing the
+    earliest source. This policy is shared by serial and batch ingestion.
+    """
+    evidence = record.source_evidence
+    return (
+        _normalise(record.content), evidence.session_id, tuple(sorted(evidence.turn_ids)),
+        _normalise(evidence.supporting_text),
+        record.origin, record.sensitivity, record.supersedes_memory_id,
+        json.dumps(record.structured_payload, sort_keys=True, ensure_ascii=False),
+        tuple(sorted(record.tags)), tuple(sorted(record.related_memory_ids)),
+    )
 
 
 @dataclass(slots=True)
@@ -66,7 +84,8 @@ class MemoryManager:
         during benchmark preparation. Summaries, slots, corrections and inferred
         records must use ``ingest``. Provenance and the candidate-only boundary
         are checked here, rather than delegated to a benchmark caller. The whole
-        batch, including duplicate audits, commits or rolls back together.
+        batch, including duplicate audits, commits or rolls back together. Equal
+        text from different source turns is retained as separate provenance.
         """
 
         checked = []
@@ -98,19 +117,19 @@ class MemoryManager:
         with self.store.transaction(immediate=True):
             existing = self.store.list_for_user(user_id)
             stored_ids = {record.memory_id for record in existing}
-            by_content: dict[str, MemoryRecord] = {}
+            by_assertion: dict[tuple, MemoryRecord] = {}
             for record in existing:
                 if record.memory_type == MemoryType.EXPLICIT_FACT.value and record.lifecycle_status in {
                     LifecycleStatus.ACTIVE.value, LifecycleStatus.CANDIDATE.value,
                 }:
                     # list_for_user uses the same ordering as serial ingest.
-                    by_content.setdefault(_normalise(record.content), record)
+                    by_assertion.setdefault(_duplicate_key(record), record)
             pending, audits, results = [], [], []
             for record in checked:
                 if record.memory_id in stored_ids:
                     raise ValueError(f"memory_id already exists: {record.memory_id}")
-                normalised = _normalise(record.content)
-                duplicate = by_content.get(normalised)
+                assertion = _duplicate_key(record)
+                duplicate = by_assertion.get(assertion)
                 if duplicate is not None:
                     audits.append({
                         "user_id": user_id, "memory_id": duplicate.memory_id,
@@ -118,11 +137,11 @@ class MemoryManager:
                         "actor": actor, "details": {"rejected_memory_id": record.memory_id},
                     })
                     results.append(WriteResult("duplicate_rejected", record.memory_id,
-                                               duplicate.memory_id, "normalised content match"))
+                                               duplicate.memory_id, "same normalized assertion and source evidence"))
                     continue
                 pending.append(record)
                 stored_ids.add(record.memory_id)
-                by_content[normalised] = record
+                by_assertion[assertion] = record
                 audits.append({
                     "user_id": user_id, "memory_id": record.memory_id, "action": "created",
                     "occurred_at": record.updated_at, "actor": actor,
@@ -143,7 +162,7 @@ class MemoryManager:
             memory_types={record.memory_type},
         )
         duplicate = next(
-            (item for item in active if _normalise(item.content) == _normalise(record.content)), None
+            (item for item in active if _duplicate_key(item) == _duplicate_key(record)), None
         )
         if duplicate:
             self.store.append_audit(
@@ -155,7 +174,7 @@ class MemoryManager:
                 details={"rejected_memory_id": record.memory_id},
             )
             return WriteResult(
-                "duplicate_rejected", record.memory_id, duplicate.memory_id, "normalised content match"
+                "duplicate_rejected", record.memory_id, duplicate.memory_id, "same normalized assertion and source evidence"
             )
 
         if record.memory_type == MemoryType.USER_CORRECTION.value:

@@ -132,6 +132,11 @@ class DialogueSession:
         self._safety_paused = False
         self._backend_mode = "offline_verbatim_demo" if provider is None else "injected_backend_not_yet_called"
         self._live_model_or_network_used = False
+        self._provider_calls_attempted = 0
+        self._valid_provider_responses = 0
+        self._last_provider_call_status = "not_attempted"
+        self._external_request_attempted = False
+        self._last_call_external = False
 
     def close(self) -> None:
         if self._owns_store:
@@ -150,20 +155,42 @@ class DialogueSession:
         # model request. Test doubles can remain lightweight and fully offline.
         if getattr(self.provider, "requires_colab", False) and "google.colab" not in sys.modules:
             raise RuntimeError("this provider may run only in an authenticated Colab runtime")
-        result = self.provider(messages=list(messages), purpose=purpose)
-        if not isinstance(result, ModelOutput) or not isinstance(result.text, str) or not result.text.strip():
-            raise ValueError("provider must return a nonempty ModelOutput")
-        if not isinstance(result.live_model_or_network_used, bool):
-            raise ValueError("provider execution flag must be boolean")
-        if result.live_model_or_network_used and not result.provider_model.strip():
-            raise ValueError("live provider output must report its model name")
-        if (not isinstance(result.usage, dict)
-                or any(not isinstance(k, str) or not isinstance(v, int) or isinstance(v, bool) or v < 0
-                       for k, v in result.usage.items())):
-            raise ValueError("provider usage must contain nonnegative integer counters")
+        before = getattr(self.provider, "calls_attempted", None)
+        try:
+            result = self.provider(messages=list(messages), purpose=purpose)
+            if not isinstance(result, ModelOutput) or not isinstance(result.text, str) or not result.text.strip():
+                raise ValueError("provider must return a nonempty ModelOutput")
+            if not isinstance(result.live_model_or_network_used, bool):
+                raise ValueError("provider execution flag must be boolean")
+            if result.live_model_or_network_used and not result.provider_model.strip():
+                raise ValueError("live provider output must report its model name")
+            if (not isinstance(result.usage, dict)
+                    or any(not isinstance(k, str) or not isinstance(v, int) or isinstance(v, bool) or v < 0
+                           for k, v in result.usage.items())):
+                raise ValueError("provider usage must contain nonnegative integer counters")
+        except BaseException:
+            self._record_provider_attempt(before, success=False)
+            raise
+        self._record_provider_attempt(before, success=True, live=result.live_model_or_network_used)
         self._backend_mode = "colab_model" if result.live_model_or_network_used else "injected_offline_test_backend"
         self._live_model_or_network_used |= result.live_model_or_network_used
         return result
+
+    def _record_provider_attempt(self, before: object, *, success: bool, live: bool = False) -> None:
+        after = getattr(self.provider, "calls_attempted", None)
+        has_transport_counter = type(before) is int and type(after) is int and before >= 0 and after >= before
+        # A runtime/budget/prompt refusal before the adapter reserves an attempt
+        # must not masquerade as a newly sent request. Generic offline providers
+        # have no transport counter, so only their invocation can be reported.
+        delta = after - before if has_transport_counter else 1
+        if not delta:
+            return
+        external = bool(live or (has_transport_counter and getattr(self.provider, "requires_colab", False)))
+        self._provider_calls_attempted += delta
+        self._valid_provider_responses += int(success)
+        self._last_provider_call_status = "valid_response_received" if success else "attempted_failed"
+        self._external_request_attempted |= external
+        self._last_call_external = external
 
     def new_session(self) -> str:
         self.session_id = _identifier("session")
@@ -180,6 +207,15 @@ class DialogueSession:
             "session_id": self.session_id,
             "backend_mode": self._backend_mode,
             "live_model_or_network_used": self._live_model_or_network_used,
+            "provider_execution": {
+                "calls_attempted": self._provider_calls_attempted,
+                "valid_responses_received": self._valid_provider_responses,
+                "last_call_status": self._last_provider_call_status,
+                "request_attempted": self._provider_calls_attempted > 0,
+                "valid_response_received": self._last_provider_call_status == "valid_response_received",
+                "external_request_attempted": self._external_request_attempted,
+                "last_call_external": self._last_call_external,
+            },
             "safety_gate": "incomplete_keyword_demonstration_not_clinical_triage",
             "safety_paused": self._safety_paused,
             "turns": [
@@ -213,10 +249,13 @@ class DialogueSession:
             self._last_reply = reply
             return deepcopy(reply)
 
-        self._append_turn("user", text)
+        # Stage a bounded view without mutating the successful conversation.
+        # Provider failures cannot evict successful turns or retain failed input.
+        user_turn = ConversationTurn(_identifier("turn"), "user", text)
+        staged_turns = [*self._turns, user_turn][-self.max_session_turns :]
         records = self.manager.eligible_context(self.user_id)
         selected = MemoryRetriever(records, policy=RetrievalPolicy()).search(text, user_id=self.user_id)
-        short_context = "\n".join(f"{turn.role}: {turn.text}" for turn in self._turns)
+        short_context = "\n".join(f"{turn.role}: {turn.text}" for turn in staged_turns)
         context = build_context(
             short_term_summary=short_context,
             personal_memories=selected,
@@ -239,7 +278,6 @@ class DialogueSession:
         else:
             output = self._call_provider(messages, purpose="response")
             mode = self._backend_mode
-        self._append_turn("assistant", output.text)
         source_by_id = {item.record.memory_id: item.record for item in selected}
         reply = {
             "text": output.text,
@@ -262,6 +300,8 @@ class DialogueSession:
             "provider_model": output.provider_model,
             "usage": dict(output.usage),
         }
+        assistant_turn = ConversationTurn(_identifier("turn"), "assistant", output.text)
+        self._turns = [*staged_turns, assistant_turn][-self.max_session_turns :]
         self._last_reply = reply
         return deepcopy(reply)
 
@@ -351,7 +391,10 @@ class DialogueSession:
             raise ValueError("correction target must be the active current version")
         if RISK_PATTERN.search(text):
             raise ValueError("the demonstration risk gate does not permit routine memory correction")
-        turn = self._append_turn("user", text)
+        # Management evidence belongs to this correction record, not ordinary
+        # chat. This also prevents restricted text from being re-extracted as a
+        # standard fact or leaking through the short-term context channel.
+        turn = ConversationTurn(_identifier("correction-source-turn"), "user", text)
         payload = {"corrected_content": text}
         if target.structured_payload.get("slot_key"):
             payload["slot_key"] = target.structured_payload["slot_key"]
@@ -367,10 +410,11 @@ class DialogueSession:
         record = parse_extraction_output(
             raw, user_id=self.user_id, session_id=self.session_id, turns=[turn],
         )[0]
-        self.manager.ingest(record, actor="synthetic_demo_operator")
-        stored = self.store.get(self.user_id, record.memory_id)
-        if stored is None:
-            raise ValueError("correction is a duplicate of an existing memory")
+        with self.store.transaction(immediate=True):
+            self.manager.ingest(record, actor="synthetic_demo_operator")
+            stored = self.store.get(self.user_id, record.memory_id)
+            if stored is None:
+                raise ValueError("correction is a duplicate of an existing memory")
         return stored.to_dict()
 
     def delete(self, memory_id: str, explicit_command: str) -> bool:

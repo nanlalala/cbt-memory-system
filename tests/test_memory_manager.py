@@ -111,7 +111,7 @@ class MemoryManagerTests(unittest.TestCase):
 
     def test_duplicate_is_rejected_without_second_record(self) -> None:
         self.manager.ingest(make_record("m1"))
-        result = self.manager.ingest(make_record("m2", content="the seminar is friday"))
+        result = self.manager.ingest(make_record("m2", content="  the  seminar is friday.  "))
         self.assertEqual(result.action, "duplicate_rejected")
         self.assertIsNone(self.store.get("user-a", "m2"))
 
