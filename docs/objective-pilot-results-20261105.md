@@ -125,7 +125,10 @@ remain separate and unchanged.
 ## Remaining work
 
 The v2 source-bound semantic-index path has genuine source-selection differences
-in fixtures. A real extraction/indexing journal and paired model run remain pending;
+in fixtures. A real four-question extraction/indexing and paired model run is now separately
+reported in [the semantic follow-up](semantic-source-pilot-results-20261105.md);
+its official score is 0/4 versus raw 1/4, with the raw positive itself a substring-matched refusal.
+These are development-exposed exploratory results, not independent semantic validation;
 software fixture differences are not response-effectiveness results. It does not
 implement or establish semantic version-management benefit. Independent evidence
 annotation, four-visit participant testing, and CBT professional review remain
