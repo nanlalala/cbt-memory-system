@@ -45,3 +45,12 @@ the final validation count and immutable executable are recorded in the PR.
   failed during attempted development preparation; no new v3 provider calls were
   started. These repairs and their tests do not turn that interruption into an
   effectiveness result.
+
+## Release checks
+
+All 565 local cloud regression tests passed after the independent review, including
+its unrelated-topic and 10→5→3 update-chain counterexamples. Compile checks, the
+scripted memory demo and both historical artifact checks passed. Recommended
+notebooks pin `1511706b3a4b0ac71416998b5b4d752a13c4e313` with new run roots. GitHub CI on
+the final PR head is required before the authorized merge. These are engineering
+checks; no new provider experiment or clinical result was generated.

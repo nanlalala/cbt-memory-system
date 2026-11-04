@@ -138,7 +138,8 @@ the deterministic comparison or adding more generated QA cannot replace them.
 
 ## Separate v2 semantic-index experiment
 
-The delivered notebook remains pinned to **7832f38a639eb5b5e3c27d6c564db5db25f3999c**.
+The current entry pins the review-fixed executable **1511706b3a4b0ac71416998b5b4d752a13c4e313**.
+The earlier notebook and 7832f38a639eb5b5e3c27d6c564db5db25f3999c executable remain available in Git history for their original frozen runs.
 Do not resume a v1 run using the v2 checkout. Keep its directory and executable
 snapshot. V2 adds `prepare --semantic-index FILE`; it requires a new run directory
 and freezes the index bytes in `semantic_index.jsonl`.
