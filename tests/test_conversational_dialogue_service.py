@@ -105,6 +105,20 @@ class ConversationalDialogueTests(unittest.TestCase):
         self.assertEqual(reply["check_memory_ids"], [])
         self.assertEqual(reply["memory_ids"], [])
 
+    def test_current_explicit_update_is_not_followed_by_a_redundant_old_state_check(self):
+        provider = Provider()
+        session = self.session(provider=provider)
+        old = self.stage(session)
+        update = "现在写思维记录对我很有帮助，已经不觉得麻烦了。"
+        reply = session.send_message(update)
+        self.assertEqual(reply["check_memory_ids"], [])
+        self.assertNotIn(old["memory_id"], reply["memory_ids"])
+        self.assertNotIn(QUOTE, provider.calls[-1][1][0]["content"])
+        self.assertEqual(provider.calls[-1][1][-1]["content"], update)
+        self.assertTrue(any(record["content"] == update for record in session.snapshot()["records"]))
+        self.assertTrue(all(record["confirmation_state"] == "unconfirmed"
+                            for record in session.snapshot()["records"]))
+
     def test_same_window_quote_is_not_immediately_asked_again(self):
         session = self.session()
         session.send_message(QUOTE)

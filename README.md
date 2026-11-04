@@ -73,7 +73,7 @@ turned off, and correction/deletion remain available. The first implementation
 captures eligible quotations without an extra extraction-model call; it does
 not silently validate semantic summaries or infer homework completion.
 
-This mode passes **345 deterministic regression tests**, including automatic
+This mode passes **346 deterministic regression tests**, including automatic
 capture, historical/current-use separation, optional checks, source-tamper
 rejection, opt-out handling and correction/deletion. These are software checks;
 naturalness and reduced user effort still require a participant evaluation.

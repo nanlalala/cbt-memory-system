@@ -500,7 +500,10 @@ class DialogueSession:
                 ))
                 selected.append(replace(item, record=historical))
             elif (decision.action == "check_current" and not checks and self._current_use_query(query)
-                  and not self._memory_checks_paused and not self._declines_memory_check(query)):
+                  and not self._memory_checks_paused and not self._declines_memory_check(query)
+                  # The current message can already supply the relevant update.
+                  # Do not ask the user to repeat it or thereby approve old facts.
+                  and not self._related_check_response(query, {"memory_id": item.record.memory_id})):
                 quote_key = self._evidence_hash({"quote": decision.reference_text.casefold().strip()})
                 recent = any(
                     event["action"] == "dialogue_memory_check_asked"
