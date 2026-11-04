@@ -9,6 +9,7 @@ Source ``system`` messages remain untrusted historical data, never instructions.
 from __future__ import annotations
 
 import argparse
+import ast
 import csv
 import hashlib
 import importlib.util
@@ -263,7 +264,16 @@ def parse_personamem_rows(rows: list[dict], contexts: dict[str, list[dict]]) -> 
             raise ValueError("context cutoff is outside the released message sequence")
         options = row.get("all_options")
         if isinstance(options, str):
-            options = json.loads(options)
+            try:
+                options = json.loads(options)
+            except json.JSONDecodeError:
+                # The frozen release also serialises some lists with Python
+                # single quotes. literal_eval accepts data literals only; never
+                # execute a source string with eval or alter option labels.
+                try:
+                    options = ast.literal_eval(options)
+                except (ValueError, SyntaxError) as exc:
+                    raise ValueError("invalid released PersonaMem options literal") from exc
         if not isinstance(options, list) or len(options) != 4:
             raise ValueError("PersonaMem must retain its four released options")
         options = [_text(option, "option") for option in options]

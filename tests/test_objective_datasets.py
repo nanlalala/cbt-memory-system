@@ -151,6 +151,29 @@ class ObjectiveDatasetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             datasets.parse_personamem_rows([persona_row(), persona_row()], {"c1": persona_context()})
 
+    def test_persona_accepts_released_single_quoted_option_list_literal(self):
+        row = persona_row()
+        options = ["(a) A former choice", "(b) Today's choice", "(c) Another choice", "(d) None"]
+        row["all_options"] = repr(options)
+        cases, refs = datasets.parse_personamem_rows([row], {"c1": persona_context()})
+        self.assertEqual(cases[0]["options"], options)
+        self.assertEqual(refs[0]["correct_option"], "b")
+
+    def test_persona_option_literal_never_executes_code_or_accepts_nonlists(self):
+        for literal in [
+            "__import__('os').system('not-an-executable-fixture')",
+            "[str('(a) One'), '(b) Two', '(c) Three', '(d) Four']",
+            "('(a) One', '(b) Two', '(c) Three', '(d) Four')",
+            "{'a': 'One', 'b': 'Two', 'c': 'Three', 'd': 'Four'}",
+            "['(a) One', '(b) Two', '(c) Three', 4]",
+        ]:
+            row = persona_row()
+            row["all_options"] = literal
+            with self.subTest(literal=literal), patch("os.system") as system:
+                with self.assertRaises(ValueError):
+                    datasets.parse_personamem_rows([row], {"c1": persona_context()})
+                system.assert_not_called()
+
     def test_full_loader_refuses_local_execution_before_file_read(self):
         with patch.object(datasets, "require_colab_runtime", side_effect=RuntimeError("Colab-only")):
             with patch.object(datasets, "verify_file") as verify:

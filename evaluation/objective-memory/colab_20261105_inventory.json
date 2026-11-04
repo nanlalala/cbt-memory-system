@@ -30,7 +30,12 @@
       "track_full_preference_evolution": 139,
       "generalizing_to_new_scenarios": 57,
       "recalling_facts_mentioned_by_the_user": 17
-    }
+    },
+    "options_serialization": {
+      "json_array_text": 286,
+      "python_list_literal_text": 303
+    },
+    "all_options_parse_as_four_strings": true
   },
   "memoryagentbench_conflict": {
     "data_revision": "7ea066982b140a19337e17e60d45d4076e042faf",
@@ -40,10 +45,14 @@
     "source_variants": 8,
     "questions_per_variant": 100,
     "variants": [
-      "factconsolidation_mh_6k", "factconsolidation_mh_32k",
-      "factconsolidation_mh_64k", "factconsolidation_mh_262k",
-      "factconsolidation_sh_6k", "factconsolidation_sh_32k",
-      "factconsolidation_sh_64k", "factconsolidation_sh_262k"
+      "factconsolidation_mh_6k",
+      "factconsolidation_mh_32k",
+      "factconsolidation_mh_64k",
+      "factconsolidation_mh_262k",
+      "factconsolidation_sh_6k",
+      "factconsolidation_sh_32k",
+      "factconsolidation_sh_64k",
+      "factconsolidation_sh_262k"
     ],
     "independence_policy": "One conservative fact-consolidation family; repeated length variants are not independent users"
   },
