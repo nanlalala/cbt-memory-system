@@ -7,7 +7,7 @@ LLM judge as the primary outcome, and it does not measure CBT treatment benefit.
 The main question is whether managed memory adds value over retrieval from the
 **same original history**, rather than whether more history helps a reader.
 
-[Open the objective comparison in Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/feat/objective-memory-evaluation/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
+[Open the objective comparison in Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/main/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
 or inspect the [notebook](Objective_Memory_Comparison_Colab.ipynb). It checks out
 the immutable executable revision recorded in its metadata and code cell.
 Use a fresh hosted runtime; preparation and paid batches are disabled by default.
@@ -111,7 +111,7 @@ python evaluation/objective-memory/replay_memory_controls.py --help
 
 ## Execution and artifacts
 
-Use the [hosted Colab notebook](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/feat/objective-memory-evaluation/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
+Use the [hosted Colab notebook](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/main/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
 for full data and API work. Start with a finite
 call budget and inspect progress before another batch. No automatic download of
 neural models or local-GPU requirement is introduced here. API credentials stay
@@ -134,3 +134,54 @@ and access policy.
 
 These outcomes stay unmeasured until the corresponding study is done. Passing
 the deterministic comparison or adding more generated QA cannot replace them.
+
+
+## Separate v2 semantic-index experiment
+
+The delivered notebook remains pinned to **7832f38a639eb5b5e3c27d6c564db5db25f3999c**.
+Do not resume a v1 run using the v2 checkout. Keep its directory and executable
+snapshot. V2 adds `prepare --semantic-index FILE`; it requires a new run directory
+and freezes the index bytes in `semantic_index.jsonl`.
+
+The index format is one `{"case_id": ..., "candidates": [...]}` per case, including
+empty candidate lists. Each candidate requires `subject_id`, `source_document_id`,
+`source_text_sha256` (SHA-256 of the eligible whitespace-trimmed source),
+`memory_type`, `summary`, and an exact contiguous `supporting_text` quote.
+The index must be generated **without scoring references or question answers**.
+This preparer does not authenticate that upstream generation process: until its
+request/response journal and costs are supplied, provenance and total pipeline
+costs remain unverified/unreported. `semantic_source_index.SYSTEM_PROMPT` supplies
+the extraction contract; it is not itself an executed extractor experiment.
+
+Semantic summaries influence retrieval ranking only. The same ranker and context
+budgets apply to the raw and managed arms; the answer model still sees eligible
+original quotes with their original source roles. Source hashes, ownership,
+visibility and lifecycle checks reject deleted, expired, restricted, future,
+unknown or altered source references. Summaries do not confirm themselves, change
+homework status, supersede versions, or become answer facts. Thus the new contrast
+can test **semantic indexing with source-grounded rendering**, once a separately
+logged index is supplied. It cannot isolate or prove version-management benefit.
+Do not present its software-fixture input differences as model effectiveness.
+
+## Evidence-stage ledger
+
+`diagnose_evidence_stages.py` writes a separate per-request ledger, including
+pending requests. It does not modify frozen scoring code, supply gold to a model,
+or turn a partial cohort into a final accuracy result. Run it with the matching
+frozen runner code; write output outside the live run.
+
+Optional scoring-side annotation JSONL requires `case_id`, `protocol_sha256`,
+`reviewer_id`, `annotation_origin` (`released`, `human_review`, `developer_fixture`,
+or `model_proposed`), `coverage: complete_sufficient_alternatives`, and
+`alternatives`: a list of sufficient sets of spans. Each span requires
+`document_id`, `source_text_sha256` (original inventory text), and Unicode character
+`start`/exclusive `end`. The tool binds spans to source bytes and subjects; it
+cannot authenticate reviewer independence or semantic sufficiency. Model-proposed
+labels stay explicitly labelled, never silently become independent review.
+
+The ledger distinguishes source coverage in retrieval and context from causal
+attribution. Joint evidence requires all documents in at least one sufficient
+alternative. Missing annotations remain unresolved. A wrong answer despite source
+documents in context is **not automatically a generation error**. Quote-control
+runs mark extraction/update as not run. Static QA has no measured participant
+burden; time and repeat-question outcomes remain null.

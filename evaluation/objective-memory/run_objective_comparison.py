@@ -39,10 +39,10 @@ from memory_manager import MemoryManager  # noqa: E402
 from sqlite_store import SQLiteMemoryStore  # noqa: E402
 from memory_use_policy import assess_memory_use  # noqa: E402
 
-VERSION = "objective-public-qa-quote-control-v1"
+VERSION = "objective-public-qa-source-index-v2"
 ARMS = ("short_term", "raw_history_rag", "managed_memory_rag")
 MAX_ATTEMPTS = 2
-FROZEN_ROWS = ("cases.jsonl", "references.jsonl", "prompts.jsonl", "inventory.jsonl")
+FROZEN_ROWS = ("cases.jsonl", "references.jsonl", "prompts.jsonl", "inventory.jsonl", "semantic_index.jsonl")
 CASE_FIELDS = {
     "case_id", "group_id", "subject_id", "dataset_key", "task", "query", "options",
     "history", "events", "as_of", "ordering_kind", "history_scope_id",
@@ -95,7 +95,7 @@ def _replace_rows(path: Path, rows: list[dict]) -> None:
 
 
 def _code_hashes() -> dict[str, str]:
-    paths = [Path(__file__), ROOT / "evaluation/end-to-end-dialogue/run_three_arm.py",
+    paths = [Path(__file__), ROOT / "evaluation/objective-memory/semantic_source_index.py", ROOT / "evaluation/end-to-end-dialogue/run_three_arm.py",
              ROOT / "evaluation/end-to-end-dialogue/execution_lock.py",
              ROOT / "evaluation/objective-memory/objective_datasets.py",
              ROOT / "evaluation/objective-memory/score_objective_comparison.py",
@@ -260,11 +260,15 @@ def _messages(case: dict, short_text: str, long_text: str) -> list[dict]:
 
 
 def _prepare_prompt(case: dict, arm: str, documents: list[HistoryTurn], managed: list[HistoryTurn],
-                    store_trace: list[dict], excluded: list[dict], settings: Settings, ranker: HistoryRanker) -> dict:
+                    store_trace: list[dict], excluded: list[dict], settings: Settings, ranker: HistoryRanker,
+                    semantic_index: list[dict] | None = None) -> dict:
     short = documents[-settings.short_turns:]
     short_ids = {item.document_id for item in short}
     older = [item for item in (managed if arm == ARMS[2] else documents) if item.document_id not in short_ids]
     selected = ranker.rank(case["query"], older, scope_id=case["subject_id"]) if arm != ARMS[0] else []
+    if arm == ARMS[2] and semantic_index is not None:
+        from semantic_source_index import rank_sources
+        selected = rank_sources(case["query"], older, semantic_index, ranker, subject_id=case["subject_id"])
     _, recent_ids, short_dropped = fit_turns(list(reversed(short)), settings.short_chars)
     recent_set = set(recent_ids)
     short_text, recent_ids, _ = fit_turns([item for item in short if item.document_id in recent_set], settings.short_chars)
@@ -279,6 +283,8 @@ def _prepare_prompt(case: dict, arm: str, documents: list[HistoryTurn], managed:
         "request_key": stable_digest([case["case_id"], arm]), "canonical_request_key": prompt_hash,
         "prompt_sha256": prompt_hash, "messages": messages,
         "trace": {"encoding": "released_source_quotes_no_semantic_extraction", "source_unit_count": len(documents),
+                  "selection_representation": "semantic_index_unverified_hints" if arm == ARMS[2] and semantic_index is not None else "source_quotes",
+                  "semantic_candidate_count": len(semantic_index) if arm == ARMS[2] and semantic_index is not None else None,
                   "stored_quote_count": len(store_trace) if arm == ARMS[2] else None,
                   "storage_inventory_sha256": stable_digest(store_trace) if arm == ARMS[2] else None,
                   "storage": [row for row in store_trace if row["document_id"] in set(recent_ids + long_ids)] if arm == ARMS[2] else [],
@@ -291,7 +297,8 @@ def _prepare_prompt(case: dict, arm: str, documents: list[HistoryTurn], managed:
 
 
 def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, settings: Settings,
-                api_base: str, dataset_manifest: dict, *, fixture_only: bool = False) -> dict:
+                api_base: str, dataset_manifest: dict, *, fixture_only: bool = False,
+                semantic_index: list[dict] | None = None) -> dict:
     """Freeze a new run. Small explicitly labelled fixtures never become formal data."""
     if not fixture_only:
         require_colab()
@@ -305,6 +312,17 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
         raise ValueError("references must have exactly one row per frozen case")
     for case in cases:
         _validate_case(case)
+    index_by_case = None
+    if semantic_index is not None:
+        if not isinstance(semantic_index, list):
+            raise ValueError("semantic index must be a per-case list")
+        index_by_case = {}
+        for row in semantic_index:
+            if not isinstance(row, dict) or set(row) != {"case_id", "candidates"} or row["case_id"] in index_by_case:
+                raise ValueError("invalid or duplicate semantic index case")
+            index_by_case[row["case_id"]] = row["candidates"]
+        if set(index_by_case) != {c["case_id"] for c in cases}:
+            raise ValueError("semantic index must cover exactly the frozen cohort, including empty candidate lists")
     output_dir = Path(output_dir)
     with exclusive_directory(output_dir):
         if (output_dir / "protocol.json").exists():
@@ -320,6 +338,10 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
             if history_key not in history_cache:
                 history_cache[history_key] = _managed_quotes(case, admitted)
             managed, store_trace = history_cache[history_key]
+            hints = None
+            if index_by_case is not None:
+                from semantic_source_index import validate_index
+                hints = validate_index(index_by_case[case["case_id"]], documents=managed, subject_id=case["subject_id"])
             compact_cases.append({**{key: value for key, value in case.items() if key != "history"},
                                   "history_inventory_sha256": history_key})
             storage_by_id = {entry["document_id"]: entry for entry in store_trace}
@@ -330,7 +352,7 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
                 if key not in seen_inventory:
                     inventory.append(item)
                     seen_inventory.add(key)
-            prompts.extend(_prepare_prompt(case, arm, docs, managed, store_trace, excluded, settings, ranker) for arm in ARMS)
+            prompts.extend(_prepare_prompt(case, arm, docs, managed, store_trace, excluded, settings, ranker, hints) for arm in ARMS)
         messages_by_key = {}
         for prompt in prompts:
             key = prompt["canonical_request_key"]
@@ -346,7 +368,7 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
                        "arm_requests": len(prompts), "unique_provider_requests": len(messages_by_key),
                        "policy": "exact_messages_hash_deduplicated_call",
                        "interpretation": "equivalent quote controls; shared response is not an independent observation"}
-        rows_by_name = dict(zip(FROZEN_ROWS, (compact_cases, references, prompts, inventory)))
+        rows_by_name = dict(zip(FROZEN_ROWS, (compact_cases, references, prompts, inventory, semantic_index or [])))
         for name, rows in rows_by_name.items():
             write_jsonl(output_dir / name, rows)
         code_hashes = _code_hashes()
@@ -362,7 +384,11 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
                                    "metric_version": "released-upstream-substring-exact-match-or-option-parser-v1"},
             "file_sha256": {name: digest_bytes((output_dir / name).read_bytes()) for name in FROZEN_ROWS},
             "maximum_attempts_per_request": MAX_ATTEMPTS, "deduplication": equivalence,
-            "representation": {"version": "source_verified_quote_v1", "semantic_candidate_artifact": None,
+            "representation": {"version": "semantic_source_index_v1" if index_by_case is not None else "source_verified_quote_v1",
+                               "semantic_candidate_artifact": "semantic_index.jsonl" if index_by_case is not None else None,
+                               "semantic_boundary": "unverified index hints select eligible original quotes only; no summary confirmation, task agreement or version suppression is inferred",
+                               "index_generation_provenance": "external artifact; gold-blind generation and independent semantic review not authenticated by this preparer" if index_by_case is not None else "not_applicable",
+                               "index_generation_cost": "unreported; response-only costs are not total pipeline costs" if index_by_case is not None else "not_applicable",
                                "origin_policy": "all released data system_observation, including synthetic role=user; unconfirmed candidates, no user consent fabricated",
                                "current_use": False, "source_roles": "all released visible roles, retained equally in raw and managed",
                                "clock_policy": "released timestamps if present; otherwise internal source-order schema clock never rendered as calendar",
@@ -664,6 +690,7 @@ def main() -> None:
     prepare.add_argument("--dataset", required=True)
     prepare.add_argument("--input", type=Path, required=True)
     prepare.add_argument("--context", type=Path)
+    prepare.add_argument("--semantic-index", type=Path, help="Separately logged source-bound index JSONL; new v2 protocol only")
     prepare.add_argument("--output-dir", type=Path, required=True)
     prepare.add_argument("--model", required=True)
     prepare.add_argument("--accepted-provider-model", action="append", default=[])
@@ -696,7 +723,8 @@ def main() -> None:
                             backend=args.backend, thinking_mode=args.thinking_mode, short_turns=args.short_turns,
                             top_k=args.top_k, short_chars=args.short_chars, long_chars=args.long_chars,
                             max_context_chars=args.max_context_chars, max_response_tokens=args.max_response_tokens)
-        result = prepare_run(cases, references, args.output_dir, settings, args.api_base, manifest)
+        index = read_jsonl(args.semantic_index) if args.semantic_index else None
+        result = prepare_run(cases, references, args.output_dir, settings, args.api_base, manifest, semantic_index=index)
     elif args.command == "generate":
         result = generate_run(args.run_dir, max_calls=args.max_calls)
     elif args.command == "recover":
