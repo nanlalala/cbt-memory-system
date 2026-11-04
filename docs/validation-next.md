@@ -211,8 +211,14 @@ diagnostic, not the deployable system result.
 ## User value: test the actual four-visit workflow
 
 Use fictional reflection tasks with real participants: **set a goal → report
-progress → revise the goal → review or delete it**. Counterbalance system/order
-and use equivalent tasks to avoid practice effects.
+progress → revise the goal → review or delete it**. The separate
+[four-visit nonclinical protocol](research-validation-protocol.md) now specifies
+parallel randomized arms, keeping each participant in one memory condition to
+limit carryover. Balance equivalent task variants across arms. Its 60 planned
+slots are not enrolled participants; collection and analysis tools do not satisfy
+the remaining ethics, exact independent task-reference and deployment gates.
+The [CBT process/outcome note](cbt-process-outcome-evidence.md) separately specifies
+homework learning, appropriate responses and actual clinical outcomes.
 
 Measure completion without facilitator rescue, incorrect saved facts, correction
 success, deletion understanding, task time, clicks, candidates reviewed and edits.

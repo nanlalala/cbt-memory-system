@@ -73,9 +73,10 @@ turned off, and correction/deletion remain available. The first implementation
 captures eligible quotations without an extra extraction-model call; it does
 not silently validate semantic summaries or infer homework completion.
 
-The repository passes **565 deterministic regression tests**, including automatic
+The repository's deterministic regression suite covers automatic
 capture, historical/current-use separation, optional checks, source-tamper
-rejection, opt-out handling and correction/deletion. These are software checks;
+rejection, opt-out handling and correction/deletion, plus source-bound study
+capture, independent-review import and withdrawal-safe exports. These are software checks;
 naturalness and reduced user effort still require a participant evaluation.
 
 ## Architecture components
@@ -128,8 +129,9 @@ response model and context budget. Knowledge and safety conditions stay fixed.
 | --- | --- | --- |
 | Public tasks with released answers | Fixed official answer rules on MemoryAgentBench fact conflicts and PersonaMem-v1 choices | Adapters and deterministic scorer implemented; hosted execution tracked separately |
 | Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation | Strengthened v2 synthetic replay: both arms pass 26/26 queries and 56/56 operations, including relevance/body mutation checks; no user-benefit claim |
-| User workflow | Four visits: set a goal, report progress, revise, review/delete; completion, errors, time and review effort | Interface improved; participant study not conducted |
-| Open-ended support | Independent review of relevance, collaboration and appropriate boundaries | Model-assisted QA remains supplementary; no clinical outcome claim |
+| User workflow | Four visits: set a goal, review homework, revise, consolidate/delete; completion, errors, time and review effort | Versioned collection/analysis tools and nonclinical feasibility protocol; zero participants |
+| CBT process | Independent review of source fidelity, goals, homework review, guided discovery, action, progress and boundaries | Blank professional-review packets prepared for 32 archived knowledge-RAG replies; zero independent human ratings |
+| Symptoms and functioning | Prospective outcomes and follow-up under a separately approved matched-comparator clinical study | No clinical participants or outcomes |
 
 The executable [objective comparison](evaluation/objective-memory/README.md)
 keeps official scoring answers out of preparation and generation. The hosted
@@ -155,6 +157,16 @@ uses a new run root and the review-fixed executable. The
 [review response](docs/review-response-20261105.md) records temporal-isolation,
 source-version diagnostics, paid-response recovery, opt-out and UI draft fixes.
 Old frozen results remain available under their original code and protocols.
+
+The [current evidence checkpoint](docs/evidence-status-20261105.md) retains the
+negative objective pilots and the missing full-run results. The
+[dialogue-benefit tools](evaluation/dialogue-benefit/README.md) implement a separate
+[four-visit nonclinical protocol](docs/research-validation-protocol.md), with
+source-bound independent scoring, participant denominators and revocable private
+artifacts. Its 60 planned slots are not enrolled people. The
+[CBT process/outcome review](docs/cbt-process-outcome-evidence.md) connects goals,
+homework and skill learning to the stronger evidence needed for actual symptom
+and functioning benefit; none of those human outcomes has been measured yet.
 
 The [evaluation protocol](docs/validation-next.md) defines denominators, fair
 baselines, stage-level attribution, costs and independent-history analysis. It

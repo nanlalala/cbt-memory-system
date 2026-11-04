@@ -1,0 +1,560 @@
+{
+  "schema_version": 1,
+  "protocol_id": "dialogue-benefit-four-visit-v1",
+  "protocol_version": "1.0",
+  "dated": "2026-11-05",
+  "title": "Four-visit randomized nonclinical dialogue-benefit feasibility study",
+  "design_status": "prepared_for_independent_review_and_preregistration",
+  "execution_status": "not_started",
+  "human_observations": {
+    "enrolled_participants": 0,
+    "qualified_professional_ratings": 0
+  },
+  "clinical_efficacy_established": false,
+  "clinical_trial_started": false,
+  "allocation": {
+    "design": "parallel_randomized",
+    "unit": "participant",
+    "planned_slots": 60,
+    "planned_per_arm": 20,
+    "planned_slots_are_enrollment": false,
+    "ratio": [
+      1,
+      1,
+      1
+    ],
+    "arms": [
+      "short_term",
+      "raw_history_rag",
+      "managed_memory_rag"
+    ],
+    "same_arm_all_visits": true,
+    "concealed_map": true,
+    "permuted_blocks": true,
+    "block_size": 6,
+    "block_arm_counts": [
+      2,
+      2,
+      2
+    ],
+    "number_of_blocks": 10,
+    "seed_commitment_required_before_enrollment": true,
+    "replacement_after_randomization": false,
+    "task_variants": [
+      "A",
+      "B",
+      "C"
+    ],
+    "variant_counts_per_arm": {
+      "A": 7,
+      "B": 7,
+      "C": 6
+    },
+    "variant_assignment": "shuffled_within_arm_frozen_before_enrollment"
+  },
+  "population": {
+    "adults_only": true,
+    "fictional_cases_only": true,
+    "patient_treatment": false,
+    "informed_consent_required": true,
+    "language_frozen_before_enrollment": true,
+    "exclude_real_diagnosis_and_treatment_history_collection": true
+  },
+  "visits": [
+    {
+      "visit": 1,
+      "target_day": 0,
+      "window_days": [
+        0,
+        0
+      ],
+      "task_ids": [],
+      "purpose": "fictional_goal_activity_and_source_setup"
+    },
+    {
+      "visit": 2,
+      "target_day": 2,
+      "window_days": [
+        1,
+        3
+      ],
+      "task_ids": [
+        "T01",
+        "T02",
+        "T03",
+        "T04"
+      ]
+    },
+    {
+      "visit": 3,
+      "target_day": 7,
+      "window_days": [
+        5,
+        9
+      ],
+      "task_ids": [
+        "T05",
+        "T06",
+        "T07",
+        "T08"
+      ]
+    },
+    {
+      "visit": 4,
+      "target_day": 14,
+      "window_days": [
+        11,
+        17
+      ],
+      "task_ids": [
+        "T09",
+        "T10",
+        "T11",
+        "T12"
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "T01",
+      "visit": 2,
+      "domain": "current_goal"
+    },
+    {
+      "task_id": "T02",
+      "visit": 2,
+      "domain": "partially_reported_homework"
+    },
+    {
+      "task_id": "T03",
+      "visit": 2,
+      "domain": "historical_current_distinction"
+    },
+    {
+      "task_id": "T04",
+      "visit": 2,
+      "domain": "unanswered_check_remains_unknown"
+    },
+    {
+      "task_id": "T05",
+      "visit": 3,
+      "domain": "explicit_goal_correction"
+    },
+    {
+      "task_id": "T06",
+      "visit": 3,
+      "domain": "activity_quantity_revision"
+    },
+    {
+      "task_id": "T07",
+      "visit": 3,
+      "domain": "historical_version_query"
+    },
+    {
+      "task_id": "T08",
+      "visit": 3,
+      "domain": "ambiguous_update_requires_clarification"
+    },
+    {
+      "task_id": "T09",
+      "visit": 4,
+      "domain": "deleted_source_followup"
+    },
+    {
+      "task_id": "T10",
+      "visit": 4,
+      "domain": "dont_save_followup"
+    },
+    {
+      "task_id": "T11",
+      "visit": 4,
+      "domain": "unrelated_permitted_record_retained"
+    },
+    {
+      "task_id": "T12",
+      "visit": 4,
+      "domain": "new_session_no_deleted_or_excluded_source_return"
+    }
+  ],
+  "comparison": {
+    "primary": {
+      "treatment": "managed_memory_rag",
+      "control": "raw_history_rag"
+    },
+    "secondary": [
+      {
+        "treatment": "managed_memory_rag",
+        "control": "short_term"
+      },
+      {
+        "treatment": "raw_history_rag",
+        "control": "short_term"
+      }
+    ],
+    "equal_across_arms": [
+      "admitted_source_history",
+      "current_task",
+      "model_and_revision",
+      "response_prompt_policy",
+      "context_budget",
+      "access_scope",
+      "deletion_and_expiry_controls",
+      "dont_save_policy",
+      "confirmation_policy",
+      "participant_task_answers",
+      "safety_rules"
+    ],
+    "identical_rendered_prompts": "control_equivalence_not_independent_management_effect",
+    "primary_independent_unit": "participant"
+  },
+  "endpoints": {
+    "co_primary": [
+      {
+        "id": "task_success_fraction",
+        "participant_denominator": 12,
+        "numerator": "independently_source_adjudicated_unassisted_successful_tasks",
+        "range": [
+          0,
+          1
+        ],
+        "favorable_direction": "higher",
+        "missing_failed_timeout_assisted_or_adjudicated_unscorable": 0,
+        "completed_task_pending_independent_ratings": "unresolved_blocks_inferential_intervals_not_zero",
+        "required_evidence": [
+          "task_completion_rule",
+          "source_person_time_and_version_fidelity",
+          "no_contradictory_current_assertion",
+          "applicable_deletion_and_optout_compliance"
+        ]
+      },
+      {
+        "id": "restricted_elapsed_seconds",
+        "aggregation": "sum_four_visit_elapsed_seconds",
+        "visit_cap_seconds": 900,
+        "range": [
+          0,
+          3600
+        ],
+        "favorable_direction": "lower",
+        "include": [
+          "participant_actions",
+          "checks",
+          "model_waiting"
+        ],
+        "exclude": [
+          "documented_breaks"
+        ],
+        "missing_incomplete_timeout_or_assisted_visit_seconds": 900,
+        "validated_psychological_burden_scale": false
+      }
+    ],
+    "secondary": [
+      "actual_observed_elapsed_seconds",
+      "task_failure_categories",
+      "check_prompts",
+      "repeated_checks",
+      "unnecessary_checks",
+      "check_replies",
+      "unanswered_checks",
+      "manual_reviews",
+      "edits",
+      "correction_actions",
+      "deletion_actions",
+      "facilitator_rescues",
+      "supported_personal_claim_precision",
+      "eligible_fact_recall",
+      "stale_current_errors",
+      "forbidden_source_exposures",
+      "deletion_and_dont_save_return",
+      "independent_cbt_process_dimensions",
+      "participant_perceived_usefulness_unvalidated",
+      "actual_attempt_cost_and_latency"
+    ],
+    "repeat_check_subset_of_check_prompts": true,
+    "repeat_check_rule": "same_source_record_version_and_current_issue_without_new_evidence_within_frozen_cooldown",
+    "check_denominators": [
+      "12_planned_followups_per_participant",
+      "completed_followups",
+      "independently_eligible_check_opportunities"
+    ],
+    "undefined_denominator": "not_applicable"
+  },
+  "analysis": {
+    "phase": "feasibility_estimation_not_confirmatory_efficacy",
+    "allocation_analysis": "original_arm_for_all_consent_retained_randomized_participants",
+    "never_enrolled_slots_excluded": true,
+    "data_withdrawn": "show_flow_and_missingness_do_not_reconstruct_erased_data_or_claim_full_ITT",
+    "co_primary_ci_level": 0.975,
+    "secondary_ci_level": 0.95,
+    "multiplicity": "bonferroni_two_co_primary_endpoints",
+    "bootstrap_unit": "participant",
+    "bootstrap_stratification": "randomized_arm",
+    "bootstrap_replicates": 10000,
+    "bootstrap_seed": 20261105,
+    "report": [
+      "arm_counts_and_means",
+      "managed_minus_raw_differences",
+      "dropout_and_data_withdrawal_by_arm",
+      "complete_observed_sensitivity",
+      "lawful_best_worst_missing_outcome_bounds",
+      "small_sample_and_missingness_limits"
+    ],
+    "clinical_equivalence_or_noninferiority_claim": false,
+    "question_or_turn_iid_analysis": false
+  },
+  "sample_size": {
+    "feasibility_target_participants": 60,
+    "target_has_confirmatory_power_justification": false,
+    "illustrative_difference_ci": {
+      "per_arm": 20,
+      "participant_sd": 0.25,
+      "level": 0.975,
+      "normal_approx_half_width": 0.1771984443
+    },
+    "future_confirmatory_example": {
+      "formula": "ceil(2*(z_(1-alpha/2)+z_power)^2*sigma^2/delta^2)",
+      "two_sided_alpha_per_endpoint": 0.025,
+      "power_per_endpoint": 0.9,
+      "joint_power_union_bound": 0.8,
+      "success_fraction_sd_assumption": 0.25,
+      "absolute_difference_assumption": 0.1,
+      "evaluable_per_arm": 156,
+      "attrition_assumption": 0.2,
+      "randomized_per_arm_after_inflation": 195,
+      "not_a_final_sample_size_or_clinical_threshold": true,
+      "primary_time_variance_and_useful_difference_still_require_independent_justification": true
+    }
+  },
+  "annotation": {
+    "task_references_fixed_before_generation": true,
+    "gold_separate_from_model_inputs": true,
+    "source_annotators_per_task": 2,
+    "output_annotators_per_task": 2,
+    "adjudicator_required_for_disagreement": true,
+    "arm_blinded": true,
+    "substring_match_is_semantic_or_causal_evidence": false
+  },
+  "cbt_review": {
+    "raters_per_response": 2,
+    "third_qualified_adjudicator": true,
+    "independent_qualified_cbt_trained_humans_required": true,
+    "qualification_verification_required": true,
+    "developers_or_models_are_independent_professionals": false,
+    "arm_labels_opaque": true,
+    "presentation_order_randomized": true,
+    "blinding_guess_recorded": true,
+    "independent_ratings_locked_before_adjudication": true,
+    "rating_values": [
+      0,
+      1,
+      2,
+      "NA",
+      "UNRESOLVED"
+    ],
+    "dimensions": [
+      "source_fidelity",
+      "current_goal_alignment",
+      "homework_review",
+      "guided_discovery",
+      "collaborative_action",
+      "progress_integration",
+      "scope_and_safety"
+    ],
+    "na_and_unresolved_require_reason": true,
+    "na_or_unresolved_are_zero_or_success": false,
+    "validated_scale": false,
+    "clinical_competence_or_efficacy_measure": false,
+    "source_fidelity_dimension_reported_without_overall_rubric_sum": true,
+    "manual": "docs/cbt-process-outcome-evidence.md"
+  },
+  "stage_provenance": {
+    "ordered_stages": [
+      "source",
+      "extraction",
+      "state_update",
+      "retrieval",
+      "context_after_trimming",
+      "answer"
+    ],
+    "required": [
+      "source_id",
+      "source_version",
+      "source_text_sha256",
+      "source_span_bounds",
+      "history_sha256",
+      "extracted_record_hash",
+      "state_version_hash",
+      "retrieved_candidate_ids_and_scores",
+      "rendered_context_sha256",
+      "rendered_included_spans",
+      "answer_sha256",
+      "request_and_attempt_ids"
+    ],
+    "first_failure_requires_independent_reference_and_observed_transition": true,
+    "missing_or_ambiguous_evidence": "unresolved",
+    "all_observed_policy_violations_retained": true,
+    "oracle_replay_separate_from_deployed_outcome": true,
+    "collector_full_stage_trace_integration": "not_implemented; current collector captures operational events and final source-history/query/response artifacts only"
+  },
+  "event_contract": {
+    "types": [
+      "enroll",
+      "withdraw",
+      "visit_start",
+      "visit_end",
+      "pause",
+      "resume",
+      "task_start",
+      "task_end",
+      "task_response",
+      "task_assessment",
+      "memory_check",
+      "user_edit",
+      "explicit_confirm",
+      "cost",
+      "failure"
+    ],
+    "enrollment_visit": 0,
+    "enrollment_task_id": "study",
+    "task_id_required_for_task_events": true,
+    "free_text_only_in_restricted_task_response": true,
+    "task_response_fields": [
+      "fictional_source_history",
+      "current_query",
+      "response"
+    ],
+    "task_assessment_bound_to_response_and_source_hashes": true,
+    "memory_check_repeated_is_subset_not_extra_event_count": true,
+    "repeat_requires_earlier_check_same_memory_subject_id": true,
+    "collector_schema_authority": "study_capture.py validated event envelope and manifest",
+    "timestamp_field": "timestamp",
+    "timestamp_format": "timezone_aware_ISO8601",
+    "envelope_fields": [
+      "sequence",
+      "previous_sha256",
+      "event_sha256",
+      "event"
+    ],
+    "postseal_withdrawal": "separate_revocation_journal",
+    "snapshot_consent_identity": "consent_snapshot_sha256",
+    "event_chain_append_only": true,
+    "sealed_before_primary_analysis": true
+  },
+  "cost": {
+    "all_attempts_included": true,
+    "stages": [
+      "extraction",
+      "updates",
+      "indexing_embedding",
+      "retrieval",
+      "generation"
+    ],
+    "fields": [
+      "provider",
+      "model_revision",
+      "request_id",
+      "attempt_id",
+      "timestamp_utc",
+      "status",
+      "reported_input_tokens",
+      "reported_output_tokens",
+      "reported_cached_tokens",
+      "latency_seconds",
+      "billed_cost",
+      "currency",
+      "price_reference_date"
+    ],
+    "unknown_cost": "unknown_not_zero",
+    "participant_facilitator_and_reviewer_time_reported_separately": true,
+    "preparation_cost_separate": true,
+    "finite_call_retry_and_currency_caps_required_before_run": true
+  },
+  "safety_and_data": {
+    "all_arms_basic_deletion_expiry_access_and_dont_save": true,
+    "capture_is_current_confirmation": false,
+    "pending_check_expiry_hours": 24,
+    "repeat_check_cooldown_days": 7,
+    "check_timing_is_engineering_not_validated_clinical_threshold": true,
+    "deletion_scope": [
+      "current_store",
+      "index",
+      "session_buffers",
+      "application_cache",
+      "new_application_exports"
+    ],
+    "research_archives_separate_disclosed_retention_policy": true,
+    "public_real_user_transcript_export": false,
+    "pause_conditions": [
+      "cross_user_leak",
+      "forbidden_source_reimport",
+      "unsafe_instruction"
+    ],
+    "individual_stop_conditions": [
+      "participant_request",
+      "distress",
+      "unexpected_real_sensitive_disclosure"
+    ],
+    "no_recruitment_or_patient_deployment_authorized_by_this_file": true
+  },
+  "launch_gates": [
+    "institutional_ethics_determination_and_approved_consent",
+    "responsible_investigators_and_qualified_facilitators",
+    "preregistration_and_locked_analysis_plan",
+    "exact_task_cards_variants_and_independent_source_ledger",
+    "three_arm_end_to_end_fidelity",
+    "all_arm_isolation_deletion_optout_verification",
+    "frozen_code_model_prompt_retrieval_and_budget_identity",
+    "finite_per_stage_calls_retries_currency_cap",
+    "approved_retention_roles_provider_transfer_and_region",
+    "qualified_independent_rater_availability",
+    "restricted_capture_export_path_verified",
+    "production_source_only_generation_adapter",
+    "full_stage_trace_connection",
+    "independent_check_opportunity_annotation_ledger"
+  ],
+  "launch_gates_completed": false,
+  "execution_environment": {
+    "full_data_models_embedding_and_paid_api": "hosted_colab_only_under_existing_guard",
+    "capture_analysis_and_small_synthetic_verification": "independent_codex_cloud",
+    "user_mac_desktop_browser_terminal_or_files": "prohibited"
+  },
+  "identity_policy": {
+    "new_run_directory_required": true,
+    "prior_public_and_historical_runs_unchanged": true,
+    "resume_on_protocol_code_or_model_hash_mismatch": "reject",
+    "required_manifest": [
+      "protocol_sha256",
+      "task_ledger_sha256",
+      "code_commit",
+      "code_file_hashes",
+      "model_provider_revision",
+      "prompt_hashes",
+      "budget_units",
+      "retrieval_embedding_config",
+      "access_and_check_policy",
+      "allocation_seed_commitment",
+      "annotation_manual_hash",
+      "exclusions",
+      "analysis_hash",
+      "approved_data_policy"
+    ]
+  },
+  "source_references": [
+    "https://www.bmj.com/content/389/bmj-2024-081477",
+    "https://www.bmj.com/content/389/bmj-2024-081123",
+    "https://doi.org/10.1038/s41591-020-1037-7",
+    "https://doi.org/10.1038/s41591-020-1034-x",
+    "https://doi.org/10.1038/s41591-022-01772-9",
+    "https://www.jmir.org/2011/4/e126/",
+    "https://www.ucl.ac.uk/brain-sciences/pals/research/clinical-educational-and-health-psychology/research-groups/core/competence-frameworks/cognitive-and-behavioural-therapy"
+  ],
+  "task_materials": {
+    "file": "task_materials_draft.json",
+    "status": "researcher_authored_draft",
+    "tasks": 36,
+    "source_turns": 48,
+    "independent_human_source_validators_completed": 0,
+    "model_input_allowed": false,
+    "source_only_generation_adapter": "not_implemented"
+  }
+}

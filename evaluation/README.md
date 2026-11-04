@@ -7,6 +7,15 @@ information, reliable state changes and helpful dialogue are distinct findings.
 The [final evaluation protocol](../docs/validation-next.md) is the single source
 for the next comparison, task definitions, analysis and remaining work.
 
+The separate [four-visit dialogue-benefit workflow](dialogue-benefit/README.md)
+implements a nonclinical feasibility protocol, source-bound independent review
+and participant-level analysis. Its task materials remain drafts with zero
+independent human reference validators. The
+[evidence checkpoint](../docs/evidence-status-20261105.md) records actual pilot
+results and missing full runs; [CBT process/outcome requirements](../docs/cbt-process-outcome-evidence.md)
+separate appropriate responses, learning and patient benefit. No human study has
+started.
+
 | Layer | Evidence and measures | Interpretation |
 | --- | --- | --- |
 | External memory tasks | Selected MemoryAgentBench conflict tasks and PersonaMem-v1 choices, scored against released answers by deterministic rules | Current-fact and preference performance; new adapters/comparison pending |
