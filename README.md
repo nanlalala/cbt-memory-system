@@ -73,7 +73,7 @@ turned off, and correction/deletion remain available. The first implementation
 captures eligible quotations without an extra extraction-model call; it does
 not silently validate semantic summaries or infer homework completion.
 
-The repository passes **441 deterministic regression tests**, including automatic
+The repository passes **565 deterministic regression tests**, including automatic
 capture, historical/current-use separation, optional checks, source-tamper
 rejection, opt-out handling and correction/deletion. These are software checks;
 naturalness and reduced user effort still require a participant evaluation.
@@ -127,7 +127,7 @@ response model and context budget. Knowledge and safety conditions stay fixed.
 | Evidence | What will be reported | Current boundary |
 | --- | --- | --- |
 | Public tasks with released answers | Fixed official answer rules on MemoryAgentBench fact conflicts and PersonaMem-v1 choices | Adapters and deterministic scorer implemented; hosted execution tracked separately |
-| Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation | Synthetic event replay: both arms pass 23/23 queries and 32/32 control operations; no user-benefit claim |
+| Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation | Strengthened v2 synthetic replay: both arms pass 26/26 queries and 56/56 operations, including relevance/body mutation checks; no user-benefit claim |
 | User workflow | Four visits: set a goal, report progress, revise, review/delete; completion, errors, time and review effort | Interface improved; participant study not conducted |
 | Open-ended support | Independent review of relevance, collaboration and appropriate boundaries | Model-assisted QA remains supplementary; no clinical outcome claim |
 
@@ -137,14 +137,24 @@ PersonaMem census contains 589 questions but only 20 independent persona/context
 groups. Current managed records preserve original quotations. The runner checks
 whether raw-history and managed prompts are actually different; identical inputs
 share one recorded response and cannot establish a management effect.
-This version uses identical quotations and retrieval in both RAG arms, so it is
-a control baseline rather than an estimate of semantic-memory benefit. Public
-QA answer errors remain unassigned to a pipeline stage without independent
-evidence annotations; the synthetic replay diagnoses software stages separately.
+The earlier quotation-control RAG arms have identical inputs and are a control
+baseline, not semantic-memory evidence. The separate v3.1 path adds a source-only
+latest-version view for synthetic MAB facts, with the same closed-world prompt
+and graph retrieval shared by raw and managed conditions. PersonaMem uses shared
+lossless source spans; its two RAG arms remain quote controls. The full driver
+targets all 800 MAB and 589 PersonaMem questions, but no full-scale model result
+is available yet. Public QA causal error attribution still requires independent
+evidence annotations; byte-verified source-path observations and software replay
+remain separate.
 
-Run the [objective comparison in hosted Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/feat/objective-memory-evaluation/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb).
+Run the [objective comparison in hosted Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/main/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb).
 The [notebook](evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
 pins its executable code revision; preparation and paid batches start disabled.
+The [full v3.1 entry](evaluation/objective-memory/Objective_Memory_Full_V3_Colab.ipynb)
+uses a new run root and the review-fixed executable. The
+[review response](docs/review-response-20261105.md) records temporal-isolation,
+source-version diagnostics, paid-response recovery, opt-out and UI draft fixes.
+Old frozen results remain available under their original code and protocols.
 
 The [evaluation protocol](docs/validation-next.md) defines denominators, fair
 baselines, stage-level attribution, costs and independent-history analysis. It
