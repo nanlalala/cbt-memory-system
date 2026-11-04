@@ -83,6 +83,12 @@ comparison may contrast conversational checking with item-by-item review. Do not
 confound memory representation with different amounts of user labor or secretly
 give one arm extra user answers.
 
+Static public QA has no live participant to answer a check: do not feed a gold
+answer back as simulated user confirmation. Score a clarification/non-answer
+under the task's frozen official rule and report its frequency separately. In an
+interactive study, responses to checks must follow the same participant/task
+protocol in both arms; additional information and time are part of the cost.
+
 Add these outcomes to the participant and replay reports:
 
 - explicit review/confirmation actions per successful follow-up;
