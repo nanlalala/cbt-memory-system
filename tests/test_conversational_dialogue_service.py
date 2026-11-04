@@ -110,6 +110,31 @@ class ConversationalDialogueTests(unittest.TestCase):
         session.send_message(QUOTE)
         self.assertEqual(session.send_message(CURRENT)["check_memory_ids"], [])
 
+    def test_english_opt_out_inside_a_sentence_is_not_stored_or_extracted(self):
+        for text in (
+            "I prefer swimming, but please do not save this.",
+            "I prefer swimming but don't record this.",
+            "I prefer swimming; don't remember this preference.",
+            "I prefer swimming please do not store this.",
+        ):
+            with self.subTest(text=text):
+                provider = Provider()
+                session = self.session(provider=provider)
+                session.send_message(text)
+                self.assertEqual(session.snapshot()["records"], [])
+                self.assertEqual(session.snapshot()["memory_processing"]["reason_code"],
+                                 "explicit_do_not_remember")
+                self.assertEqual(session.extract_current_session(), [])
+                session.send_message("My fictional walking goal is a short walk after lunch.")
+                session.set_automatic_memory_enabled(False)
+                self.assertEqual(session.extract_current_session(), [])
+                self.assertEqual([purpose for purpose, _ in provider.calls], ["response", "response"])
+                self.assertNotIn(text, [item["content"] for item in session.snapshot()["records"]])
+
+        # A user reporting forgetfulness is not issuing a storage instruction.
+        self.assertFalse(DialogueSession._do_not_remember("I don't remember my homework goal."))
+        self.assertFalse(DialogueSession._do_not_remember("After swimming, I don't remember the plan."))
+
     def test_auto_disabled_and_opt_out_are_not_backfilled_on_extract_or_enable(self):
         provider = Provider()
         session = self.session(provider=provider)

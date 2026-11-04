@@ -260,7 +260,8 @@ class DialogueSession:
     def _do_not_remember(text: str) -> bool:
         return bool(re.search(
             r"不要(?:记住|保存|记录)|别(?:记住|保存|记录)|这条(?:不要|别)记|"
-            r"(?:^|[.!?]\s*)(?:please\s+)?(?:do\s+not|don't)\s+(?:remember|save|store|record)\b|"
+            r"(?:^|[.!?,;:]\s*|\b(?:but|and|however|so)\s+|\bplease\s+)"
+            r"(?:please\s+)?(?:do\s+not|don't)\s+(?:remember|save|store|record)\b|"
             r"\bi\s+don't\s+want\s+you\s+to\s+(?:remember|save|store|record)\b",
             text, re.IGNORECASE,
         ))
