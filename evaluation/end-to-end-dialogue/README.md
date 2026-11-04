@@ -1,5 +1,20 @@
 # Conversation-memory evaluation
 
+## Overall evaluation boundary
+
+This page documents the existing frozen historical-QA experiment. The project's
+[final evaluation protocol](../../docs/validation-next.md) instead centers the
+paired **managed memory versus competent raw-history RAG** contrast, deterministic
+public-answer tasks, lifecycle compliance and actual user effort. That comparison
+has not run. Keep its future artifacts separate; do not change this v2 protocol or
+use a model-judge QA score as a whole-system score.
+
+The v2 controller is currently **paused**. Colab shows 1,500 retained LongMemEval-S
+reader responses, zero reference-judge labels and no LoCoMo generation. The complete
+1,500-response checkpoint has been downloaded, its member hashes verified and
+its raw responses retained. This establishes artifact retention, not answer
+correctness or a final outcome score.
+
 ## Current work: source-preserving v2 structured-candidate comparison
 
 The new runner connects provenance validation, Memory Manager candidate writing,

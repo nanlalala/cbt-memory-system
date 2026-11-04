@@ -1,7 +1,7 @@
 {
   "schema_version": "colab-v2-execution-checkpoint-v1",
   "recorded_utc": "2026-11-04T16:40:27.417Z",
-  "status": "partial_checkpoint_only_no_effectiveness_result",
+  "status": "paused_reader_complete_judge_not_run_no_effectiveness_result",
   "code_revision": "c6784e92d4717cab365be0ca0aaf9bf65c423062",
   "merged_implementation_commit": "83edd7b751e62cd60534ce87a7906e70ad243f44",
   "execution_location": "hosted Google Colab",
@@ -26,7 +26,7 @@
       "reader_requests": 1500,
       "complete_input_preparation": true,
       "all_13_repeated_session_id_groups_preserved": true,
-      "retained_verified_responses": 720,
+      "retained_verified_responses": 1500,
       "reference_judge_labels": 0
     },
     "locomo10": {
@@ -53,6 +53,15 @@
       "responses": 720,
       "unique_requests": 720,
       "complete_three_arm_question_pairs": 240
+    },
+    {
+      "name": "longmemeval_s_cleaned-v2-reader-1500.zip",
+      "bytes": 475901,
+      "sha256": "0d7cd4582f99ec9bfc4c7bf4cea71999a89f695c3ded558f8666ab3bf80f06ee",
+      "verified_hashed_members": 7,
+      "responses": 1500,
+      "unique_requests": 1500,
+      "complete_three_arm_question_pairs": 500
     }
   ],
   "retention": "Raw benchmark-derived archives retained in controlled project storage; public record contains metadata only.",
@@ -63,10 +72,33 @@
     "github_ci_run_id": 41863237973,
     "tested_revision": "7bcf6f5b985ab1dd6f5e99e298acd8b4f79ba37e"
   },
-  "continuation": "Finite batches of at most 60 calls with frozen lifetime attempt caps; full cohort required before final scoring. Counts here refer only to the retained verified checkpoint, not a live counter.",
+  "continuation": "Controller paused/cancelled. Do not automatically resume model calls. Preserve the frozen v2 inputs and responses; the new validation protocol is a separate experiment.",
   "final_effectiveness_result": false,
   "confirmatory_claim": false,
   "clinical_claim": false,
   "historical_log_policy": "The separate 2 November v1 console observation is not pooled with this v2 run.",
-  "observed_utc": "2026-11-04T16:39:10Z"
+  "observed_utc": "2026-11-04T16:39:10Z",
+  "controller_observation": {
+    "observed_utc": "2026-11-04T17:10:02Z",
+    "status": "paused_controller_cancelled_no_final_effectiveness_result",
+    "controller_done": true,
+    "controller_cancelled": true,
+    "longmemeval_s_cleaned": {
+      "completed_responses": 1500,
+      "started_reader_attempts": 1500,
+      "successful_judge_labels": 0
+    },
+    "locomo10": {
+      "completed_responses": 0,
+      "started_reader_attempts": 0,
+      "successful_judge_labels": 0
+    },
+    "archive_observed_in_colab": {
+      "name": "longmemeval_s_cleaned-v2-reader-1500.zip",
+      "bytes": 475901,
+      "sha256": "0d7cd4582f99ec9bfc4c7bf4cea71999a89f695c3ded558f8666ab3bf80f06ee"
+    },
+    "verification_boundary": "Downloaded archive bytes and every SHA256SUMS member independently verified after the Colab observation. All 1500 unique responses are retained, covering 500 complete three-arm questions; provider names and nonempty stop-completed answers checked. This does not establish factual correctness or provider authenticity.",
+    "reason": "Pause further model-assisted grading while revising the overall evaluation around objective tasks and a fair raw-history baseline."
+  }
 }

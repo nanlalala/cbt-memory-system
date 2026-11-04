@@ -10,11 +10,12 @@ risk matcher below is an incomplete demonstration gate, not clinical triage.
 from __future__ import annotations
 
 import json
+import hashlib
 import re
 import sys
 import uuid
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Sequence
@@ -40,7 +41,7 @@ from extraction_contract import (  # noqa: E402
     parse_extraction_output,
 )
 from memory_manager import MemoryManager  # noqa: E402
-from memory_models import MemoryRecord  # noqa: E402
+from memory_models import MemoryRecord, SourceEvidence  # noqa: E402
 from memory_retriever import MemoryRetriever, RetrievalPolicy  # noqa: E402
 from sqlite_store import SQLiteMemoryStore  # noqa: E402
 
@@ -137,6 +138,12 @@ class DialogueSession:
         self._last_provider_call_status = "not_attempted"
         self._external_request_attempted = False
         self._last_call_external = False
+        # Count successful user messages without retaining an unbounded copy of
+        # their text. IDs in this set are pruned with the bounded turn window.
+        self._session_user_turn_count = 0
+        self._dropped_user_turn_count = 0
+        self._processed_user_turn_count = 0
+        self._extracted_user_turn_ids: set[str] = set()
 
     def close(self) -> None:
         if self._owns_store:
@@ -197,9 +204,50 @@ class DialogueSession:
         self._turns = []
         self._last_reply = None
         self._safety_paused = False
+        self._session_user_turn_count = 0
+        self._dropped_user_turn_count = 0
+        self._processed_user_turn_count = 0
+        self._extracted_user_turn_ids.clear()
         return self.session_id
 
+    def extraction_scope(self) -> dict:
+        """Describe the exact bounded input, not an entire-session promise.
+
+        A successfully processed message is one included in a completed
+        extraction operation; it need not have yielded a candidate. Failed
+        extraction and failed sends never count as processed conversation.
+        """
+        user_turns = [turn for turn in self._turns if turn.role == "user"]
+        pending_retained = sum(turn.turn_id not in self._extracted_user_turn_ids for turn in user_turns)
+        pending_total = self._session_user_turn_count - self._processed_user_turn_count
+        return {
+            "source_turn_ids": [turn.turn_id for turn in user_turns
+                                if turn.turn_id not in self._extracted_user_turn_ids],
+            "context_turn_ids": [turn.turn_id for turn in user_turns],
+            "retained_user_turn_count": len(user_turns),
+            "total_user_turn_count": self._session_user_turn_count,
+            "dropped_user_turn_count": self._dropped_user_turn_count,
+            "processed_user_turn_count": self._processed_user_turn_count,
+            "pending_user_turn_count": pending_total,
+            "pending_retained_user_turn_count": pending_retained,
+            "dropped_pending_user_turn_count": pending_total - pending_retained,
+            "partial_coverage": self._dropped_user_turn_count > 0,
+            "max_session_turns": self.max_session_turns,
+        }
+
     def snapshot(self) -> dict:
+        audits = self.store.audit_for_user(self.user_id)
+        records = []
+        for record in self.store.list_for_user(self.user_id):
+            item = record.to_dict()
+            verified_revision = self._verified_candidate_revision(record, audits=audits)
+            item["verified_candidate_revision_source"] = deepcopy(
+                verified_revision.get("original_source_evidence")
+            ) if verified_revision else None
+            allowed, reason = self._candidate_revision_policy(record)
+            item["candidate_revision_allowed"] = allowed
+            item["candidate_revision_reason"] = reason
+            records.append(item)
         return {
             "kind": "synthetic_research_dialogue_demo",
             "clinical_or_benchmark_result": False,
@@ -222,9 +270,10 @@ class DialogueSession:
                 {"turn_id": turn.turn_id, "role": turn.role, "text": turn.text}
                 for turn in self._turns
             ],
-            "records": [record.to_dict() for record in self.store.list_for_user(self.user_id)],
+            "extraction_scope": self.extraction_scope(),
+            "records": records,
             "last_reply": deepcopy(self._last_reply),
-            "audit": self.store.audit_for_user(self.user_id),
+            "audit": audits,
         }
 
     def send_message(self, text: str) -> dict:
@@ -291,6 +340,7 @@ class DialogueSession:
                     "session_id": source_by_id[mid].source_evidence.session_id,
                     "turn_ids": list(source_by_id[mid].source_evidence.turn_ids),
                     "supporting_text": source_by_id[mid].source_evidence.supporting_text,
+                    "content": source_by_id[mid].content,
                 }
                 for mid in context.memory_ids
             ],
@@ -301,7 +351,14 @@ class DialogueSession:
             "usage": dict(output.usage),
         }
         assistant_turn = ConversationTurn(_identifier("turn"), "assistant", output.text)
-        self._turns = [*staged_turns, assistant_turn][-self.max_session_turns :]
+        committed_turns = [*staged_turns, assistant_turn][-self.max_session_turns :]
+        retained_ids = {turn.turn_id for turn in committed_turns}
+        self._dropped_user_turn_count += sum(
+            turn.role == "user" and turn.turn_id not in retained_ids for turn in self._turns
+        )
+        self._extracted_user_turn_ids.intersection_update(retained_ids)
+        self._session_user_turn_count += 1
+        self._turns = committed_turns
         self._last_reply = reply
         return deepcopy(reply)
 
@@ -309,13 +366,15 @@ class DialogueSession:
         if self._safety_paused:
             return []
         user_turns = [turn for turn in self._turns if turn.role == "user"]
-        if not user_turns:
+        pending_turns = [turn for turn in user_turns if turn.turn_id not in self._extracted_user_turn_ids]
+        if not pending_turns:
             return []
+        pending_ids = {turn.turn_id for turn in pending_turns}
         if self.provider is None:
             # An exact quotation is a candidate, not an inferred semantic fact.
             # This intentionally modest fallback makes no extraction-quality claim.
             candidates = []
-            for turn in user_turns:
+            for turn in pending_turns:
                 if len(turn.text) < 6 or turn.text.endswith(("?", "？")) or RISK_PATTERN.search(turn.text):
                     continue
                 candidates.append({
@@ -327,13 +386,20 @@ class DialogueSession:
                 })
             raw = json.dumps({"candidates": candidates}, ensure_ascii=False)
         else:
+            request = json.loads(build_extraction_request(user_turns))
+            request["eligible_source_turn_ids"] = [turn.turn_id for turn in pending_turns]
             output = self._call_provider([
-                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT},
-                {"role": "user", "content": build_extraction_request(user_turns)},
+                {"role": "system", "content": EXTRACTION_SYSTEM_PROMPT + "\n"
+                 "The request lists eligible_source_turn_ids not previously processed. "
+                 "Every candidate may cite only those IDs, and its supporting_text "
+                 "must be an exact quote from those new turns. Older turns are "
+                 "context only and must not be cited or re-extracted. "
+                 "Do not recreate an unchanged memory from previously processed turns."},
+                {"role": "user", "content": json.dumps(request, ensure_ascii=False)},
             ], purpose="extraction")
             raw = output.text
         records = parse_extraction_output(
-            raw, user_id=self.user_id, session_id=self.session_id, turns=user_turns,
+            raw, user_id=self.user_id, session_id=self.session_id, turns=pending_turns,
         )
         # Model-supplied global identifiers/clock values are not ownership or
         # consent evidence. Assign IDs and timestamps in the orchestration layer.
@@ -351,7 +417,126 @@ class DialogueSession:
                 stored = self.store.get(self.user_id, record.memory_id)
                 if stored is not None:
                     staged.append(stored.to_dict())
+        processed_ids = pending_ids
+        self._processed_user_turn_count += len(processed_ids - self._extracted_user_turn_ids)
+        self._extracted_user_turn_ids.update(processed_ids)
         return staged
+
+    @staticmethod
+    def _candidate_revision_policy(record: MemoryRecord) -> tuple[bool, str]:
+        if record.lifecycle_status != "candidate" or record.confirmation_state != "unconfirmed":
+            return False, "只有尚未确认的候选可以直接修订。"
+        if record.structured_payload.get("slot_key") and record.memory_type in {
+            "emotion_record", "cognitive_pattern", "assignment_outcome", "safety_signal"
+        }:
+            return False, "这条候选包含不能仅靠文字安全修改的结构字段。请删除后重新提供明确信息。"
+        return True, ""
+
+    @staticmethod
+    def _evidence_hash(evidence: dict) -> str:
+        return hashlib.sha256(json.dumps(evidence, ensure_ascii=False, sort_keys=True,
+                                         separators=(",", ":")).encode("utf-8")).hexdigest()
+
+    def _verified_candidate_revision(self, record: MemoryRecord, *, audits: list[dict] | None = None) -> dict:
+        """Authenticate service-owned presentation metadata using its audit binding."""
+        revision = record.structured_payload.get("candidate_revision")
+        if not isinstance(revision, dict):
+            return {}
+        original = revision.get("original_source_evidence")
+        if not isinstance(original, dict):
+            return {}
+        try:
+            SourceEvidence.from_dict(original)
+        except (TypeError, ValueError):
+            return {}
+        if (record.source_evidence.turn_ids != [revision.get("revision_turn_id")]
+                or record.source_evidence.supporting_text != record.content):
+            return {}
+        audits = self.store.audit_for_user(self.user_id) if audits is None else audits
+        if any(
+            event["memory_id"] == record.memory_id
+            and event["action"] == "dialogue_candidate_revised"
+            and event["details"].get("revision_event_id") == revision.get("revision_event_id")
+            and event["details"].get("revision_turn_id") == revision.get("revision_turn_id")
+            and event["details"].get("original_source_sha256") == self._evidence_hash(original)
+            for event in audits
+        ):
+            return revision
+        return {}
+
+    def revise_candidate(self, memory_id: str, text: str) -> dict:
+        """Revise an unconfirmed candidate without accepting its old wording.
+
+        Operator text is management evidence, never an ordinary chat turn.
+        The first extraction quote is retained separately from this new quote;
+        no body text is copied into the audit. Slotted goals keep their type and
+        slot, with their status reset to unknown rather than inferred from the
+        free text. Unsupported typed fields cannot silently be carried over.
+        Correction candidates retain their target.
+        """
+        text = self._checked_text(text)
+        if RISK_PATTERN.search(text):
+            raise ValueError("the demonstration risk gate does not permit routine candidate revision")
+        timestamp = _now()
+        event_id = _identifier("operator-revision")
+        turn_id = _identifier("revision-source-turn")
+        with self.store.transaction(immediate=True):
+            target = self.store.get(self.user_id, memory_id)
+            if target is None:
+                raise KeyError("memory not found for this user")
+            if target.lifecycle_status != "candidate" or target.confirmation_state != "unconfirmed":
+                raise ValueError("only unconfirmed candidate memories can be revised")
+            allowed, reason = self._candidate_revision_policy(target)
+            if not allowed:
+                raise ValueError("structured-field editing required: " + reason)
+            previous_revision = self._verified_candidate_revision(target)
+            original_evidence = previous_revision.get("original_source_evidence", {
+                "session_id": target.source_evidence.session_id,
+                "turn_ids": list(target.source_evidence.turn_ids),
+                "supporting_text": target.source_evidence.supporting_text,
+            })
+            revision = {
+                "original_source_evidence": deepcopy(original_evidence),
+                "original_memory_type": previous_revision.get("original_memory_type", target.memory_type),
+                "original_origin": previous_revision.get("original_origin", target.origin),
+                "revision_event_id": event_id,
+                "revision_turn_id": turn_id,
+                "input_source": "explicit_synthetic_operator_revision_not_patient_consent",
+            }
+            payload = {"candidate_revision": revision}
+            slot_key = target.structured_payload.get("slot_key")
+            if slot_key:
+                payload["slot_key"] = slot_key
+            is_correction = target.memory_type == "user_correction"
+            revised_type = "user_correction" if is_correction else "explicit_fact"
+            if slot_key and not is_correction:
+                revised_type = target.memory_type
+                if revised_type in {"goal", "cbt_assignment"}:
+                    payload.update(description=text, status="unknown")
+            if is_correction:
+                payload["corrected_content"] = text
+            revised = replace(
+                target,
+                content=text,
+                memory_type=revised_type,
+                origin="user_correction" if is_correction else "explicit_user_statement",
+                updated_at=timestamp,
+                observed_at=timestamp,
+                source_evidence=SourceEvidence(self.session_id, [turn_id], text),
+                structured_payload=payload,
+                tags=["synthetic_demo", "operator_revised_candidate"],
+            )
+            self.store.atomic_write(records=[revised], audits=[{
+                "user_id": self.user_id,
+                "memory_id": memory_id,
+                "action": "dialogue_candidate_revised",
+                "occurred_at": timestamp,
+                "actor": "synthetic_demo_operator",
+                "details": {"revision_event_id": event_id, "revision_turn_id": turn_id,
+                            "original_source_sha256": self._evidence_hash(original_evidence),
+                            "remains_unconfirmed": True},
+            }])
+        return revised.to_dict()
 
     def confirm(self, memory_id: str, explicit_command: str) -> dict:
         if explicit_command.strip() != f"CONFIRM {memory_id}":

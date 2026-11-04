@@ -8,7 +8,11 @@ This project investigates how a CBT reflective-journaling agent can form, store,
 
 The central research question is:
 
-> How can an AI agent use short-term and long-term memory to maintain continuity, track CBT goals and assignments, respect user corrections, and remain safe across multiple sessions?
+> Does correctable, expirable and deletable long-term memory support cross-session tracking more accurately than retrieval over the same raw conversation history?
+
+Goals, homework and changing self-reports are the intended use cases. The current
+implementation provides stronger evidence for reliable memory control than for
+user benefit. Better CBT dialogue and treatment outcomes remain unestablished.
 
 ## Overall architecture
 
@@ -84,13 +88,25 @@ cbt-memory-system/
 
 ## Experimental design
 
-The main comparison will include:
+The next evaluation compares **short-term history, raw-history RAG and managed
+memory RAG**. The main contrast is managed memory versus raw-history retrieval;
+giving an agent more history alone does not demonstrate the value of management.
+Both receive the same source history, user updates, deletion/access controls,
+response model and context budget. Knowledge and safety conditions stay fixed.
 
-1. no cross-session memory;
-2. short-term memory only;
-3. short-term plus manageable long-term memory.
+| Evidence | What will be reported | Current boundary |
+| --- | --- | --- |
+| Public tasks with released answers | Deterministic scores on MemoryAgentBench conflict-resolution tasks and PersonaMem-v1 choices | Selected; adapters and new comparison not yet run |
+| Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation; errors traced from extraction to answer | Regression checks exist; comparative effect results pending |
+| User workflow | Four visits: set a goal, report progress, revise, review/delete; completion, errors, time and review effort | Interface improved; participant study not conducted |
+| Open-ended support | Independent review of relevance, collaboration and appropriate boundaries | Model-assisted QA remains supplementary; no clinical outcome claim |
 
-The response model, CBT Knowledge RAG, safety rules and evaluation scenarios will remain fixed across these conditions so that differences can be attributed to the memory framework.
+The [evaluation protocol](docs/validation-next.md) defines denominators, fair
+baselines, stage-level attribution, costs and independent-history analysis. It
+keeps software reliability, continuity accuracy and actual usefulness separate;
+there is no self-designed overall score. The earlier frozen three-condition
+historical-QA experiment is retained under its original protocol, not relabelled
+as this new comparison.
 
 ## Current status
 
@@ -101,6 +117,10 @@ retriever and context builder. Fictional inputs can be turned into candidates, e
 confirmed, recalled in a new session, corrected and deleted. The default responder is an
 offline software demonstration; an optional capped provider enables real model responses.
 The small safety gate is a research safeguard, not a complete crisis service.
+Candidates can be revised before confirmation. The interface shows the actual
+extraction window and warns before discarding unprocessed messages. Memory
+references are readable and labeled as context supplied to the agent, not proof
+of use. Deletion explains its chat-reset effect before a separate confirmation.
 
 **Use [the Colab notebook](app/Structured_Memory_Colab.ipynb) for models, GPU work and
 full datasets.** Production benchmark preparation and API adapters refuse ordinary local
@@ -113,7 +133,7 @@ mount. Exports retain raw audit artifacts and checksums; partial checkpoints are
 not final results. The [next validation plan](docs/validation-next.md) separates
 this historical-QA comparison from later CBT continuity and semantic-memory work.
 
-The next comparison is specified in a [frozen evaluation plan](evaluation/end-to-end-dialogue/formal_evaluation_plan.json):
+The earlier historical-QA comparison uses its unchanged [frozen evaluation plan](evaluation/end-to-end-dialogue/formal_evaluation_plan.json):
 
 - Complete eligible LoCoMo: **1,540 questions**, three conditions, **4,620 planned responses**.
 - LongMemEval-S: **500 questions**, including 30 abstention questions, **1,500 planned responses**.
@@ -121,7 +141,8 @@ The next comparison is specified in a [frozen evaluation plan](evaluation/end-to
   enter the real memory manager as unconfirmed candidates under a separate research policy;
   benchmark text is never treated as user consent. Verbatim candidates are a baseline;
   optional semantic extraction has its own source-only, frozen model artifact.
-- Reference-based model-assisted correctness is the primary endpoint. Lexical overlap is
+- Reference-based model-assisted correctness is that experiment's primary endpoint,
+  not the overall project's outcome measure. Lexical overlap is
   diagnostic. Paired uncertainty is computed by independent history group, with failures
   retained in the denominator. LoCoMo has development exposure; LongMemEval exposure and
   shared histories must be audited before any independent-test claim. A large question count
@@ -141,16 +162,25 @@ corpus and evaluation. The seven legacy knowledge sources remain disabled, so no
 full-corpus knowledge score is claimed. Archived pilot results and the separately
 verified turn-retrieval table below remain historical results of their recorded code.
 
-Validation after the sixth review and workflow fixes: **283 deterministic tests pass**, including
+Validation before the usability changes: **283 deterministic tests passed**, including
 real two-process contention with a mocked provider, failed dialogue operations,
 and synthetic PDF → evidence-card provenance checks. Both historical audit commands
 still recompute their original published results. These checks use no paid API or
 real model and do not establish improved dialogue quality.
 
-The current v2 response generation and reference judging are not yet complete.
+The continuity/interface revision passes **307 deterministic tests**, including
+candidate revision before confirmation, repeat-extraction protection, typed-slot
+consistency, verified readable sources, window coverage and cancelable deletion.
+These checks validate the software changes; the participant study and new
+raw-history comparison are still pending.
+
+The current v2 experiment is paused while the final evaluation is revised.
 The [4 November execution checkpoint](evaluation/end-to-end-dialogue/colab_20261104_v2_progress.json)
-records complete input preparation in Colab and the first 720 retained, hash-verified
-LongMemEval-S responses. Generation is continuing; no final score is reported.
+records complete input preparation and all **1,500 retained, hash-verified
+LongMemEval-S responses** (500 complete three-condition questions). The controller
+is cancelled; zero reference-judge labels and no LoCoMo responses have been
+produced. Raw responses are backed up, but no final correctness score or new
+raw-history comparison is reported.
 A [recovered older-run log](evaluation/end-to-end-dialogue/colab_20261102_legacy_log_note.md)
 reports a completed v1 LoCoMo run, but its raw scoring archive is unavailable and
 the logged numbers cannot yet be independently recomputed. The historical
@@ -255,7 +285,7 @@ The interactive demo only accepts the supplied fictional fixtures. Do not enter 
 - [System architecture](docs/architecture.md)
 - [Three-arm experiment: commands and limits](evaluation/end-to-end-dialogue/README.md)
 - [Colab dialogue and memory demo](app/README.md)
-- [Next validation: CBT continuity and semantic memory](docs/validation-next.md)
+- [Final evaluation: memory control, continuity and user value](docs/validation-next.md)
 - [Source policy and evidence cards](modules/cbt-knowledge-rag/README.md)
 - [Pinned development environment](docs/development.md)
 - [CBT Knowledge RAG report](modules/cbt-knowledge-rag/CBT_RAG_v1_Report.md)

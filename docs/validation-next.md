@@ -1,98 +1,251 @@
-# Next validation: CBT continuity and semantic memory
+# Validation protocol: manageable memory and cross-session continuity
 
-Status: design and source check, 4 November 2026. No new benchmark results are
-reported here. The frozen LoCoMo / LongMemEval three-condition v2 comparison stays
-unchanged. It tests historical QA with sourced candidate records; its default
-verbatim representation does not establish that semantic CBT memory works.
+**Status — 4 November 2026:** revised evaluation protocol, not a completed effect
+study. The frozen LoCoMo / LongMemEval v2 experiment remains unchanged. Its
+historical-QA results and model-assisted grading are supporting evidence; they do
+not establish that semantic memory improves CBT follow-up. Regression tests
+establish software behavior, not user benefit.
 
-## Data we can actually use
+The main research question is:
 
-| Resource | What the primary source establishes | Decision for this project |
-| --- | --- | --- |
-| [HOPE / SPARTA](https://github.com/LCS2-IIITD/SPARTA_WSDM2022), [paper](https://arxiv.org/abs/2111.06647v1) | Counseling-video transcripts with twelve dialogue-act labels. The official repository requires an agreement form and an access-request email. A session collection is not proof of repeated visits by the same client. | **Blocked for longitudinal evaluation** until access terms and a reliable client/session-order map are obtained. Do not describe HOPE as ten sessions from one person. Dialogue-act labels are not gold goals, homework completion or longitudinal memory. |
-| [MusPsy](https://github.com/Rener2005/MusPsy/tree/eaae4df12808f4cbda97d8bc8b243b34cc69f613), [paper](https://aclanthology.org/2026.findings-acl.818/) | The paper describes case-report-seeded, LLM-generated conversations across visits by the same simulated client. The official release includes dialogues, memories and usercards, and declares [MIT](https://github.com/Rener2005/MusPsy/blob/eaae4df12808f4cbda97d8bc8b243b34cc69f613/LICENSE). A small ID-1000 sample has six separated dialogue blocks and corresponding numbered memories. | **Preferred next source**, pinned to the linked commit. First inventory all case/session IDs and record license plus seed-source provenance. Released memories/goals are generated references, **not independently verified gold**. Do not transfer the paper's client count to the usable release without a census. |
-| [DiaCBT paper v1](https://arxiv.org/html/2509.02999v1) | Describes 108 simulated cases / 540 sessions, CCDs and fourteen CBT strategy labels. Its paper publication license is not a dataset-use license. | **Blocked**: no author-endorsed downloadable release, dataset license and stable case/session files were verified in this check. Seek these before ingestion; do not substitute an unofficial mirror. Strategy labels would not by themselves validate memory correctness. |
-| [CBT-Bench official card](https://huggingface.co/datasets/Psychotherapy-LLM/CBT-Bench), [paper](https://arxiv.org/abs/2410.13218v2) | Dataset card declares CC-BY-NC-4.0. Cognitive-distortion/core-belief labels and deliberate-practice human references are available. CBT-QA test answers are withheld; the authors provide a scoring Space. | **Available for a separate noncommercial CBT capability check**, with attribution and pinned files. It is not a same-client longitudinal-memory benchmark. Do not invent CBT-QA answers or treat a reference therapeutic reply as the only valid response. |
+> Does correctable, expirable and deletable long-term memory support cross-session
+> tracking more accurately than retrieval over the same raw conversation history?
 
-MusPsy release identity: `eaae4df12808f4cbda97d8bc8b243b34cc69f613`.
-CBT-Bench card revision checked:
-[`bbd37514ba2e4db46bd9633d9207a57828c2ec9d`](https://huggingface.co/datasets/Psychotherapy-LLM/CBT-Bench/tree/bbd37514ba2e4db46bd9633d9207a57828c2ec9d).
-Before execution, save actual file byte sizes/SHA-256, terms, split identities and
-retrieval permissions in the dataset manifest. A public repository/license badge
-does not establish the rights of every underlying case source. Keep a source
-disabled where that review is unresolved. This pass inspected papers, metadata
-and small examples only; it did not download a corpus or load models.
+The contribution may be better control, fewer stale facts or lower context cost,
+even if ordinary factual QA is similar. Do not claim a general dialogue or
+treatment improvement from an average memory-QA score.
 
-## Four memory fields and their evidence
+## What will count as evidence?
 
-Every item needs client, session and turn IDs, exact supporting spans, timestamp
-or session order, author (client/counselor/model), and confirmation status. Never
-present a model inference as a confirmed client statement.
+| Evidence | Main question | Scoring | What it cannot establish |
+| --- | --- | --- | --- |
+| External tasks with released answers | Does management help recall current facts and apply changing preferences? | Frozen official deterministic evaluators on selected tasks | Natural dialogue quality, consent, CBT benefit or clinical safety |
+| End-to-end event replay | Are explicit updates, expiry, deletion and access rules honored throughout the real pipeline? | Predeclared state/visibility oracles before and after each event | Prevalence of these situations or benefit to real users |
+| Independently annotated continuity cases | Are goals, assignments and reported changes followed faithfully? | Linked source spans, task/status labels and independently checked response claims | Treatment efficacy; generated references alone are not independent gold |
+| Task-based user study | Can a person review, revise and forget information with little effort? | Task completion, errors, time and review burden; actual participant feedback | Clinical improvement or long-term engagement |
 
-| Field | Store | Reference and verification |
-| --- | --- | --- |
-| Profile | Explicit background, preferences and constraints | Original client spans; measure supported-claim precision and eligible-fact recall. Published profiles may seed simulation but must not expose future sessions to the system. |
-| Session summary | Events, agreed actions and unresolved issues from one completed session | Independent atomic-claim annotation of that session; score factual coverage, unsupported claims and attribution errors. Released summaries provide a secondary silver-reference comparison only. |
-| Goals and homework | Goal/task, who agreed, timing, status and latest update | Original agreement and later client reports, independently linked across sessions. Separate proposed, accepted, attempted, completed, revised and unknown; absence of a report is not completion or failure. |
-| Patterns and state changes | Repeated thoughts/behavior, reported emotion and changes over time | Independently linked evidence spans and temporal labels. Mark pattern interpretations as hypotheses. A newer state supersedes an older current-state claim without erasing its historical provenance; this is not a clinical diagnosis. |
+There is **no weighted overall score**. Publish these results separately.
+Model-judge ratings may help locate errors, but are not the primary proof of
+overall quality. Missing human annotation or a user study stays missing; another
+simulated user or model rating does not fill that gap.
 
-The following are proposed metrics, **not already validated scores**:
+This separation is also supported by [CounselBench's expert comparison](https://proceedings.iclr.cc/paper_files/paper/2026/hash/99946cb64d51ead9d3969db0af65ca2e-Abstract-Conference.html),
+which found that model judges overrated responses and missed safety concerns
+identified by professionals. Its mental-health QA procedure informs reviewer
+design; it is not a ready-made longitudinal-memory score for this system.
 
-| Task | Metric | Required annotation source |
-| --- | --- | --- |
-| Find earlier relevant information | Evidence Recall@k / precision, split by the four fields | Independent turn-level relevance labels from released history, not similarity to generated memory text |
-| Follow goals/homework | Correct task/status linkage; unsupported completion rate; next-session acknowledgment of the correct outstanding task | Two annotators link the actual assignment and follow-up spans; assess only cases with adequate evidence |
-| Apply corrections and state changes | Latest-supported-version accuracy, stale-fact reuse rate, wrong-person/source attribution rate | Explicit original correction/update turns and version links; inferred contradictions require adjudication |
-| Preserve evidence in a response | Supported personal-claim precision; correct citation/turn linkage | Annotated history plus the generated claims; report omissions separately from invented facts |
+## A fair comparison
 
-If naturally occurring homework or corrections are too scarce, report their
-eligible denominators and missing coverage. Do not pad the benchmark with
-self-written questions and answers. Synthetic regression fixtures remain
-software checks, separately labeled.
+Use a new protocol and output directories. Do not add an arm to the frozen v2
+experiment, reuse its scores under a new name or discard negative runs.
 
-## Execution and annotation gates
-
-1. In Colab, enumerate the admitted frozen release, validate separators and
-   client/session links, detect duplicated/shared case seeds, and report usable
-   counts and exclusions. Hold out entire clients and related seeds. No future
-   session, usercard goal or reference memory may enter an earlier-session input.
-2. Use released session continuations/client turns as response inputs. Build a
-   small annotation-development split first. Two independent annotators mark
-   source spans and task/version links without seeing experiment conditions;
-   adjudicate disagreements and publish the guideline plus agreement. Model
-   suggestions may assist, but are not independent gold. If independent
-   annotation is unavailable, label this stage **exploratory/model-assisted**.
-3. Freeze the final client split, task denominators, scoring rules, model identity,
-   prompt/context budgets and analysis before generation. Use all eligible held-out
-   cases; set the sample size from a client-clustered paired precision/power
-   calculation using development data only. Many turns from one client are not
-   many independent subjects. Do not claim adequate power from raw row count.
-4. Run extraction, embeddings, response generation and grading only in Colab.
-   Preserve hashed prompts, responses, references and per-stage failures for
-   offline rescoring within the dataset's allowed access/redistribution scope.
-
-## Later ablation: does semantic structure add value?
-
-Register this as a **new experiment/version after v2**, not an added arm or a
-replacement result inside the current frozen comparison:
-
-| Condition | Older-session information |
+| Condition | Information and controls |
 | --- | --- |
-| Short-term reference | None; the same recent-session window in every condition |
-| Raw-history retrieval | Original older-session turns, with provenance preserved |
-| Semantic structured retrieval | Source-supported items in the four fields above, extracted only from the same older sessions |
+| Short-term reference | The shared recent-session window, without older-session retrieval |
+| Raw-history RAG | The same recent window plus retrieval over original older turns and their source/time/access metadata |
+| Managed-memory RAG | The same recent window plus source-supported records written and updated through the real memory manager |
 
-Keep response model, knowledge context, current question, retrieval backend and
-total context-token budget fixed. Predeclare chunking, item lengths, retrieval
-thresholds, tie-breaking and truncation; report tokens, latency, extraction cost
-and failures. Semantic items stay unconfirmed unless actual confirmation evidence
-exists. Retain the raw-history condition even if it performs better.
+**The primary contrast is managed memory versus raw-history RAG.** The short-term
+arm measures the benefit of older history, which is a different question.
 
-The primary paired contrast is semantic structured versus raw-history retrieval
-on independently annotated continuity tasks. Report each field and task separately,
-with client/shared-seed cluster intervals; semantic extraction fidelity is a
-separate prerequisite. Blind model-assisted response ratings are supplementary,
-and reference-token overlap is diagnostic. Neither synthetic state improvement,
-simulated PANAS/WAI scores, nor these memory metrics establish treatment efficacy
-or clinical safety. Until the data/annotation gates pass, the CBT-continuity
-experiment is **not ready to report an objective effect**.
+The raw-history baseline receives the same correction, confirmation, expiry and
+deletion events, and implements basic time, deletion and user/sensitivity filters.
+It may maintain a minimal event/visibility log without adopting the project's
+semantic schema. Do not win by denying it ordinary privacy controls. Publish how
+each baseline interprets updates; an unsupported event is a disclosed capability
+limit, not silently an answer error.
+
+Keep eligible source history, current input, response model/revision, language,
+recent window, knowledge context, safety rules, retrieval backend and total
+context-token limit equal. Tune representation-specific chunking and thresholds
+on development data with equal effort, then freeze them. Gold answers, evidence
+labels and future sessions never enter extraction, retrieval or generation.
+Count prompt overhead against the budget and report actual token use.
+
+Keep confirmation policy equal too. Benchmarks do not provide genuine user
+consent: automatic candidates remain unconfirmed under an explicitly labeled
+research access policy. Do not relabel them as user-confirmed facts. The separate
+event-replay test supplies explicit synthetic confirmation events.
+
+After the fixed-budget comparison, optionally report a prespecified quality/cost
+curve at several budgets. Include extraction, updates, indexing, retrieval,
+generation and failed-call cost. Separate preparation cost from per-follow-up
+cost, with amortization at stated numbers of follow-ups. One-time summarization
+must not disappear from the cost comparison.
+
+## Objective external tasks first
+
+Only two new external task families are needed initially:
+
+| Source and task | Score to preserve | Purpose and limitations |
+| --- | --- | --- |
+| [MemoryAgentBench](https://github.com/HUST-AI-HYZ/MemoryAgentBench/blob/main/README.md): `fact_sh` and `fact_mh` | Official `substring_exact_match`, reported separately by task | Tests conflict resolution. A substring hit can coexist with a contradictory old fact; add a **separate** stale-answer diagnostic where old/new labels are unambiguous. The whole benchmark is not judge-free. |
+| [PersonaMem-v1](https://github.com/bowen-upenn/PersonaMem/blob/main/README.md): dynamic preferences and their application | Released correct option versus prediction using the [official parser](https://github.com/bowen-upenn/PersonaMem/blob/main/inference.py) | Deterministic multiple-choice correctness. Apply the released `end_index_in_shared_context` history boundary. These are synthetic personas; option accuracy is not free-dialogue helpfulness. |
+
+Before running, pin dataset/evaluator commits, license and redistribution terms,
+file sizes/hashes, eligible counts, group/split IDs and adapter changes. These
+links explain selection; they are **not a frozen manifest or implemented adapter**.
+Preserve official scores alongside adaptations. Do not silently replace a
+published parser; malformed answers fail under the frozen rule.
+
+Keep LoCoMo evidence Recall@k as a retrieval diagnostic and LongMemEval
+reference-judge results as model-assisted historical-QA evidence. Neither
+replaces the raw-history contrast or the lifecycle results below. Do not add
+datasets simply to increase the question count.
+
+## Six continuity results, with explicit denominators
+
+Replay ordered, timestamped events through writing, updates, retrieval and final
+context assembly. Use public labeled facts where available. Add synthetic
+interventions for expiry, deletion, isolation and exact time boundaries; label
+these **controlled mechanism tests**, not clinical QA or natural-user evidence.
+An expected-state ledger is derived from the event specification, reviewed
+separately from the implementation, fixed before execution and never given to
+the system under test. Do not generate its answers from the same manager being
+evaluated.
+
+| Task | Eligibility and reference | Scores to report |
+| --- | --- | --- |
+| Goals | An explicit agreed goal and a later query/update, with linked source spans | Current-goal accuracy; abandoned-goal reuse; unknown/ambiguous-goal handling |
+| Homework | An agreed task and a later report, including partial or absent reports | Correct task/status linkage; unsupported completion or failure; correct outstanding-task follow-up |
+| Reported state | Dated self-reports and a query with an explicit time target | Latest-state accuracy; historical/current confusion; wrong-person/source attribution |
+| Corrections | An explicit correction, its target/version and effective point | Latest-version accuracy; stale-fact exposure in retrieval/context; stale-fact reuse in the answer |
+| Expiry | A validity interval and queries before, exactly at and after its end | Visibility compliance with `[valid_from, valid_to)`; expired-context and expired-answer rates |
+| Deletion and isolation | A deletion or denied user/sensitivity scope, followed by relevant queries | Deleted-content return in storage/index/context/cache/export; prohibited-context exposure and answer leakage, by policy |
+
+Publish eligible histories, events and queries for **each row**, with unknown cases
+and exclusion reasons. No later report means `unknown`, not automatically
+completed or failed. Preserve historical states for dated questions; every older
+fact is not an error. A source substring alone does not prove that a semantic
+goal/homework summary is supported.
+
+Freeze deletion scope before replay: current stores, indexes, session buffers,
+caches and new exports that the application controls. Scoring-only source/oracle
+files are separate test instrumentation. Existing user-visible messages cannot
+be retracted by deleting a record, and any retained research archive needs its
+own disclosed access/retention policy; do not imply that record deletion erases
+every historical copy.
+
+Use exact categorical/value scoring only where the reference determines the
+answer, with normalization fixed beforehand. Free-text claims need independent
+claim annotation. Show supported-claim precision together with eligible-fact recall
+so silence cannot look like perfect fidelity. Undefined denominators are
+`not applicable`, never 100%.
+
+For deletion, expiry and access controls, **any observed forbidden exposure fails
+that software acceptance check**, regardless of average QA. Also report violations
+and exposure opportunities. Zero observations is a finite test result, not proof
+of future safety. Exact marker/ID checks are deterministic on controlled fixtures;
+paraphrases in real answers need separate review and are not covered by markers.
+
+### Attribute the first failure
+
+Each eligible query keeps a scoring-only trace of:
+
+1. **Source → extraction:** required observation represented; generated personal
+   claims supported.
+2. **Extraction → current state:** expected version/status after confirmation and
+   update rules.
+3. **State → retrieval:** permitted, relevant evidence selected.
+4. **Retrieval → prompt:** complete evidence survives the context budget.
+5. **Prompt → answer:** permitted current fact used correctly, appropriate
+   abstention, no invented personal claim.
+
+Publish the first failed stage and all independently observed policy violations.
+An included ID proves only that evidence was supplied, not that the answer relied
+on it. A fixed-evidence run may diagnose generation failure; label it an oracle
+diagnostic, not the deployable system result.
+
+## User value: test the actual four-visit workflow
+
+Use fictional reflection tasks with real participants: **set a goal → report
+progress → revise the goal → review or delete it**. Counterbalance system/order
+and use equivalent tasks to avoid practice effects.
+
+Measure completion without facilitator rescue, incorrect saved facts, correction
+success, deletion understanding, task time, clicks, candidates reviewed and edits.
+Keep dropouts and assistance visible. Ask whether the response addressed the
+intended follow-up and whether the memory explanation was understandable. These
+operational measures are informed by the [ISO 9241-11
+framework](https://www.iso.org/standard/63500.html); ISO does not prescribe this
+study or validate our questions.
+
+The interface changes in this revision support candidate revision before
+confirmation, show the actual extraction window and unprocessed content at
+session switch, explain included memory in readable language, and disclose
+deletion's chat-reset effect before the action. These are implementation changes
+with mocked/software checks; participant usability has not been measured.
+Count confirmation/review effort as a cost, not free participant labor.
+
+Open-ended reflection quality needs independent arm-blinded reviewers, anchored
+criteria, double scoring and disagreement/adjudication reporting. CBT-trained
+reviewers are needed for claims about appropriate CBT guidance; actual users for
+perceived usefulness. Do not let a model fill WAI, PANAS or another human scale and
+call it validated experience or treatment change. Without these resources, report
+objective system findings and leave helpfulness/clinical claims unestablished.
+
+## Sample size, analysis and execution order
+
+The independent unit is a history/persona/shared case, not a question or response.
+Connect reused histories and related seeds before splitting. Separate development
+and test groups before inspecting outputs; record prior exposure. Use paired
+group-level differences and intervals, not an IID question bootstrap. Report micro
+and group-equal results plus every task above, without choosing the favorable
+summary after seeing scores.
+
+Use development data to justify the smallest useful effect and required precision,
+estimate group-level variation, and freeze a paired cluster precision/power
+calculation before test generation. No question count guarantees enough independent
+data. If the available groups cannot meet the target, report an exploratory
+estimate and interval; do not sample until significant. Prespecify multiple-test
+handling if claiming separate task improvements. Freeze the primary endpoint or
+endpoint family before generation; do not promote the best-performing task to
+primary after reading results.
+
+| Order | Work | Readiness gate |
+| --- | --- | --- |
+| 1 | Implement the competent raw-history comparator and stage traces | Same admitted history/events/budgets; deterministic fixtures pass for both arms |
+| 2 | Freeze the two external adapters and event ledger | Input/evaluator identities, terms, exclusions and gold-free inputs checked |
+| 3 | Freeze test groups, parsing, effect/precision target, retries and call budget | Development-only choices; independent-group audit; no blank protocol decisions |
+| 4 | Run paired comparisons; deterministically score and audit errors | Models, embeddings, full datasets and generation **only in hosted Colab**; small local mocks allowed |
+| 5 | Publish task results, traces and costs; conduct the user/reviewer study | Permitted raw-artifact retention, independent rescoring, explicit study limitations |
+
+Empty/failed/truncated responses and exhausted retries remain in the denominator.
+Report availability separately from correctness and freeze failure-to-score rules.
+Preserve identities, attempt logs, source/manifest hashes and raw artifacts.
+Real-user content never follows the public benchmark export path.
+
+The new adapters, raw-history contrast, event replay and participant study are
+**not completed experiments**. Do not launch more model judging as a substitute
+for these gates. Existing frozen runs can be retained and audited without being
+presented as this protocol's final outcome.
+
+## Result table: fill only after execution
+
+| Endpoint / task | Independent groups / eligible cases | Raw-history RAG | Managed memory | Paired difference and interval | Failures / total cost | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| MemoryAgentBench `fact_sh` / `fact_mh` (separate rows) | — | — | — | — | — | Not run |
+| PersonaMem-v1 (overall and question type) | — | — | — | — | — | Not run |
+| Goals / homework / state (separate rows) | — | — | — | — | — | Gold coverage not established |
+| Corrections / expiry / deletion-isolation (separate rows) | — | — | — | — | — | End-to-end comparison not run |
+| Participant completion / time / correction burden | — | — | — | — | — | Not run |
+
+A useful outcome may be similar factual accuracy with fewer stale facts or easier
+correction at a stated cost. Null and negative results stay in the report.
+Reliability, continuity accuracy, usability and clinical efficacy are distinct
+conclusions.
+
+## CBT-specific sources: available does not mean gold
+
+| Resource | Verified boundary and use |
+| --- | --- |
+| [MusPsy release](https://github.com/Rener2005/MusPsy/tree/eaae4df12808f4cbda97d8bc8b243b34cc69f613), [paper](https://aclanthology.org/2026.findings-acl.818/) | Case-seeded, LLM-generated multi-visit conversations; release declares MIT. May provide **exploratory** continuations after inventory, seed-overlap and provenance review. Memories/usercards are generated silver references, not independent gold or patient outcomes. |
+| [CBT-Bench](https://huggingface.co/datasets/Psychotherapy-LLM/CBT-Bench/tree/bbd37514ba2e4db46bd9633d9207a57828c2ec9d), [paper](https://arxiv.org/abs/2410.13218v2) | CC-BY-NC-4.0; expert-labeled classification may be a separate capability check. CBT-QA test answers are withheld; therapeutic references are not unique gold responses. It is not a longitudinal-memory test. |
+| [HOPE / SPARTA](https://github.com/LCS2-IIITD/SPARTA_WSDM2022), [paper](https://arxiv.org/abs/2111.06647v1) | Access agreement/email required. Same-client visit ordering and longitudinal task labels not verified; blocked for this test. |
+| [DiaCBT paper v1](https://arxiv.org/html/2509.02999v1) | Author-endorsed release, dataset license and stable case/session files not verified; blocked. A paper license is not a dataset-use license. |
+
+A future natural goal/homework subset needs two independent annotators linking
+agreement, follow-up and revision spans, with adjudication unaware of arm outputs.
+Audit eligible counts before claiming coverage. If examples are sparse, report
+the gap rather than manufacture a gold set of clinical questions and answers.
+Generated memory or model-assisted labels never silently become expert gold.

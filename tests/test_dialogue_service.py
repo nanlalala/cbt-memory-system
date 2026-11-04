@@ -346,5 +346,271 @@ class DialogueFailureAndSensitiveEvidenceTests(unittest.TestCase):
         self.assertEqual(before, session.snapshot())
 
 
+class CandidateRevisionAndScopeTests(unittest.TestCase):
+    def setUp(self):
+        self.session = DialogueSession()
+        self.addCleanup(self.session.close)
+
+    def stage(self):
+        self.session.send_message(GOAL)
+        return self.session.extract_current_session()[0]
+
+    def test_candidate_can_be_revised_before_confirmation_with_distinct_evidence(self):
+        original = self.stage()
+        before_turns = self.session.snapshot()["turns"]
+        revised = self.session.revise_candidate(original["memory_id"], CORRECTION)
+        self.assertEqual(revised["memory_id"], original["memory_id"])
+        self.assertEqual(revised["lifecycle_status"], "candidate")
+        self.assertEqual(revised["confirmation_state"], "unconfirmed")
+        self.assertEqual(revised["source_evidence"]["supporting_text"], CORRECTION)
+        provenance = revised["structured_payload"]["candidate_revision"]
+        self.assertEqual(provenance["original_source_evidence"], original["source_evidence"])
+        self.assertEqual(self.session.snapshot()["records"][0]["verified_candidate_revision_source"],
+                         original["source_evidence"])
+        self.assertNotEqual(revised["source_evidence"]["turn_ids"], original["source_evidence"]["turn_ids"])
+        self.assertEqual(self.session.snapshot()["turns"], before_turns)
+        self.session.new_session()
+        self.assertEqual(self.session.send_message(QUERY)["memory_ids"], [])
+        self.session.confirm(revised["memory_id"], f"CONFIRM {revised['memory_id']}")
+        self.session.new_session()
+        answer = self.session.send_message(QUERY)
+        self.assertEqual(answer["memory_ids"], [revised["memory_id"]])
+        self.assertEqual(answer["sources"][0]["content"], CORRECTION)
+        self.assertNotIn(GOAL, json.dumps(self.session.snapshot()["audit"], ensure_ascii=False))
+        self.assertNotIn(CORRECTION, json.dumps(self.session.snapshot()["audit"], ensure_ascii=False))
+        with self.assertRaisesRegex(ValueError, "unconfirmed candidate"):
+            self.session.revise_candidate(revised["memory_id"], GOAL)
+
+    def test_revision_discards_stale_inferred_fields_and_preserves_restricted_policy(self):
+        original = self.stage()
+        record = self.session.store.get(self.session.user_id, original["memory_id"])
+        record.memory_type = "goal"
+        record.sensitivity = "restricted"
+        record.structured_payload = {
+            "description": GOAL, "status": "completed", "slot_key": "walk-goal",
+            "candidate_revision": {"original_source_evidence": {"supporting_text": "fabricated model quote"},
+                                   "revision_event_id": "not-a-real-operator-event"},
+        }
+        self.session.store.put(record)
+        untrusted = self.session.snapshot()["records"][0]
+        self.assertIsNone(untrusted["verified_candidate_revision_source"])
+        self.assertTrue(untrusted["candidate_revision_allowed"])
+        revised = self.session.revise_candidate(record.memory_id, CORRECTION)
+        self.assertEqual(revised["memory_type"], "goal")
+        self.assertEqual(revised["sensitivity"], "restricted")
+        self.assertEqual(revised["structured_payload"]["slot_key"], "walk-goal")
+        self.assertEqual(revised["structured_payload"]["status"], "unknown")
+        self.assertEqual(revised["structured_payload"]["description"], CORRECTION)
+        again = self.session.revise_candidate(record.memory_id, "我想先试试午饭后散步。")
+        self.assertEqual(again["structured_payload"]["candidate_revision"]["original_source_evidence"],
+                         original["source_evidence"])
+        self.session.confirm(record.memory_id, f"CONFIRM {record.memory_id}")
+        self.session.new_session()
+        self.assertEqual(self.session.send_message(QUERY)["sources"], [])
+
+    def test_revising_correction_candidate_preserves_its_active_target(self):
+        original = self.stage()
+        self.session.confirm(original["memory_id"], f"CONFIRM {original['memory_id']}")
+        correction = self.session.propose_correction(original["memory_id"], CORRECTION)
+        final_text = "本周的目标是午饭后散步四次。"
+        revised = self.session.revise_candidate(correction["memory_id"], final_text)
+        self.assertEqual(revised["memory_type"], "user_correction")
+        self.assertEqual(revised["supersedes_memory_id"], original["memory_id"])
+        self.assertEqual(revised["structured_payload"]["corrected_content"], final_text)
+        self.assertEqual(self.session.store.get(self.session.user_id, original["memory_id"]).lifecycle_status, "active")
+        self.session.confirm(revised["memory_id"], f"CONFIRM {revised['memory_id']}")
+        self.assertEqual(self.session.store.get(self.session.user_id, original["memory_id"]).lifecycle_status, "superseded")
+
+    def test_revision_write_failure_and_invalid_inputs_leave_snapshot_unchanged(self):
+        original = self.stage()
+        before = self.session.snapshot()
+        with self.assertRaises(ValueError):
+            self.session.revise_candidate(original["memory_id"], "")
+        with self.assertRaises(ValueError):
+            self.session.revise_candidate(original["memory_id"], "I am going to kill myself")
+        with self.assertRaises(KeyError):
+            self.session.revise_candidate("another-users-candidate", CORRECTION)
+        self.session.store.connection.execute("""CREATE TRIGGER reject_candidate_revision
+            BEFORE INSERT ON memories WHEN NEW.content = 'fixture rejected revision'
+            BEGIN SELECT RAISE(ABORT, 'fixture rejection'); END""")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.session.revise_candidate(original["memory_id"], "fixture rejected revision")
+        self.assertEqual(before, self.session.snapshot())
+
+    def test_scope_reports_lost_and_pending_input_without_claiming_full_session(self):
+        session = DialogueSession(max_session_turns=4)
+        self.addCleanup(session.close)
+        for number in range(3):
+            session.send_message(f"Fictional observation number {number}.")
+        scope = session.snapshot()["extraction_scope"]
+        self.assertEqual(scope["total_user_turn_count"], 3)
+        self.assertEqual(scope["retained_user_turn_count"], 2)
+        self.assertEqual(scope["dropped_user_turn_count"], 1)
+        self.assertEqual(scope["pending_user_turn_count"], 3)
+        self.assertEqual(scope["pending_retained_user_turn_count"], 2)
+        self.assertEqual(scope["dropped_pending_user_turn_count"], 1)
+        self.assertTrue(scope["partial_coverage"])
+        self.assertEqual(scope["source_turn_ids"], [t["turn_id"] for t in session.snapshot()["turns"] if t["role"] == "user"])
+        session.extract_current_session()
+        after = session.snapshot()["extraction_scope"]
+        self.assertEqual(after["processed_user_turn_count"], 2)
+        self.assertEqual(after["pending_retained_user_turn_count"], 0)
+        self.assertEqual(after["pending_user_turn_count"], 1)
+        session.extract_current_session()
+        self.assertEqual(after, session.snapshot()["extraction_scope"])
+        session.new_session()
+        reset = session.snapshot()["extraction_scope"]
+        self.assertEqual(reset["total_user_turn_count"], 0)
+        self.assertEqual(reset["pending_user_turn_count"], 0)
+        self.assertFalse(reset["partial_coverage"])
+
+    def test_failed_extraction_does_not_mark_window_processed(self):
+        self.session.send_message(GOAL)
+        before = self.session.snapshot()["extraction_scope"]
+        with patch("dialogue_service.parse_extraction_output", side_effect=ValueError("fixture parser rejection")):
+            with self.assertRaises(ValueError):
+                self.session.extract_current_session()
+        self.assertEqual(before, self.session.snapshot()["extraction_scope"])
+        self.session.extract_current_session()
+        self.assertEqual(self.session.snapshot()["extraction_scope"]["pending_user_turn_count"], 0)
+
+    def test_reextract_after_revision_does_not_recreate_old_candidate_or_call_provider(self):
+        original = self.stage()
+        self.session.revise_candidate(original["memory_id"], CORRECTION)
+        before = self.session.snapshot()
+        def must_not_call(**kwargs):
+            raise AssertionError("already processed turns must not trigger a provider")
+        self.session.provider = must_not_call
+        self.assertEqual(self.session.extract_current_session(), [])
+        self.assertEqual(before, self.session.snapshot())
+        self.assertEqual([record["content"] for record in before["records"]], [CORRECTION])
+
+    def test_incremental_extraction_reads_context_but_cites_only_pending_sources(self):
+        original = self.stage()
+        original_turn_id = original["source_evidence"]["turn_ids"][0]
+        self.session.revise_candidate(original["memory_id"], CORRECTION)
+        feedback = "我今天完成了一次散步。"
+        self.session.send_message(feedback)
+        scope = self.session.snapshot()["extraction_scope"]
+        pending_id = scope["source_turn_ids"][0]
+        self.assertEqual(scope["pending_retained_user_turn_count"], 1)
+        self.assertNotIn(original_turn_id, scope["source_turn_ids"])
+        self.assertIn(original_turn_id, scope["context_turn_ids"])
+        requests = []
+        def provider(*, messages, purpose):
+            self.assertEqual(purpose, "extraction")
+            request = json.loads(messages[-1]["content"])
+            requests.append(request)
+            return ModelOutput(json.dumps({"candidates": [{
+                "memory_type": "explicit_fact", "content": feedback,
+                "source_turn_ids": [pending_id], "supporting_text": feedback,
+            }]}, ensure_ascii=False))
+        self.session.provider = provider
+        extracted = self.session.extract_current_session()
+        self.assertEqual(requests[0]["eligible_source_turn_ids"], [pending_id])
+        self.assertIn(original_turn_id, [turn["turn_id"] for turn in requests[0]["turns"]])
+        self.assertEqual(extracted[0]["source_evidence"]["turn_ids"], [pending_id])
+        self.assertEqual([record["content"] for record in self.session.snapshot()["records"]],
+                         [CORRECTION, feedback])
+        self.assertEqual(self.session.snapshot()["extraction_scope"]["source_turn_ids"], [])
+        self.assertEqual(self.session.extract_current_session(), [])
+        self.assertEqual(len(requests), 1)
+
+    def test_old_only_source_rejection_keeps_new_turn_retryable(self):
+        original = self.stage()
+        self.session.send_message("我今天完成了一次散步。")
+        before_scope = self.session.snapshot()["extraction_scope"]
+        old_source = original["source_evidence"]["turn_ids"][0]
+        def invalid_provider(**kwargs):
+            return ModelOutput(json.dumps({"candidates": [{
+                "memory_type": "explicit_fact", "content": GOAL,
+                "source_turn_ids": [old_source], "supporting_text": GOAL,
+            }]}, ensure_ascii=False))
+        self.session.provider = invalid_provider
+        with self.assertRaisesRegex(ValueError, "existing user turn ids"):
+            self.session.extract_current_session()
+        self.assertEqual(before_scope, self.session.snapshot()["extraction_scope"])
+        self.assertEqual(len(self.session.snapshot()["records"]), 1)
+        self.session.provider = None
+        self.assertEqual(len(self.session.extract_current_session()), 1)
+        self.assertEqual(self.session.snapshot()["extraction_scope"]["source_turn_ids"], [])
+
+    def test_revised_slotted_goal_still_replaces_the_old_current_goal_on_confirmation(self):
+        original = self.stage()
+        old = self.session.store.get(self.session.user_id, original["memory_id"])
+        old.memory_type = "goal"
+        old.structured_payload = {"description": GOAL, "status": "agreed", "slot_key": "current-walk-goal"}
+        self.session.store.put(old)
+        self.session.confirm(old.memory_id, f"CONFIRM {old.memory_id}")
+        self.session.send_message(CORRECTION)
+        candidate = self.session.extract_current_session()[0]
+        new = self.session.store.get(self.session.user_id, candidate["memory_id"])
+        new.memory_type = "goal"
+        new.structured_payload = {"description": CORRECTION, "status": "completed", "slot_key": "current-walk-goal"}
+        self.session.store.put(new)
+        revised_text = "我想先尝试每周散步一次。"
+        revised = self.session.revise_candidate(new.memory_id, revised_text)
+        self.assertEqual(revised["memory_type"], "goal")
+        self.assertEqual(revised["structured_payload"]["status"], "unknown")
+        self.session.confirm(new.memory_id, f"CONFIRM {new.memory_id}")
+        records = self.session.store.list_for_user(self.session.user_id)
+        self.assertEqual([record.memory_id for record in records if record.lifecycle_status == "active"],
+                         [new.memory_id])
+        self.assertEqual(self.session.store.get(self.session.user_id, old.memory_id).lifecycle_status, "superseded")
+
+    def test_slotted_structured_fields_cannot_be_silently_downgraded_to_facts(self):
+        original = self.stage()
+        record = self.session.store.get(self.session.user_id, original["memory_id"])
+        record.memory_type = "emotion_record"
+        record.structured_payload = {"emotion": "sad", "intensity": 8, "situation": "fictional",
+                                     "slot_key": "current-emotion"}
+        self.session.store.put(record)
+        before = self.session.snapshot()
+        self.assertFalse(before["records"][0]["candidate_revision_allowed"])
+        self.assertIn("结构字段", before["records"][0]["candidate_revision_reason"])
+        with self.assertRaisesRegex(ValueError, "structured-field editing"):
+            self.session.revise_candidate(record.memory_id, "I feel different today.")
+        self.assertEqual(before, self.session.snapshot())
+
+    def test_co_citing_old_quote_and_new_thanks_cannot_recreate_a_revised_candidate(self):
+        original = self.stage()
+        self.session.revise_candidate(original["memory_id"], CORRECTION)
+        self.session.send_message("Thanks for listening.")
+        scope = self.session.snapshot()["extraction_scope"]
+        old_id = original["source_evidence"]["turn_ids"][0]
+        new_id = scope["source_turn_ids"][0]
+        def provider(**kwargs):
+            return ModelOutput(json.dumps({"candidates": [{
+                "memory_type": "explicit_fact", "content": GOAL,
+                "source_turn_ids": [old_id, new_id], "supporting_text": GOAL,
+            }]}, ensure_ascii=False))
+        self.session.provider = provider
+        before_records = self.session.snapshot()["records"]
+        with self.assertRaisesRegex(ValueError, "existing user turn ids"):
+            self.session.extract_current_session()
+        self.assertEqual(before_records, self.session.snapshot()["records"])
+        self.assertEqual(scope, self.session.snapshot()["extraction_scope"])
+        # Merely replacing the IDs cannot launder the old supporting quote.
+        def wrong_quote(**kwargs):
+            return ModelOutput(json.dumps({"candidates": [{
+                "memory_type": "explicit_fact", "content": GOAL,
+                "source_turn_ids": [new_id], "supporting_text": GOAL,
+            }]}, ensure_ascii=False))
+        self.session.provider = wrong_quote
+        with self.assertRaisesRegex(ValueError, "exact quote"):
+            self.session.extract_current_session()
+        self.assertEqual(before_records, self.session.snapshot()["records"])
+        self.assertEqual(scope, self.session.snapshot()["extraction_scope"])
+
+    def test_snapshot_does_not_certify_tampered_revision_metadata(self):
+        original = self.stage()
+        self.session.revise_candidate(original["memory_id"], CORRECTION)
+        record = self.session.store.get(self.session.user_id, original["memory_id"])
+        record.structured_payload["candidate_revision"]["original_source_evidence"]["supporting_text"] = "fabricated original quote"
+        record.structured_payload["verified_candidate_revision_source"] = {"supporting_text": "model cannot certify itself"}
+        self.session.store.put(record)
+        self.assertIsNone(self.session.snapshot()["records"][0]["verified_candidate_revision_source"])
+
+
 if __name__ == "__main__":
     unittest.main()

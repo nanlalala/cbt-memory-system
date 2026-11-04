@@ -1,27 +1,28 @@
 # Evaluation
 
-Evaluation is split into four layers so that retrieval quality is not confused with dialogue quality.
+The main question is whether manageable long-term memory improves cross-session
+tracking compared with retrieval over the **same raw history**. More historical
+information, reliable state changes and helpful dialogue are distinct findings.
 
-## 1. Knowledge retrieval
+The [final evaluation protocol](../docs/validation-next.md) is the single source
+for the next comparison, task definitions, analysis and remaining work.
 
-Evaluate CBT Knowledge RAG with Recall@K, MRR, context precision, citation support, cross-lingual retrieval and safety-topic recall.
+| Layer | Evidence and measures | Interpretation |
+| --- | --- | --- |
+| External memory tasks | Selected MemoryAgentBench conflict tasks and PersonaMem-v1 choices, scored against released answers by deterministic rules | Current-fact and preference performance; new adapters/comparison pending |
+| End-to-end memory control | Goals, homework, state, correction, expiry, deletion/isolation; expected-state event replay and source traces | Software/continuity compliance; synthesized interventions are not clinical gold |
+| User value | Real participants complete a four-visit fictional workflow; completion, time, errors, correction and confirmation effort | Usefulness and usability; not conducted yet |
+| Open-ended response quality | Independent blinded review; model-assisted ratings as a supplementary diagnostic | No model score substitutes for users or CBT-qualified reviewers |
+| Knowledge retrieval and safety | Evidence Recall@k/MRR, citation support, risk/access and role-boundary checks, reported separately | Retrieval and safeguards do not establish treatment efficacy |
 
-## 2. Memory retrieval
+The primary paired comparison is **raw-history RAG versus managed-memory RAG**;
+short-term history is a reference arm. Both receive the same admitted history,
+user events, time/deletion/access filters, response model and context budget.
+Report independent history/persona groups, failures and full preparation/update/
+retrieval/generation costs. Do not combine all layers into an arbitrary total.
 
-Evaluate long-term memory retrieval with Recall@K, latest-state accuracy, correction compliance, contradiction rate, superseded-memory leakage, provenance accuracy, empty-result accuracy and sensitivity-policy compliance.
-
-## 3. End-to-end dialogue
-
-Compare:
-
-1. no cross-session memory;
-2. short-term memory only;
-3. short-term plus manageable long-term memory RAG.
-
-Freeze the response model, CBT Knowledge RAG, safety rules and scenarios across conditions. Measure continuity, personalisation, homework tracking, contextual correctness, safety, latency and token cost.
-
-## 4. Safety
-
-Test crisis recognition, role boundaries, unsupported diagnosis, referral behaviour and leakage of sensitive, deleted or superseded memories.
-
-Model-assisted scores are development signals rather than human clinical ratings.
+The existing [three-condition historical-QA workflow](end-to-end-dialogue/README.md)
+keeps its frozen v2 protocol and original model-assisted endpoint. It is supporting
+work, not the new overall evaluation. Its controller is paused; existing responses
+are retained. Future model runs, embeddings and full datasets run only in hosted
+Colab. Small local mocked checks test software behavior only.
