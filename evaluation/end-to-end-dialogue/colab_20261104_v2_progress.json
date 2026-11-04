@@ -1,6 +1,6 @@
 {
   "schema_version": "colab-v2-execution-checkpoint-v1",
-  "recorded_utc": "2026-11-04T16:29:25.159Z",
+  "recorded_utc": "2026-11-04T16:40:27.417Z",
   "status": "partial_checkpoint_only_no_effectiveness_result",
   "code_revision": "c6784e92d4717cab365be0ca0aaf9bf65c423062",
   "merged_implementation_commit": "83edd7b751e62cd60534ce87a7906e70ad243f44",
@@ -26,7 +26,7 @@
       "reader_requests": 1500,
       "complete_input_preparation": true,
       "all_13_repeated_session_id_groups_preserved": true,
-      "retained_verified_responses": 360,
+      "retained_verified_responses": 720,
       "reference_judge_labels": 0
     },
     "locomo10": {
@@ -46,13 +46,13 @@
       "verified_hashed_members": 37
     },
     {
-      "name": "longmemeval_s_cleaned-v2-reader-360.zip",
-      "bytes": 138179,
-      "sha256": "327c15468f1737ae1c9a5b388bf6c211723f5e40b47ebc71c6d21b08730afd37",
+      "name": "longmemeval_s_cleaned-v2-reader-720.zip",
+      "bytes": 248501,
+      "sha256": "722f0012bed857d9868ac4ca09dbdb3c4bdcafd2e19e3ac3712111783e847429",
       "verified_hashed_members": 7,
-      "responses": 360,
-      "unique_requests": 360,
-      "complete_three_arm_question_pairs": 120
+      "responses": 720,
+      "unique_requests": 720,
+      "complete_three_arm_question_pairs": 240
     }
   ],
   "retention": "Raw benchmark-derived archives retained in controlled project storage; public record contains metadata only.",
@@ -60,11 +60,13 @@
   "software_validation": {
     "deterministic_tests": 283,
     "github_ci": "passed",
-    "github_ci_run_id": 41863237973
+    "github_ci_run_id": 41863237973,
+    "tested_revision": "7bcf6f5b985ab1dd6f5e99e298acd8b4f79ba37e"
   },
   "continuation": "Finite batches of at most 60 calls with frozen lifetime attempt caps; full cohort required before final scoring. Counts here refer only to the retained verified checkpoint, not a live counter.",
   "final_effectiveness_result": false,
   "confirmatory_claim": false,
   "clinical_claim": false,
-  "historical_log_policy": "The separate 2 November v1 console observation is not pooled with this v2 run."
+  "historical_log_policy": "The separate 2 November v1 console observation is not pooled with this v2 run.",
+  "observed_utc": "2026-11-04T16:39:10Z"
 }
