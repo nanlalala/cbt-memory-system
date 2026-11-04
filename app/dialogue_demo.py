@@ -8,6 +8,8 @@ module does not load models, make network requests or start a web server.
 from __future__ import annotations
 
 import importlib
+import hashlib
+import json
 import sys
 from html import escape
 from pathlib import Path
@@ -32,6 +34,15 @@ def _text(value: object) -> str:
 
 def _paragraph(value: object) -> str:
     return '<div style="white-space:pre-wrap;overflow-wrap:anywhere">' + _text(value) + "</div>"
+
+
+def _record_version(record: dict[str, Any]) -> str:
+    """Bind an editor to the saved source/content, not changing UI labels."""
+    fields = ("memory_id", "user_id", "content", "memory_type", "origin", "source_evidence", "sensitivity",
+              "structured_payload", "updated_at", "valid_from", "valid_to",
+              "confirmation_state", "lifecycle_status", "supersedes_memory_id")
+    value = {key: record.get(key) for key in fields}
+    return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
 def validate_snapshot(snapshot: dict[str, Any]) -> None:
@@ -295,6 +306,7 @@ def build_view(snapshot: dict[str, Any]) -> dict[str, Any]:
              "can_revise": _candidate_revision_policy(record)[0],
              "revision_reason": _candidate_revision_policy(record)[1],
              "content": str(record.get("content", "")),
+             "content_version": _record_version(record),
              "can_correct": record.get("lifecycle_status") == "active"}
             for record in snapshot["records"]
         ],
@@ -371,6 +383,52 @@ def launch_notebook_demo(session: Any = None) -> Any:
     main_actions = [send, next_session] + ([] if conversational else [extract])
     item_actions: list[Any] = []
     decision_actions: list[Any] = []
+    # Refreshes rebuild notebook widgets. Keep user-authored edits outside those
+    # transient widgets, keyed by memory and editor purpose. This is UI state,
+    # never a saved memory or confirmation event.
+    drafts: dict[tuple[str, str], dict[str, str]] = {}
+    editors: dict[tuple[str, str], Any] = {}
+
+    def capture_drafts() -> None:
+        for key, field in editors.items():
+            if key in drafts:
+                drafts[key]["value"] = str(field.value)
+
+    def current_version(memory_id: str) -> str | None:
+        try:
+            record = next((r for r in session.snapshot()["records"]
+                           if str(r.get("memory_id")) == memory_id), None)
+            return _record_version(record) if record is not None else None
+        except Exception:
+            # A failed current-state read cannot authorise an old editor action
+            # or echo a backend error into notebook output.
+            return None
+
+    def make_editor(memory_id: str, kind: str, record_view: dict[str, Any], *, initial: str,
+                    placeholder: str) -> tuple[Any, tuple[str, str], bool]:
+        key = memory_id, kind
+        version = record_view["content_version"]
+        draft = drafts.get(key)
+        if draft is None or (draft["value"] == draft["base_value"] and draft["base_version"] != version):
+            draft = {"value": initial, "base_value": initial, "base_version": version}
+            drafts[key] = draft
+        field = widgets.Textarea(value=draft["value"], placeholder=placeholder,
+                                 layout=widgets.Layout(width="100%", height="65px"))
+        editors[key] = field
+        return field, key, draft["base_version"] != version
+
+    def draft_current(key: tuple[str, str]) -> bool:
+        draft = drafts.get(key)
+        return draft is not None and current_version(key[0]) == draft["base_version"]
+
+    def stale_draft_notice() -> None:
+        tell("这条记忆的来源或正文已改变。草稿已保留；请先放弃旧草稿并查看当前版本，再重新编辑。")
+
+    def discard_button(key: tuple[str, str]) -> Any:
+        button = widgets.Button(description="放弃这份未保存草稿")
+        button.on_click(lambda _, k=key: perform(lambda: drafts.pop(k, None), "已放弃这份未保存草稿，并显示当前保存版本。"))
+        item_actions.append(button)
+        return button
 
     def update_enabled() -> None:
         enabled = acknowledge.value and not state["busy"] and not state["decision_pending"]
@@ -440,7 +498,14 @@ def launch_notebook_demo(session: Any = None) -> Any:
         update_enabled()
 
     def refresh() -> None:
+        capture_drafts()
+        editors.clear()
         view = build_view(session.snapshot())
+        present_ids = {record["memory_id"] for record in view["record_views"]}
+        for key in list(drafts):
+            # A deleted record must not retain its text in detached UI drafts.
+            if key[0] not in present_ids:
+                drafts.pop(key)
         mode.value = f"<strong>{_text(view['mode_label'])}</strong><p>{_text(view['mode_detail'])}</p>"
         state["safety_paused"] = view["safety_paused"]
         paused_notice.value = (
@@ -464,46 +529,90 @@ def launch_notebook_demo(session: Any = None) -> Any:
             buttons = []
             if record_view["can_confirm"]:
                 revision_text = None
+                revision_key = None
                 if record_view["can_revise"]:
-                    revision_text = widgets.Textarea(
-                        value=record_view["content"], placeholder="先修订，再决定是否保存",
-                        layout=widgets.Layout(width="100%", height="65px"),
-                    )
+                    revision_text, revision_key, stale = make_editor(
+                        memory_id, "revision", record_view, initial=record_view["content"],
+                        placeholder="先修订，再决定是否保存")
                     revise = widgets.Button(description="保存修订，保持待确认")
-                    revise.on_click(lambda _, mid=memory_id, field=revision_text: perform(
-                        lambda: session.revise_candidate(mid, field.value),
-                        "已按你写的原话修订，仍然待确认。核对无误后再确认；这次修订没有加入普通聊天。",
-                    ))
+
+                    def revise_clicked(_: Any, mid=memory_id, field=revision_text, key=revision_key) -> None:
+                        if not draft_current(key):
+                            stale_draft_notice()
+                            return
+
+                        def save() -> None:
+                            session.revise_candidate(mid, field.value)
+                            drafts.pop(key, None)
+
+                        perform(save, "已按你写的原话修订，仍然待确认。核对无误后再确认；这次修订没有加入普通聊天。")
+
+                    revise.on_click(revise_clicked)
                     parts.append(revision_text)
+                    if stale:
+                        parts.append(widgets.HTML(_paragraph("当前保存版本已改变；旧草稿保留在此，尚未保存。请先放弃旧草稿并查看当前版本，再重新编辑。")))
                     buttons.append(revise)
+                    buttons.append(discard_button(revision_key))
                     item_actions.append(revise)
                 else:
                     parts.append(widgets.HTML(_paragraph(record_view["revision_reason"])))
                 confirm = widgets.Button(description="确认这条记忆", button_style="success")
 
                 def confirm_clicked(_: Any, mid=memory_id, field=revision_text,
-                                    original=record_view["content"]) -> None:
+                                    original=record_view["content"], key=revision_key,
+                                    version=record_view["content_version"]) -> None:
+                    if current_version(mid) != version or (key is not None and not draft_current(key)):
+                        stale_draft_notice()
+                        return
                     if field is not None and field.value.strip() != original:
                         tell("文字尚未保存。请先保存修订并核对新候选，再单独确认。")
                         return
-                    perform(lambda: session.confirm(mid, f"CONFIRM {mid}"),
-                            "已确认。后续会话可检索这条记忆。")
+
+                    def accept() -> None:
+                        session.confirm(mid, f"CONFIRM {mid}")
+                        if key is not None:
+                            drafts.pop(key, None)
+
+                    perform(accept, "已确认。后续会话可检索这条记忆。")
 
                 confirm.on_click(confirm_clicked)
                 buttons.append(confirm)
                 item_actions.append(confirm)
             if record_view["can_correct"]:
-                correction_text = widgets.Textarea(
-                    placeholder="写下更正后的信息", layout=widgets.Layout(width="100%", height="65px")
-                )
+                correction_text, correction_key, stale = make_editor(
+                    memory_id, "correction", record_view, initial="", placeholder="写下更正后的信息")
                 correction = widgets.Button(description="提交更正候选")
-                correction.on_click(lambda _, mid=memory_id, field=correction_text: perform(
-                    lambda: session.propose_correction(mid, field.value),
-                    "更正已保存为待确认候选；单独确认后才会替换旧版本。",
-                ))
+
+                def correct_clicked(_: Any, mid=memory_id, field=correction_text, key=correction_key) -> None:
+                    if not draft_current(key):
+                        stale_draft_notice()
+                        return
+
+                    def save() -> None:
+                        session.propose_correction(mid, field.value)
+                        drafts.pop(key, None)
+
+                    perform(save, "更正已保存为待确认候选；单独确认后才会替换旧版本。")
+
+                correction.on_click(correct_clicked)
                 parts.append(correction_text)
+                if stale:
+                    parts.append(widgets.HTML(_paragraph("当前保存版本已改变；旧更正草稿已保留，尚未提交。")))
                 buttons.append(correction)
+                buttons.append(discard_button(correction_key))
                 item_actions.append(correction)
+            # A candidate may change status while another action is in flight.
+            # Preserve a dirty editor even when the new status no longer offers
+            # that operation; it may only be explicitly discarded at this point.
+            for kind in ("revision", "correction"):
+                key = memory_id, kind
+                draft = drafts.get(key)
+                if key not in editors and draft and draft["value"] != draft["base_value"]:
+                    field = widgets.Textarea(value=draft["value"], placeholder="未保存草稿",
+                                             layout=widgets.Layout(width="100%", height="65px"))
+                    editors[key] = field
+                    parts.extend([widgets.HTML(_paragraph("这条记忆的状态已改变。未保存草稿仍保留，不能直接提交。")), field])
+                    buttons.append(discard_button(key))
             delete = widgets.Button(description="删除此条记忆", button_style="danger")
             delete.on_click(lambda _, mid=memory_id, content=record_view["content"]: ask_before(
                 lambda: session.delete(mid, f"DELETE {mid}"),

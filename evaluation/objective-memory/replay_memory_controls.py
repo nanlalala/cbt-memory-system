@@ -37,10 +37,10 @@ from memory_retriever import MemoryRetriever, RetrievalPolicy  # noqa: E402
 from sqlite_store import SQLiteMemoryStore  # noqa: E402
 
 
-VERSION = "synthetic-control-replay-v1"
+VERSION = "synthetic-control-replay-v2"
 HERE = Path(__file__).resolve().parent
-DEFAULT_EVENTS = HERE / "fixtures/control_events_v1.json"
-DEFAULT_LEDGER = HERE / "fixtures/control_expected_v1.json"
+DEFAULT_EVENTS = HERE / "fixtures/control_events_v2.json"
+DEFAULT_LEDGER = HERE / "fixtures/control_expected_v2.json"
 TASKS = ("goals", "homework", "state", "corrections", "expiry", "deletion_isolation")
 ARMS = ("raw_history_rag", "managed_memory_rag")
 BOUNDARY = (
@@ -211,20 +211,33 @@ class _MemoryTags(HTMLParser):
         self.ids: list[str] = []
         self.open_count = 0
         self.invalid = False
+        self.entries: list[dict] = []
+        self.current: dict | None = None
 
     def handle_starttag(self, tag, attrs):
         if tag == "memory":
             self.open_count += 1
             value = dict(attrs).get("id")
-            if self.open_count != 1 or not value:
+            if self.open_count != 1 or not value or len(attrs) != len(dict(attrs)):
                 self.invalid = True
             self.ids.append(value or "")
+            self.current = {"attrs": dict(attrs), "text": ""}
+            self.entries.append(self.current)
+        elif self.open_count:
+            self.invalid = True
 
     def handle_endtag(self, tag):
         if tag == "memory":
             self.open_count -= 1
             if self.open_count != 0:
                 self.invalid = True
+            self.current = None
+        elif self.open_count:
+            self.invalid = True
+
+    def handle_data(self, data):
+        if self.open_count == 1 and self.current is not None:
+            self.current["text"] += data
 
 
 def _ids(records) -> list[str]:
@@ -248,16 +261,32 @@ def _query(engine, query: dict, expected: dict) -> dict:
                        and _sha(record.source_evidence.supporting_text.encode()) == digest)
     eligible = engine.eligible(query["user_id"], as_of=query["as_of"],
                                allow_restricted=query.get("allow_restricted", False))
-    retrieved = MemoryRetriever(eligible, policy=RetrievalPolicy(top_k=8)).search(
+    top_k = query.get("top_k", 8)
+    if type(top_k) is not int or not 1 <= top_k <= 32:
+        raise ValueError("synthetic query top_k must be an integer 1–32")
+    retrieved = MemoryRetriever(eligible, policy=RetrievalPolicy(top_k=top_k)).search(
         query["text"], user_id=query["user_id"], as_of=query["as_of"],
         allow_restricted=query.get("allow_restricted", False),
     )
     context = build_context(short_term_summary="Synthetic control replay query.",
-                            personal_memories=retrieved, max_personal=8,
+                            personal_memories=retrieved, max_personal=top_k,
                             max_chars=query.get("max_chars", 6000))
     parser = _MemoryTags()
     parser.feed(context.prompt_context)
     trace_ok = not parser.invalid and parser.open_count == 0 and parser.ids == list(context.memory_ids)
+    # The independent ledger binds the final rendered quote, not only an ID or
+    # a hash of the storage row. HTMLParser decodes the renderer's escaped text
+    # so exact source bytes can be checked even for <, &, and quotes.
+    rendered_integrity = trace_ok
+    rendered_hashes = {}
+    for entry in parser.entries:
+        memory_id = entry["attrs"].get("id", "")
+        digest = _sha(entry["text"].encode())
+        rendered_hashes[memory_id] = digest
+        rendered_integrity &= digest == expected.get("verbatim_text_sha256", {}).get(memory_id)
+        required_attrs = expected.get("rendered_memory_attributes", {}).get(memory_id)
+        rendered_integrity &= required_attrs is not None and all(
+            entry["attrs"].get(key) == value for key, value in (required_attrs or {}).items())
     forbidden_markers = [value for value in expected.get("forbidden_prompt_markers", ())
                          if value in unescape(context.prompt_context)]
     stages = {
@@ -267,6 +296,7 @@ def _query(engine, query: dict, expected: dict) -> dict:
         "context_budget": sorted(context.dropped_memory_ids) == sorted(expected.get("dropped_ids", [])),
         "context_inclusion": (sorted(context.memory_ids) == sorted(expected["included_ids"])
                               and trace_ok and not forbidden_markers),
+        "context_source_integrity": bool(rendered_integrity),
     }
     forbidden = set(expected.get("forbidden_ids", []))
     prohibited_ids = sorted(forbidden & ({item.record.memory_id for item in retrieved} | set(context.memory_ids)))
@@ -279,6 +309,8 @@ def _query(engine, query: dict, expected: dict) -> dict:
         "source_turn_ids": {record.memory_id: list(record.source_evidence.turn_ids) for record in eligible},
         "prompt_sha256": _sha(context.prompt_context.encode()), "prompt_chars": len(context.prompt_context),
         "trace_matches_prompt": trace_ok, "prohibited_ids_exposed": prohibited_ids,
+        "source_integrity_matches_prompt": bool(rendered_integrity),
+        "rendered_text_sha256": rendered_hashes,
         "forbidden_marker_exposures": len(forbidden_markers),
     }
 
@@ -375,7 +407,7 @@ def run_replay(events_path: Path = DEFAULT_EVENTS, ledger_path: Path = DEFAULT_L
                 "queries": sum(row["task"] == task for row in subset),
                 "passed_queries": sum(row["passed"] for row in subset if row["task"] == task),
                 "first_failures": {stage: sum(row["first_failure_stage"] == stage for row in subset if row["task"] == task)
-                                   for stage in ("storage", "lifecycle_access", "retrieval", "context_budget", "context_inclusion")},
+                                   for stage in ("storage", "lifecycle_access", "retrieval", "context_budget", "context_inclusion", "context_source_integrity")},
             } for task in TASKS},
         }
     summary["acceptance_passed"] = all(row["passed"] for row in rows + operations)

@@ -13,10 +13,11 @@ import json
 import hashlib
 import re
 import sys
+import unicodedata
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Sequence
 
@@ -99,6 +100,7 @@ Provider = Callable[..., ModelOutput]
 # Engineering defaults for the fictional demonstration, not clinical cutoffs or
 # calibrated probabilities. A new session does not silently erase this audit.
 CHECK_COOLDOWN_DAYS = 7.0
+CHECK_RESPONSE_TTL_HOURS = 24.0
 
 
 class DialogueSession:
@@ -162,6 +164,7 @@ class DialogueSession:
         self._excluded_user_turn_count = 0
         self._turn_times: dict[str, str] = {}
         self._turn_check_links: dict[str, dict] = {}
+        self._turn_update_links: dict[str, dict] = {}
         self._pending_memory_check: dict | None = None
         self._memory_checks_paused = False
 
@@ -232,6 +235,7 @@ class DialogueSession:
         self._excluded_user_turn_count = 0
         self._turn_times.clear()
         self._turn_check_links.clear()
+        self._turn_update_links.clear()
         self._pending_memory_check = None
         self._memory_checks_paused = False
         self._memory_processing = {"status": "idle", "stored_count": 0, "reason_code": "new_session"}
@@ -258,10 +262,14 @@ class DialogueSession:
 
     @staticmethod
     def _do_not_remember(text: str) -> bool:
+        text = unicodedata.normalize("NFKC", text).translate(str.maketrans({"’": "'", "‘": "'", "ʼ": "'"}))
         return bool(re.search(
-            r"不要(?:记住|保存|记录)|别(?:记住|保存|记录)|这条(?:不要|别)记|"
-            r"(?:^|[.!?,;:]\s*|\b(?:but|and|however|so)\s+|\bplease\s+)"
-            r"(?:please\s+)?(?:do\s+not|don't)\s+(?:remember|save|store|record)\b|"
+            r"(?:不要|别|不必|不用)(?:再)?(?:记住|记下|记着|保存|记录)|"
+            r"(?:不要|别)(?:再)?记(?=这|那|我|此|了|[，。！？!?,.;：:\s]|$)|这条(?:不要|别)记|"
+            r"(?:不要|别|不必|不用)(?:再)?(?:留下|留存)(?:这条|这一条|那条|这个|这些|此条|"
+            r"(?:任何|我的|本次|相关)?(?:记录|记忆|信息|资料|内容|原话|数据))|"
+            r"(?:^|[.!?,;:。！？；，—–]\s*|\b(?:but|and|however|so)\s+|\bplease\s+)"
+            r"(?:please\s+)?(?:do\s+not|don't)\s+(?:remember|save(?!\s+(?:money|cash|coins)\b)|store|record)\b|"
             r"\bi\s+don't\s+want\s+you\s+to\s+(?:remember|save|store|record)\b",
             text, re.IGNORECASE,
         ))
@@ -389,6 +397,8 @@ class DialogueSession:
                 })
                 if turn.turn_id in self._turn_check_links:
                     record.structured_payload["clarification_response"] = deepcopy(self._turn_check_links[turn.turn_id])
+                if turn.turn_id in self._turn_update_links:
+                    record.structured_payload["explicit_update_response"] = deepcopy(self._turn_update_links[turn.turn_id])
                 outcome = self.manager.ingest(record, actor="synthetic_automatic_quote_capture")
                 if outcome.action != "duplicate_rejected":
                     self.store.append_audit(
@@ -428,10 +438,171 @@ class DialogueSession:
             return f"之前你提到“{quote}”。现在还是这样吗，还是最近有了变化？"
         return f'Previously you said, “{quote}”. Is that still how it feels, or has something changed since then?'
 
-    def _conversational_selection(self, query: str, *, as_of: str) -> tuple[list, dict, list]:
+    def _check_binding(self, record: MemoryRecord) -> str:
+        """Bind a displayed check to the exact record revision and eligibility."""
+        return self._evidence_hash({"observation": self._observation_binding(record),
+                                   "updated_at": record.updated_at,
+                                   "lifecycle_status": record.lifecycle_status,
+                                   "confirmation_state": record.confirmation_state,
+                                   "valid_from": record.valid_from, "valid_to": record.valid_to})
+
+    @staticmethod
+    def _moment(value: str) -> datetime:
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if moment.tzinfo is None:
+            raise ValueError("check timestamps must include a timezone")
+        return moment.astimezone(timezone.utc)
+
+    def _valid_pending_check(self, pending: dict | None, *, as_of: str) -> MemoryRecord | None:
+        if not isinstance(pending, dict) or pending.get("session_id") != self.session_id:
+            return None
+        try:
+            now = self._moment(as_of)
+            asked = self._moment(pending["asked_at"])
+            expires = self._moment(pending["expires_at"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        if not asked <= now < expires or expires - asked > timedelta(hours=CHECK_RESPONSE_TTL_HOURS):
+            return None
+        if not self._turns or self._turns[-1].role != "assistant" or self._turns[-1].turn_id != pending.get("check_turn_id"):
+            return None
+        record = self.store.get(self.user_id, pending.get("memory_id", ""))
+        if record is None or pending.get("record_binding_sha256") != self._check_binding(record):
+            return None
+        if assess_memory_use(record, user_id=self.user_id, as_of=as_of,
+                             trusted_quote_ids={record.memory_id}, verified_source_ids={record.memory_id},
+                             current_use=False).action == "exclude":
+            return None
+        return record
+
+    @staticmethod
+    def _topic_terms(text: str) -> set[str]:
+        """Generic lexical anchors, not a pre-enumerated activity dictionary.
+
+        General mood/plan wording is deliberately insufficient for a topic link.
+        The result supports a dated response relation, never an entailment label.
+        """
+        text = unicodedata.normalize("NFKC", text).casefold()
+        text = re.sub(r"(?:\d+(?:\.\d+)?|[零〇一二三四五六七八九十百两]+)\s*"
+                      r"(?:分钟|小时|次|天|周|minutes?|hours?|times?|days?|weeks?)", " ", text, flags=re.IGNORECASE)
+        stop = {"this", "that", "those", "these", "with", "from", "about", "again", "still", "have", "has",
+                "want", "would", "could", "should", "will", "been", "were", "what", "when", "which", "after",
+                "before", "now", "today", "recently", "lately", "goal", "plan", "homework", "assignment",
+                "minute", "hour", "week", "daily", "feel", "feeling", "helpful", "burden", "difficult",
+                "the", "and", "for", "was", "are", "you", "not", "our", "your", "but", "can", "any", "all",
+                "one", "new", "old", "too", "more", "some", "then", "than", "into", "does", "did", "its",
+                "change", "changed", "switch", "switched", "instead", "already", "anymore", "suit", "suitable",
+                "appropriate", "make", "actually", "please", "only", "just", "two", "three", "four", "five",
+                "six", "seven", "eight", "nine", "ten"}
+        terms = set()
+        for word in re.findall(r"[a-z]{3,}", text):
+            if word.endswith("ing") and len(word) > 5:
+                word = word[:-3]
+                if len(word) > 2 and word[-1] == word[-2]:
+                    word = word[:-1]
+            elif word.endswith("s") and len(word) > 4:
+                word = word[:-1]
+            if word not in stop:
+                terms.add(word)
+        generic = ("现在", "目前", "最近", "之前", "这周", "上周", "今天", "以后", "本来", "已经", "还是",
+                   "每天", "每周", "每次", "每日", "每晚", "这项", "那项", "一项", "这次", "仍然",
+                   "继续", "这个", "那个", "可以", "对我", "觉得", "有点", "很有", "没有", "不再", "改成", "改为",
+                   "调整", "分钟", "小时", "目标", "计划", "安排", "作业", "状态", "感受", "心情", "情绪",
+                   "麻烦", "帮助", "适合", "太长", "太短", "太多", "太少", "太累", "合适", "反而",
+                   "我", "了", "的", "是", "还", "想", "要", "在", "不", "没")
+        for phrase in generic:
+            text = text.replace(phrase, " ")
+        for part in re.findall(r"[\u3400-\u9fff]{2,}", text):
+            terms.update(part[i:i + 2] for i in range(len(part) - 1))
+        return terms
+
+    @staticmethod
+    def _quantities(text: str) -> set[str]:
+        return {re.sub(r"\s+", "", item.casefold()) for item in re.findall(
+            r"(?:\d+(?:\.\d+)?|[零〇一二三四五六七八九十百两]+)\s*(?:分钟|小时|次|天|周|minutes?|hours?|times?|days?|weeks?)",
+            unicodedata.normalize("NFKC", text), re.IGNORECASE)}
+
+    @staticmethod
+    def _change_cue(text: str) -> bool:
+        return bool(re.search(r"改成|改为|改到|调整为|换成|不再|已经不|现在不|"
+                              r"\b(?:change|changed|switch|switched|instead|no\s+longer)\b", text, re.IGNORECASE))
+
+    @classmethod
+    def _related_statement(cls, text: str, source: str, *, bound_question: bool = False) -> bool:
+        reply_topics = cls._topic_terms(text)
+        if reply_topics & cls._topic_terms(source):
+            return True
+        # An explicit different topic (e.g. a lunch break) cannot be attached to
+        # a running goal merely because both mention ten minutes. Quantity-only
+        # ellipsis is permitted only when the statement supplies no other topic.
+        if cls._change_cue(text) and not reply_topics:
+            current, previous = cls._quantities(text), cls._quantities(source)
+            if current & previous:
+                return True
+            if bound_question and current and previous:
+                unit = lambda value: re.sub(r"^[\d.零〇一二三四五六七八九十百两]+", "", value).rstrip("s")
+                return bool({unit(v) for v in current} & {unit(v) for v in previous})
+        return False
+
+    def _explicit_update_links(self, text: str, *, as_of: str) -> dict[str, dict]:
+        """A unique source-grounded update relation, not semantic confirmation."""
+        current_statement = bool(re.search(r"现在|目前|已经|不再|最近|\b(?:now|currently|lately|recently)\b", text, re.IGNORECASE))
+        if not self._memory_worthy(text) or not (self._change_cue(text) or current_statement):
+            return {}
+        records = self.store.list_for_user(self.user_id)
+        quote_ids, _ = self._authenticated_sources(records, self.store.audit_for_user(self.user_id))
+        candidates = [r for r in records if r.memory_id in quote_ids
+                      and self._related_statement(text, r.source_evidence.supporting_text)
+                      and assess_memory_use(r, user_id=self.user_id, as_of=as_of,
+                                            trusted_quote_ids=quote_ids, current_use=False).action != "exclude"]
+        # Without a displayed, revision-bound question, two plausible objects
+        # are ambiguous. Do not silently attach a quantity update to both.
+        if len(candidates) != 1:
+            return {}
+        target = candidates[0]
+        return {target.memory_id: {"responds_to_memory_id": target.memory_id,
+                                  "target_binding_sha256": self._check_binding(target),
+                                  "relation": "explicit_contextual_update_not_semantic_confirmation"}}
+
+    def _valid_source_link(self, record: MemoryRecord, *, quote_ids: set[str], as_of: str,
+                           audits: list[dict]) -> dict | None:
+        if record.memory_id not in quote_ids:
+            return None
+        if not any(event["action"] == "dialogue_observation_captured" and event["memory_id"] == record.memory_id
+                   and event["details"].get("observation_binding_sha256") == self._observation_binding(record)
+                   for event in audits):
+            return None
+        link = record.structured_payload.get("clarification_response") or record.structured_payload.get("explicit_update_response")
+        if not isinstance(link, dict) or link.get("relation") not in {
+            "next_explicit_statement_not_semantic_confirmation", "explicit_contextual_update_not_semantic_confirmation",
+        }:
+            return None
+        target = self.store.get(self.user_id, link.get("responds_to_memory_id", ""))
+        if target is None or link.get("target_binding_sha256") != self._check_binding(target):
+            return None
+        if assess_memory_use(target, user_id=self.user_id, as_of=as_of, trusted_quote_ids=quote_ids,
+                             current_use=False).action == "exclude":
+            return None
+        try:
+            age = (self._moment(as_of) - self._moment(record.observed_at)).total_seconds()
+        except (TypeError, ValueError):
+            return None
+        if not 0 <= age < CHECK_COOLDOWN_DAYS * 86400:
+            return None
+        if assess_memory_use(record, user_id=self.user_id, as_of=as_of, trusted_quote_ids=quote_ids,
+                             current_use=False).action == "exclude":
+            return None
+        return link
+
+    def _conversational_selection(self, query: str, *, as_of: str,
+                                  explicit_updates: dict | None = None) -> tuple[list, dict, list]:
         records = self.store.list_for_user(self.user_id)
         audits = self.store.audit_for_user(self.user_id)
         quote_ids, source_ids = self._authenticated_sources(records, audits)
+        explicit_updates = self._explicit_update_links(query, as_of=as_of) if explicit_updates is None else explicit_updates
+        valid_links = {r.memory_id: link for r in records
+                       if (link := self._valid_source_link(r, quote_ids=quote_ids, as_of=as_of, audits=audits)) is not None}
+        recently_updated_targets = {link["responds_to_memory_id"] for link in valid_links.values()}
         in_window = {turn.turn_id for turn in self._turns if turn.role == "user"}
         inventory = [record for record in records
                      if not in_window.intersection(record.source_evidence.turn_ids)]
@@ -451,20 +622,30 @@ class DialogueSession:
         retrieved_by_id = {item.record.memory_id: item for item in retrieved}
         # A later, authenticated reply may paraphrase the old task. Its explicit
         # target link preserves retrieval without inventing a semantic summary.
+        linked_children = {}
         for record in inventory:
-            link = record.structured_payload.get("clarification_response")
-            if not isinstance(link, dict) or record.memory_id in retrieved_by_id or record.memory_id not in quote_ids:
-                continue
-            target = retrieved_by_id.get(link.get("responds_to_memory_id"))
-            if target is not None and any(
-                event["action"] == "dialogue_observation_captured"
-                and event["memory_id"] == record.memory_id
-                and event["details"].get("observation_binding_sha256") == self._observation_binding(record)
-                for event in audits
-            ):
-                retrieved.append(replace(target, record=record, score=target.score + 0.001,
-                                         components={**target.components, "linked_followup": 1.0}))
-        retrieved.sort(key=lambda item: (-item.score, item.record.memory_id))
+            link = valid_links.get(record.memory_id)
+            if link is not None:
+                linked_children.setdefault(link["responds_to_memory_id"], []).append(record)
+        frontier = list(retrieved_by_id)
+        # The snapshot has a finite number of source observations. Each ID can
+        # enter the frontier only once, so a chain/cycle cannot produce an
+        # unbounded traversal or duplicate context. Follow transitive updates;
+        # ten -> five -> three must not stop at the intermediate five quote.
+        for position in range(len(inventory)):
+            if position >= len(frontier):
+                break
+            target = retrieved_by_id[frontier[position]]
+            for record in linked_children.get(target.record.memory_id, ()):
+                if record.memory_id in retrieved_by_id:
+                    continue
+                item = replace(target, record=record, score=target.score + 0.001,
+                               components={**target.components, "linked_followup": 1.0})
+                retrieved.append(item)
+                retrieved_by_id[record.memory_id] = item
+                frontier.append(record.memory_id)
+        retrieved.sort(key=lambda item: (-item.score, -self._moment(item.record.observed_at).timestamp(),
+                                         item.record.memory_id))
         conflicts = set()
         by_slot = {}
         for record in inventory:
@@ -477,16 +658,7 @@ class DialogueSession:
         selected, decisions, checks = [], {}, []
         now = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
         for item in retrieved:
-            link = item.record.structured_payload.get("clarification_response")
-            recent_response = (
-                item.record.memory_id in quote_ids and isinstance(link, dict)
-                and link.get("relation") == "next_explicit_statement_not_semantic_confirmation"
-                and 0 <= (now - datetime.fromisoformat(item.record.observed_at.replace("Z", "+00:00"))).total_seconds() < CHECK_COOLDOWN_DAYS * 86400
-                and any(event["action"] == "dialogue_observation_captured"
-                        and event["memory_id"] == item.record.memory_id
-                        and event["details"].get("observation_binding_sha256") == self._observation_binding(item.record)
-                        for event in audits)
-            )
+            recent_response = item.record.memory_id in valid_links
             decision = assess_memory_use(
                 item.record, user_id=self.user_id, as_of=as_of,
                 trusted_quote_ids=quote_ids, verified_source_ids=source_ids,
@@ -503,7 +675,8 @@ class DialogueSession:
                   and not self._memory_checks_paused and not self._declines_memory_check(query)
                   # The current message can already supply the relevant update.
                   # Do not ask the user to repeat it or thereby approve old facts.
-                  and not self._related_check_response(query, {"memory_id": item.record.memory_id})):
+                  and item.record.memory_id not in explicit_updates
+                  and item.record.memory_id not in recently_updated_targets):
                 quote_key = self._evidence_hash({"quote": decision.reference_text.casefold().strip()})
                 recent = any(
                     event["action"] == "dialogue_memory_check_asked"
@@ -516,21 +689,25 @@ class DialogueSession:
                                    "quote_key_sha256": quote_key, "record": item.record})
         return selected, decisions, checks
 
-    def _related_check_response(self, text: str, pending: dict | None) -> bool:
-        """Conservative CBT-topic link, never an entailment or consent label."""
-        if not pending or not self._memory_worthy(text):
+    def _related_check_response(self, text: str, pending: dict | None, *, as_of: str | None = None) -> bool:
+        """Bind only the next explicit related statement to a live exact check."""
+        if not self._memory_worthy(text):
             return False
-        target = self.store.get(self.user_id, pending["memory_id"])
+        target = self._valid_pending_check(pending, as_of=as_of or _now())
         if target is None:
             return False
-        source = target.source_evidence.supporting_text.casefold()
-        reply = text.casefold()
-        # Shared specific activity/task words are narrower than generic CJK
-        # character overlap. An unrelated next turn is not a check response.
-        topics = ("思维记录", "记录", "作业", "散步", "游泳", "暴露", "行为实验", "睡眠", "睡觉", "呼吸练习",
-                  "thought record", "homework", "walking", "swim", "exposure", "behavioural experiment",
-                  "behavioral experiment", "sleep", "breathing exercise")
-        return any(topic in source and topic in reply for topic in topics)
+        if not self._related_statement(text, target.source_evidence.supporting_text, bound_question=True):
+            return False
+        records = self.store.list_for_user(self.user_id)
+        quotes, _ = self._authenticated_sources(records, self.store.audit_for_user(self.user_id))
+        # A multi-topic statement may be saved verbatim, but its whole body must
+        # not be attached to one old question just because one topic overlaps.
+        if any(r.memory_id != target.memory_id and r.memory_id in quotes
+               and r.source_evidence.supporting_text != target.source_evidence.supporting_text
+               and self._related_statement(text, r.source_evidence.supporting_text)
+               for r in records):
+            return False
+        return True
 
     def snapshot(self) -> dict:
         audits = self.store.audit_for_user(self.user_id)
@@ -612,11 +789,14 @@ class DialogueSession:
         staged_turns = [*self._turns, user_turn][-self.max_session_turns :]
         observed_at = _now()
         prior_check = deepcopy(self._pending_memory_check)
+        explicit_updates = (self._explicit_update_links(text, as_of=observed_at)
+                            if self.memory_mode == "conversational" else {})
         decisions, checks = {}, []
         if self._do_not_remember(text):
             selected = []
         elif self.memory_mode == "conversational":
-            selected, decisions, checks = self._conversational_selection(text, as_of=observed_at)
+            selected, decisions, checks = self._conversational_selection(text, as_of=observed_at,
+                                                                        explicit_updates=explicit_updates)
         else:
             records = self.manager.eligible_context(self.user_id)
             selected = MemoryRetriever(records, policy=RetrievalPolicy()).search(text, user_id=self.user_id)
@@ -663,11 +843,12 @@ class DialogueSession:
             output = self._call_provider(messages, purpose="response")
             mode = self._backend_mode
         recorded_checks = []
+        assistant_turn_id = _identifier("turn")
         for check in checks:
             try:
                 with self.store.transaction(immediate=True):
                     current = self.store.get(self.user_id, check["memory_id"])
-                    if current is None or self._source_binding(current) != self._source_binding(check["record"]):
+                    if current is None or self._check_binding(current) != self._check_binding(check["record"]):
                         continue
                     valid = assess_memory_use(
                         current, user_id=self.user_id, as_of=observed_at,
@@ -676,14 +857,20 @@ class DialogueSession:
                     )
                     if valid.action == "exclude":
                         continue
+                    binding = {"memory_id": current.memory_id,
+                               "record_binding_sha256": self._check_binding(current),
+                               "session_id": self.session_id, "check_turn_id": assistant_turn_id,
+                               "asked_at": observed_at,
+                               "expires_at": (self._moment(observed_at) + timedelta(hours=CHECK_RESPONSE_TTL_HOURS)).isoformat()}
                     self.store.append_audit(
                         user_id=self.user_id, memory_id=current.memory_id,
                         action="dialogue_memory_check_asked", occurred_at=observed_at,
                         actor="synthetic_dialogue_service",
                         details={"quote_key_sha256": check["quote_key_sha256"],
+                                 **binding,
                                  "purpose": "ask_before_current_personalization", "not_user_confirmation": True},
                     )
-                recorded_checks.append(check)
+                recorded_checks.append({**check, "binding": binding})
             except Exception:
                 # A failed optional memory action must not discard a valid
                 # response or pretend that a clarification was displayed.
@@ -726,7 +913,7 @@ class DialogueSession:
                                if key not in {"record", "quote_key_sha256"}} for item in recorded_checks],
                 memory_mode=self.memory_mode,
             )
-        assistant_turn = ConversationTurn(_identifier("turn"), "assistant", response_text)
+        assistant_turn = ConversationTurn(assistant_turn_id, "assistant", response_text)
         committed_turns = [*staged_turns, assistant_turn][-self.max_session_turns :]
         retained_ids = {turn.turn_id for turn in committed_turns}
         self._dropped_user_turn_count += sum(
@@ -736,15 +923,23 @@ class DialogueSession:
         self._excluded_user_turn_ids.intersection_update(retained_ids)
         self._turn_times = {key: value for key, value in self._turn_times.items() if key in retained_ids}
         self._turn_check_links = {key: value for key, value in self._turn_check_links.items() if key in retained_ids}
+        self._turn_update_links = {key: value for key, value in self._turn_update_links.items() if key in retained_ids}
         self._turn_times[user_turn.turn_id] = observed_at
-        if self._related_check_response(text, prior_check):
+        if self._related_check_response(text, prior_check, as_of=observed_at):
             self._turn_check_links[user_turn.turn_id] = {
                 "responds_to_memory_id": prior_check["memory_id"],
                 "check_turn_id": prior_check["check_turn_id"],
+                "target_binding_sha256": prior_check["record_binding_sha256"],
+                "check_asked_at": prior_check["asked_at"], "check_expires_at": prior_check["expires_at"],
                 "relation": "next_explicit_statement_not_semantic_confirmation",
             }
+        elif len(explicit_updates) == 1:
+            target_id, link = next(iter(explicit_updates.items()))
+            target = self.store.get(self.user_id, target_id)
+            if target is not None and link["target_binding_sha256"] == self._check_binding(target):
+                self._turn_update_links[user_turn.turn_id] = deepcopy(link)
         self._pending_memory_check = (
-            {"memory_id": recorded_checks[0]["memory_id"], "check_turn_id": assistant_turn.turn_id}
+            deepcopy(recorded_checks[0]["binding"])
             if recorded_checks else None
         )
         self._session_user_turn_count += 1
@@ -773,6 +968,11 @@ class DialogueSession:
         if self._safety_paused:
             return []
         user_turns = [turn for turn in self._turns if turn.role == "user"]
+        # Enforce the source instruction again at the manual-organize boundary,
+        # including pending turns left by an older matcher or failed capture.
+        for turn in user_turns:
+            if self._do_not_remember(turn.text):
+                self._exclude_turn(turn.turn_id)
         pending_turns = [turn for turn in user_turns
                          if turn.turn_id not in self._extracted_user_turn_ids | self._excluded_user_turn_ids]
         if not pending_turns:
@@ -797,7 +997,8 @@ class DialogueSession:
             # A source opt-out applies to extraction context too. Merely
             # forbidding its source ID would still expose the body to a model
             # which could copy it into a summary citing another user turn.
-            permitted_context = [turn for turn in user_turns if turn.turn_id not in self._excluded_user_turn_ids]
+            permitted_context = [turn for turn in user_turns if turn.turn_id not in self._excluded_user_turn_ids
+                                 and not self._do_not_remember(turn.text)]
             request = json.loads(build_extraction_request(permitted_context))
             request["eligible_source_turn_ids"] = [turn.turn_id for turn in pending_turns]
             output = self._call_provider([
@@ -883,6 +1084,14 @@ class DialogueSession:
             return revision
         return {}
 
+    def _invalidate_pending_target(self, memory_id: str) -> None:
+        if self._pending_memory_check and self._pending_memory_check.get("memory_id") == memory_id:
+            self._pending_memory_check = None
+        self._turn_check_links = {turn: link for turn, link in self._turn_check_links.items()
+                                  if link.get("responds_to_memory_id") != memory_id}
+        self._turn_update_links = {turn: link for turn, link in self._turn_update_links.items()
+                                   if link.get("responds_to_memory_id") != memory_id}
+
     def revise_candidate(self, memory_id: str, text: str) -> dict:
         """Revise an unconfirmed candidate without accepting its old wording.
 
@@ -894,6 +1103,8 @@ class DialogueSession:
         Correction candidates retain their target.
         """
         text = self._checked_text(text)
+        if self._do_not_remember(text):
+            raise ValueError("an explicit source storage opt-out cannot be saved as a candidate revision")
         if RISK_PATTERN.search(text):
             raise ValueError("the demonstration risk gate does not permit routine candidate revision")
         timestamp = _now()
@@ -956,6 +1167,7 @@ class DialogueSession:
                             "current_source_binding_sha256": self._source_binding(revised),
                             "remains_unconfirmed": True},
             }])
+        self._invalidate_pending_target(memory_id)
         return revised.to_dict()
 
     def confirm(self, memory_id: str, explicit_command: str) -> dict:
@@ -985,10 +1197,13 @@ class DialogueSession:
                     "scope": "synthetic_demo_only_not_authenticated_patient_consent",
                 },
             )
+        self._invalidate_pending_target(memory_id)
         return confirmed.to_dict()
 
     def propose_correction(self, memory_id: str, text: str) -> dict:
         text = self._checked_text(text)
+        if self._do_not_remember(text):
+            raise ValueError("an explicit source storage opt-out cannot be saved as a correction")
         target = self.store.get(self.user_id, memory_id)
         if target is None:
             raise KeyError("memory not found for this user")
@@ -1020,6 +1235,7 @@ class DialogueSession:
             stored = self.store.get(self.user_id, record.memory_id)
             if stored is None:
                 raise ValueError("correction is a duplicate of an existing memory")
+        self._invalidate_pending_target(memory_id)
         return stored.to_dict()
 
     def delete(self, memory_id: str, explicit_command: str) -> bool:

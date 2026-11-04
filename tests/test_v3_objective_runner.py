@@ -39,7 +39,7 @@ class V3RunnerIntegrationTests(unittest.TestCase):
             path = Path(directory)
             receipt = self.prepare(path)
             protocol, prompts, _, _ = runner.load_run(path)
-            self.assertEqual(protocol["protocol_version"], "objective-public-qa-version-view-v3")
+            self.assertEqual(protocol["protocol_version"], "objective-public-qa-version-view-v3.1")
             self.assertEqual(len({p["messages"][0]["content"] for p in prompts}), 1)
             self.assertIn("fictional world", prompts[0]["messages"][0]["content"])
             self.assertIn("Alpha", prompts[1]["messages"][1]["content"])

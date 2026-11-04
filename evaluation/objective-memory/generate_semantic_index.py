@@ -1,7 +1,8 @@
 """Bounded hosted-Colab source-only semantic-index stage, separate from QA.
 
-No scoring references, benchmark questions or model answers are read. Compact
-case metadata is used only to prove which eligible source documents a case owns.
+No scoring references or model answers are read. Compact case metadata (which
+can contain questions) is used only to prove which eligible source documents a
+case owns; questions are never supplied to the extractor.
 Exact source quotes authenticate provenance, not entailment of a model summary.
 """
 from __future__ import annotations
@@ -22,7 +23,7 @@ import run_objective_comparison as qa
 from execution_lock import exclusive_directories
 from semantic_source_index import SYSTEM_PROMPT, validate_index
 
-VERSION = "source-only-semantic-extraction-v1"
+VERSION = "source-only-semantic-extraction-visible-history-v2"
 MAX_ATTEMPTS = 2
 FROZEN = ("sources.jsonl", "case_sources.jsonl", "extraction_requests.jsonl")
 HERE = Path(__file__).resolve().parent
@@ -47,6 +48,11 @@ def _write(path, rows):
 
 def _json(path, value):
     Path(path).write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+
+
+def _visibility_identity(subject, sources):
+    """Bind an extractor's complete visible history, not just cited sources."""
+    return qa.stable_digest({"subject_id": subject, "visible_source_versions": sources})
 
 
 def _source_inputs(source_run, case_ids=None):
@@ -89,22 +95,35 @@ def _source_inputs(source_run, case_ids=None):
             # stores each released context under its exact source scope.
             session_id = case["history_scope_id"] + ":released-sequence"
             history = [row for row in history if row["session_id"] == session_id]
+        cutoff = case.get("visible_context_end_exclusive")
+        if cutoff is not None:
+            if type(cutoff) is not int or cutoff <= 0:
+                raise ValueError("visible history prefix must have a positive exclusive boundary")
+            if case.get("dataset_key") == "personamem_v1":
+                context = case.get("source_context_id")
+                if not isinstance(context, str) or not context:
+                    raise ValueError("Persona visible prefix requires its released source context")
+                history = [row for row in history if row["session_id"] == f"persona32k:{context}:released-sequence"]
+            history = [row for row in history if row["order"] < cutoff]
         eligible, _ = qa._eligible({"history": history, "as_of": case.get("as_of")})
         # Refuse to guess at varying released prefix boundaries. This exact
         # history hash proves the reconstructed source set is the prepared one.
         if qa.stable_digest([subject, eligible]) != case["history_inventory_sha256"]:
             raise ValueError("cannot reconstruct exact visible history for case; use a cohort with one verifiable history per subject")
         ids = [qa._document({"subject_id": subject}, row).document_id for row in eligible]
+        visible_sources = [sources[key] for key in ids]
         mappings.append({"case_id": case["case_id"], "subject_id": subject,
-                         "history_inventory_sha256": case["history_inventory_sha256"], "source_document_ids": ids})
+                         "history_inventory_sha256": case["history_inventory_sha256"], "source_document_ids": ids,
+                         "visibility_sha256": _visibility_identity(subject, visible_sources)})
         needed.update(ids)
     selected = [item for key, item in sources.items() if key in needed]
     selected.sort(key=lambda x: (x["subject_id"], x["source"]["session_id"], x["source"]["order"], x["source"]["turn_id"]))
     return protocol, selected, mappings
 
 
-def _requests(sources, chunk_chars):
+def _requests(sources, chunk_chars, *, visibility_sha256=None):
     requests, current, subject, scope = [], [], None, None
+    visibility_sha256 = visibility_sha256 or qa.stable_digest({"standalone_sources": sources})
 
     def payload(items):
         return json.dumps({"sources": [{"source_document_id": x["document_id"], "source_role": x["source"]["role"],
@@ -114,8 +133,9 @@ def _requests(sources, chunk_chars):
     def finish():
         if current:
             messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": payload(current)}]
-            key = qa.stable_digest(messages)
-            requests.append({"request_key": key, "prompt_sha256": key, "subject_id": subject,
+            key = qa.stable_digest({"visibility_sha256": visibility_sha256, "messages": messages})
+            requests.append({"request_key": key, "prompt_sha256": qa.stable_digest(messages), "subject_id": subject,
+                             "visibility_sha256": visibility_sha256,
                              "source_document_ids": [x["document_id"] for x in current], "messages": messages})
 
     for item in sources:
@@ -128,6 +148,41 @@ def _requests(sources, chunk_chars):
         scope = item["source"]["session_id"]
         current.append(item)
     finish()
+    return requests
+
+
+def _request_plan(sources, mappings, chunk_chars):
+    """Share extraction only between cases with identical complete visibility."""
+    by_id = {}
+    for source in sources:
+        key = source["document_id"]
+        if key in by_id:
+            raise ValueError("duplicate source identity in frozen index inputs")
+        by_id[key] = source
+    groups, case_ids = {}, set()
+    for case in mappings:
+        if case["case_id"] in case_ids:
+            raise ValueError("duplicate visible-history case mapping")
+        case_ids.add(case["case_id"])
+        ids = case["source_document_ids"]
+        if len(ids) != len(set(ids)) or not set(ids) <= set(by_id):
+            raise ValueError("visible history has duplicate or unknown sources")
+        visible = [by_id[key] for key in ids]
+        if any(row["subject_id"] != case["subject_id"] for row in visible):
+            raise ValueError("visible history crosses subjects")
+        identity = _visibility_identity(case["subject_id"], visible)
+        if identity != case["visibility_sha256"]:
+            raise ValueError("visible source versions differ from case identity")
+        if qa.stable_digest([case["subject_id"], [item["source"] for item in visible]]) != case["history_inventory_sha256"]:
+            raise ValueError("visible source versions differ from original case history")
+        group = (case["subject_id"], ids)
+        if identity in groups and groups[identity] != group:
+            raise ValueError("visible-history digest collision")
+        groups[identity] = group
+    requests = []
+    for identity in sorted(groups):
+        _, ids = groups[identity]
+        requests.extend(_requests([by_id[key] for key in ids], chunk_chars, visibility_sha256=identity))
     return requests
 
 
@@ -147,7 +202,7 @@ def prepare(source_run, output_dir, settings, api_base, *, chunk_chars=12000, fi
         source_protocol, sources, mappings = _source_inputs(source_run, case_ids)
         if fixture_only and (len(mappings) > 10 or sum(len(json.dumps(s)) for s in sources) > 1024 * 1024):
             raise ValueError("fixture seam limited to ten small synthetic cases")
-        requests = _requests(sources, chunk_chars)
+        requests = _request_plan(sources, mappings, chunk_chars)
         for name, rows in zip(FROZEN, (sources, mappings, requests)):
             _write(output_dir / name, rows)
         protocol = {"version": VERSION, "fixture_only": fixture_only, "source_protocol_sha256": source_protocol["protocol_sha256"],
@@ -159,7 +214,7 @@ def prepare(source_run, output_dir, settings, api_base, *, chunk_chars=12000, fi
                     "selected_case_ids": [m["case_id"] for m in mappings],
                     "questions_supplied_to_extractor": False, "references_read": False,
                     "semantic_entailment_validated": False, "clinical_claim": False,
-                    "source_boundary": "exact source-history hashes verified; original roles preserved; benchmark statements are data, not user consent"}
+                    "source_boundary": "each extractor request is bound to its complete visible-history identity and original source versions; only identical histories share results; original roles preserved; benchmark statements are data, not user consent"}
         protocol["protocol_sha256"] = qa.stable_digest(protocol)
         _json(output_dir / "index_protocol.json", protocol)
         return {"protocol_sha256": protocol["protocol_sha256"], "request_count": len(requests),
@@ -180,14 +235,22 @@ def _load(stage):
     settings = qa._settings(protocol["settings"])
     if protocol["model_identity_policy"] != qa.model_identity_policy(settings):
         raise ValueError("index model policy mismatch")
-    sources = {x["document_id"]: x for x in _rows(stage / "sources.jsonl")}
+    source_rows = _rows(stage / "sources.jsonl")
+    mappings = _rows(stage / "case_sources.jsonl")
+    if [case["case_id"] for case in mappings] != protocol["selected_case_ids"]:
+        raise ValueError("visible-history mappings differ from frozen case selection")
+    expected_requests = _request_plan(source_rows, mappings, protocol["source_chunk_chars"])
+    sources = {x["document_id"]: x for x in source_rows}
     requests = _rows(stage / "extraction_requests.jsonl")
+    if requests != expected_requests or len(requests) != protocol["request_count"]:
+        raise ValueError("frozen extraction requests differ from exact visible histories")
     if len({r["request_key"] for r in requests}) != len(requests):
         raise ValueError("duplicate extraction requests")
     for row in requests:
-        if row["request_key"] != qa.stable_digest(row["messages"]) or row["prompt_sha256"] != row["request_key"]:
+        identity = qa.stable_digest({"visibility_sha256": row["visibility_sha256"], "messages": row["messages"]})
+        if row["request_key"] != identity or row["prompt_sha256"] != qa.stable_digest(row["messages"]):
             raise ValueError("index request identity mismatch")
-    return protocol, sources, requests, _rows(stage / "case_sources.jsonl")
+    return protocol, sources, requests, mappings
 
 
 def _candidates(response, request, sources):
@@ -331,12 +394,6 @@ def generate(stage, *, max_calls, key=None):
                 row = {**response, **intent}
                 row["response_sha256"] = qa.stable_digest(row)
                 _validate_response(row, request, protocol)
-                qa._append(stage / "index_responses.jsonl", row)
-                try:
-                    candidates = _candidates(row, request, sources)
-                    outcome = {"status": "success", "retryable": False, "candidates": candidates}
-                except (ValueError, KeyError, TypeError):
-                    outcome = {"status": "invalid_index", "retryable": False, "error_type": "InvalidSourceBoundIndex"}
             except Exception as exc:
                 identity = isinstance(exc, (ValueError, KeyError, TypeError))
                 retryable = isinstance(exc, (URLError, TimeoutError, ConnectionError, RuntimeError))
@@ -344,9 +401,21 @@ def generate(stage, *, max_calls, key=None):
                     retryable = exc.code == 429 or 500 <= exc.code < 600
                 outcome = {"status": "identity_failure" if identity else "technical_failure", "retryable": retryable and not identity,
                            "error_type": type(exc).__name__}
+                qa._append(stage / "index_outcomes.jsonl", {**intent, **outcome, "elapsed_seconds": time.monotonic() - started})
+                if identity:
+                    raise ValueError("extractor identity or response integrity rejected") from None
+                continue
+            # Persistence is deliberately outside the provider error handler.
+            # A full valid response may already be on disk when flush/fsync
+            # raises. Keep that intent unresolved rather than recording a
+            # contradictory provider failure or issuing another paid request.
+            qa._append(stage / "index_responses.jsonl", row)
+            try:
+                candidates = _candidates(row, request, sources)
+                outcome = {"status": "success", "retryable": False, "candidates": candidates}
+            except (ValueError, KeyError, TypeError):
+                outcome = {"status": "invalid_index", "retryable": False, "error_type": "InvalidSourceBoundIndex"}
             qa._append(stage / "index_outcomes.jsonl", {**intent, **outcome, "elapsed_seconds": time.monotonic() - started})
-            if outcome["status"] == "identity_failure":
-                raise ValueError("extractor identity or response integrity rejected") from None
         result = _status(protocol, requests, _journals(stage, protocol, sources, requests))
         return {**result, "actual_calls_this_invocation": count}
 
@@ -383,11 +452,18 @@ def compile_index(stage):
         receipt = _status(protocol, requests, journal)
         if not receipt["complete"]:
             raise ValueError("index compile requires all frozen requests terminal; retain partial stage")
+        requests_by_key = {request["request_key"]: request for request in requests}
         candidates = [c for outcome in journal[3].values() if outcome["status"] == "success" for c in outcome["candidates"]]
+        candidates_by_visibility = {}
+        for outcome in journal[3].values():
+            if outcome["status"] == "success":
+                identity = requests_by_key[outcome["request_key"]]["visibility_sha256"]
+                candidates_by_visibility.setdefault(identity, []).extend(outcome["candidates"])
         rows = []
         for case in mappings:
             ids = set(case["source_document_ids"])
-            selected = [c for c in candidates if c["source_document_id"] in ids and c["subject_id"] == case["subject_id"]]
+            selected = [c for c in candidates_by_visibility.get(case["visibility_sha256"], [])
+                        if c["source_document_id"] in ids and c["subject_id"] == case["subject_id"]]
             docs = [qa._document({"subject_id": case["subject_id"]}, sources[key]["source"]) for key in ids]
             validate_index(selected, documents=docs, subject_id=case["subject_id"])
             rows.append({"case_id": case["case_id"], "candidates": selected})

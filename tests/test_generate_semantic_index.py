@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "evaluation/objective-memory"))
 import generate_semantic_index as stage
+from semantic_source_index import rank_sources
 
 
 def source_fixture(directory):
@@ -38,6 +39,48 @@ def fake_response(request, settings, **kwargs):
                                                      "summary": "source-supported retrieval hint", "supporting_text": d["text"]} for d in docs]}),
             "provider_model": "fixture-model", "finish_reason": "stop", "latency_seconds": .01,
             "usage": {"prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}}
+
+
+def temporal_source_fixture(directory, *, prefix=False, duplicate_early=False):
+    """A future explanation changes what the same exact early quote could mean."""
+    directory.mkdir()
+    subject = "same-subject"
+    session = "persona32k:c:released-sequence" if prefix else "same-session"
+    texts = ["I wrote it down.", "Hello again.", "By it I meant the thought record."]
+    times = ["2026-10-01T09:00:00Z", "2026-10-01T10:00:00Z", "2026-10-03T09:00:00Z"]
+    history = [{"turn_id": f"t{n}", "session_id": session, "role": "user", "text": text,
+                "order": n, "observed_at": None if prefix else times[n], "sensitivity": "standard"}
+               for n, text in enumerate(texts)]
+    cases = []
+    for cid, count, cutoff in (("early", 2, "2026-10-02T00:00:00Z"), ("late", 3, "2026-10-04T00:00:00Z")):
+        case = {"case_id": cid, "subject_id": subject, "dataset_key": "personamem_v1" if prefix else "synthetic",
+                "query": "QUESTION_NOT_SUPPLIED", "as_of": None if prefix else cutoff,
+                "history_inventory_sha256": stage.qa.stable_digest([subject, history[:count]])}
+        if prefix:
+            case.update(source_context_id="c", history_scope_id=f"persona32k:c:prefix:{count}",
+                        visible_context_end_exclusive=count)
+        cases.append(case)
+    if duplicate_early:
+        cases.append({**cases[0], "case_id": "same-visible-history-other-question", "query": "ANOTHER_QUERY_NOT_SUPPLIED"})
+    inventory = [{"document_id": stage.qa._document({"subject_id": subject}, row).document_id,
+                  "subject_id": subject, "source": row} for row in history]
+    for name, rows in (("inventory.jsonl", inventory), ("cases.jsonl", cases)):
+        stage._write(directory / name, rows)
+    protocol = {"case_ids": [c["case_id"] for c in cases],
+                "file_sha256": {name: stage._sha(directory / name) for name in ("inventory.jsonl", "cases.jsonl")}}
+    protocol["protocol_sha256"] = stage.qa.stable_digest(protocol)
+    stage._json(directory / "protocol.json", protocol)
+    return cases, history
+
+
+def future_sensitive_fake_response(request, settings, **kwargs):
+    docs = json.loads(request["messages"][1]["content"])["sources"]
+    first = next(d for d in docs if d["text"] == "I wrote it down.")
+    summary = "thought record" if any("By it I meant" in d["text"] for d in docs) else "wrote something down"
+    response = fake_response(request, settings, **kwargs)
+    response["hypothesis"] = json.dumps({"candidates": [{"source_document_id": first["source_document_id"],
+        "memory_type": "explicit_fact", "summary": summary, "supporting_text": first["text"]}]})
+    return response
 
 
 class SemanticGenerationTests(unittest.TestCase):
@@ -176,6 +219,115 @@ class SemanticGenerationTests(unittest.TestCase):
         self.assertEqual(receipt["actual_provider_attempts"], 1)
         self.assertEqual(receipt["counts"], {"success": 1})
         self.assertEqual(stage.compile_index(self.output)["candidate_count"], 2)
+
+    def test_persistence_failure_after_valid_response_is_recoverable_without_paid_retry(self):
+        for failure in ("response_postappend", "success_outcome_preappend"):
+            with self.subTest(failure=failure):
+                output = self.root / failure
+                with patch.object(stage.qa, "require_colab"):
+                    stage.prepare(self.source, output, self.settings, "https://example.invalid/v1", case_ids=["scope-a:q"])
+                append = stage.qa._append
+                raised = False
+
+                def inject(path, row):
+                    nonlocal raised
+                    if not raised and failure == "response_postappend" and path.name == "index_responses.jsonl":
+                        append(path, row)
+                        raised = True
+                        raise OSError("injected post-append flush failure")
+                    if not raised and failure == "success_outcome_preappend" and path.name == "index_outcomes.jsonl" and row["status"] == "success":
+                        raised = True
+                        raise OSError("injected success-outcome persistence failure")
+                    append(path, row)
+
+                context, provider = self.provider_context(side_effect=fake_response)
+                with context:
+                    with patch.object(stage.qa, "_append", side_effect=inject), self.assertRaises(OSError):
+                        stage.generate(output, max_calls=1, key="fixture-secret")
+                    self.assertTrue(raised)
+                    self.assertEqual(provider.call_count, 1)
+                    self.assertEqual(stage._rows(output / "index_outcomes.jsonl"), [])
+                    receipt = stage.status(output)
+                    self.assertEqual(receipt["counts"], {"inflight": 1})
+                    self.assertEqual(receipt["recorded_provider_responses"], 1)
+                    self.assertEqual(receipt["failed_outcomes"], 0)
+                    self.assertEqual(receipt["reported_usage_including_invalid_indexes"]["total_tokens"], 30)
+                    stage.generate(output, max_calls=1, key="fixture-secret")
+                    self.assertEqual(provider.call_count, 1)
+                    protocol, _, requests, _ = stage._load(output)
+                    receipt = stage.recover(output, request_key=requests[0]["request_key"], resolution="use_recorded_response")
+                    self.assertEqual(receipt["counts"], {"success": 1})
+                    self.assertEqual(receipt["actual_provider_attempts"], 1)
+                    stage.generate(output, max_calls=1, key="fixture-secret")
+                    self.assertEqual(provider.call_count, 1)
+                self.assertEqual(stage.compile_index(output)["candidate_count"], 2)
+
+    def _assert_temporal_isolation(self, *, prefix):
+        source = self.root / ("prefix-source" if prefix else "date-source")
+        cases, history = temporal_source_fixture(source, prefix=prefix, duplicate_early=True)
+        joint, early = self.root / "joint", self.root / "early-only"
+        with patch.object(stage.qa, "require_colab"):
+            joint_receipt = stage.prepare(source, joint, self.settings, "https://example.invalid/v1")
+            early_receipt = stage.prepare(source, early, self.settings, "https://example.invalid/v1", case_ids=["early"])
+        self.assertEqual(joint_receipt["request_count"], 2)  # Identical early histories may share; late cannot.
+        self.assertEqual(early_receipt["request_count"], 1)
+        joint_mappings = {r["case_id"]: r for r in stage._rows(joint / "case_sources.jsonl")}
+        early_mapping = stage._rows(early / "case_sources.jsonl")[0]
+        identity = early_mapping["visibility_sha256"]
+        self.assertEqual(identity, joint_mappings["early"]["visibility_sha256"])
+        self.assertNotEqual(identity, joint_mappings["late"]["visibility_sha256"])
+        self.assertEqual(identity, joint_mappings["same-visible-history-other-question"]["visibility_sha256"])
+        joint_request = next(r for r in stage._rows(joint / "extraction_requests.jsonl") if r["visibility_sha256"] == identity)
+        early_request = stage._rows(early / "extraction_requests.jsonl")[0]
+        self.assertEqual(joint_request, early_request)
+        self.assertNotIn("By it I meant", str(early_request["messages"]))
+        self.assertNotIn("QUESTION", str(joint_request["messages"]))
+        with patch.object(stage.qa, "require_colab"), patch.object(stage.qa, "generate_response", side_effect=future_sensitive_fake_response) as provider:
+            self.assertTrue(stage.generate(joint, max_calls=60, key="fixture-secret")["complete"])
+            self.assertTrue(stage.generate(early, max_calls=60, key="fixture-secret")["complete"])
+            self.assertEqual(provider.call_count, 3)
+        stage.compile_index(joint)
+        stage.compile_index(early)
+        joint_index = {r["case_id"]: r["candidates"] for r in stage._rows(joint / "semantic_index.jsonl")}
+        early_index = stage._rows(early / "semantic_index.jsonl")[0]["candidates"]
+        self.assertEqual(joint_index["early"], early_index)
+        self.assertEqual(early_index[0]["summary"], "wrote something down")
+        self.assertEqual(joint_index["late"][0]["summary"], "thought record")
+        docs = [stage.qa._document({"subject_id": "same-subject"}, row) for row in history[:2]]
+        ranker = stage.qa.HistoryRanker(stage.qa.Settings(model="fixture-model", backend="lexical", top_k=3, minimum_relevance=.01))
+        self.assertEqual(rank_sources("thought record", docs, joint_index["early"], ranker, subject_id="same-subject"), [])
+        self.assertEqual(rank_sources("thought record", docs, early_index, ranker, subject_id="same-subject"), [])
+        self.assertEqual([d.text for d in rank_sources("thought record", docs, joint_index["late"], ranker, subject_id="same-subject")], ["I wrote it down."])
+
+    def test_as_of_early_index_is_identical_alone_and_with_future_case(self):
+        self._assert_temporal_isolation(prefix=False)
+
+    def test_exclusive_prefix_early_index_is_identical_alone_and_with_future_case(self):
+        self._assert_temporal_isolation(prefix=True)
+
+    def test_conflicting_source_versions_are_rejected_instead_of_overwritten(self):
+        path = self.source / "inventory.jsonl"
+        inventory = stage._rows(path)
+        conflict = {**inventory[0], "source": {**inventory[0]["source"], "text": "Changed same-ID source version."}}
+        stage._write(path, [*inventory, conflict])
+        protocol = json.loads((self.source / "protocol.json").read_text())
+        protocol["file_sha256"]["inventory.jsonl"] = stage._sha(path)
+        protocol.pop("protocol_sha256")
+        protocol["protocol_sha256"] = stage.qa.stable_digest(protocol)
+        stage._json(self.source / "protocol.json", protocol)
+        with self.assertRaisesRegex(ValueError, "ambiguous source versions"):
+            self.prepare()
+
+    def test_previous_union_scope_protocol_is_not_silently_resumed(self):
+        self.prepare()
+        path = self.output / "index_protocol.json"
+        protocol = json.loads(path.read_text())
+        protocol["version"] = "source-only-semantic-extraction-v1"
+        protocol.pop("protocol_sha256")
+        protocol["protocol_sha256"] = stage.qa.stable_digest(protocol)
+        stage._json(path, protocol)
+        with self.assertRaisesRegex(ValueError, "unsupported index protocol"):
+            stage.status(self.output)
 
 
 if __name__ == "__main__":

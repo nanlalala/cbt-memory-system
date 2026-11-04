@@ -171,6 +171,7 @@ or turn a partial cohort into a final accuracy result. Run it with the matching
 frozen runner code; write output outside the live run.
 
 Optional scoring-side annotation JSONL requires `case_id`, `protocol_sha256`,
+`history_inventory_sha256` (the exact current case-visible source history),
 `reviewer_id`, `annotation_origin` (`released`, `human_review`, `developer_fixture`,
 or `model_proposed`), `coverage: complete_sufficient_alternatives`, and
 `alternatives`: a list of sufficient sets of spans. Each span requires
@@ -179,9 +180,32 @@ or `model_proposed`), `coverage: complete_sufficient_alternatives`, and
 cannot authenticate reviewer independence or semantic sufficiency. Model-proposed
 labels stay explicitly labelled, never silently become independent review.
 
+The v2 diagnostic reader validates the actual rendered source text, role/date and
+exact span offsets against this case-visible source version. Conflicting versions
+under one document ID are rejected. Unknown renderers or insufficient span traces
+produce unknown coverage instead of an ID-only positive. Diagnostics use a
+coherent read-only snapshot: no lock file is created and missing failure mirrors
+are derived only in memory. Ordinary writer recovery remains a separate action.
+`arm_row_counts`, `canonical_request_counts` and actual attempt counts are separate.
+
 The ledger distinguishes source coverage in retrieval and context from causal
 attribution. Joint evidence requires all documents in at least one sufficient
 alternative. Missing annotations remain unresolved. A wrong answer despite source
 documents in context is **not automatically a generation error**. Quote-control
 runs mark extraction/update as not run. Static QA has no measured participant
 burden; time and repeat-question outcomes remain null.
+
+## Review fixes and frozen-run migration
+
+The follow-up [review response](../../docs/review-response-20261105.md) records
+F01–F03 and L01–L07 separately from benchmark effectiveness. Patched objective
+protocols are v2.1 / v3.1; the extraction stage now uses a complete visible-history
+identity. Only cases with identical subject, source versions and complete visible
+history may share extraction results. Compiling by final cited source ID alone is
+not sufficient to establish temporal isolation.
+
+Use a fresh directory and the newly pinned executable for new paid runs. Preserve
+the old protocols, source snapshots and results under their original Git SHAs;
+do not edit their hashes or silently resume them with patched code. The earlier
+61-call pilot results remain unchanged, and the synthetic review counterexamples
+do not establish that those specific pilots leaked future information.

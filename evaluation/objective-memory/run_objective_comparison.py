@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
+from contextlib import contextmanager
+import fcntl
 from datetime import datetime, timedelta, timezone
 from html import escape
 import json
@@ -39,7 +41,7 @@ from memory_manager import MemoryManager  # noqa: E402
 from sqlite_store import SQLiteMemoryStore  # noqa: E402
 from memory_use_policy import assess_memory_use  # noqa: E402
 
-VERSION = "objective-public-qa-source-index-v2"
+VERSION = "objective-public-qa-source-index-v2.1"
 ARMS = ("short_term", "raw_history_rag", "managed_memory_rag")
 MAX_ATTEMPTS = 2
 FROZEN_ROWS = ("cases.jsonl", "references.jsonl", "prompts.jsonl", "inventory.jsonl", "semantic_index.jsonl")
@@ -437,7 +439,8 @@ def _validate_response(row: dict, protocol: dict, prompt: dict) -> None:
         raise ValueError("response integrity mismatch")
 
 
-def _journals_locked(run_dir: Path, protocol: dict, prompts: list[dict]) -> tuple[dict, dict, dict]:
+def _journals_locked(run_dir: Path, protocol: dict, prompts: list[dict], *,
+                     repair_mirror: bool = True) -> tuple[dict, dict, dict]:
     canonical = _canonical(prompts)
     attempts, outcomes, responses = {}, {}, {}
     for row in read_jsonl(run_dir / "response_attempts.jsonl"):
@@ -484,12 +487,12 @@ def _journals_locked(run_dir: Path, protocol: dict, prompts: list[dict]) -> tupl
     # outcomes is authoritative. A crash can interrupt its diagnostic mirror.
     if failures != expected_failures[:len(failures)]:
         raise ValueError("failure journal differs from outcome ledger")
-    if failures != expected_failures:
+    if failures != expected_failures and repair_mirror:
         _replace_rows(run_dir / "failures.jsonl", expected_failures)
     return attempts, outcomes, responses
 
 
-def _load_run_locked(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]:
+def _load_run_locked(run_dir: Path, *, repair_mirror: bool = True) -> tuple[dict, list[dict], list[dict], dict]:
     run_dir = Path(run_dir)
     protocol = json.loads((run_dir / "protocol.json").read_text(encoding="utf-8"))
     if protocol.get("protocol_version") != VERSION or protocol.get("arms") != list(ARMS):
@@ -525,7 +528,7 @@ def _load_run_locked(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]
         if key in identities and identities[key] != prompt["messages"]:
             raise ValueError("canonical digest collision")
         identities[key] = prompt["messages"]
-    _, outcomes, raw = _journals_locked(run_dir, protocol, prompts)
+    _, outcomes, raw = _journals_locked(run_dir, protocol, prompts, repair_mirror=repair_mirror)
     canonical = _canonical(prompts)
     completed = {}
     for prompt in prompts:
@@ -550,8 +553,9 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]:
         return _load_run_locked(Path(run_dir))
 
 
-def _request_outcomes_locked(run_dir: Path, protocol: dict, prompts: list[dict], completed: dict) -> dict:
-    attempts, outcomes, _ = _journals_locked(Path(run_dir), protocol, prompts)
+def _request_outcomes_locked(run_dir: Path, protocol: dict, prompts: list[dict], completed: dict, *,
+                             repair_mirror: bool = True) -> dict:
+    attempts, outcomes, _ = _journals_locked(Path(run_dir), protocol, prompts, repair_mirror=repair_mirror)
     result = {}
     for prompt in prompts:
         pair, key = (prompt["example_id"], prompt["arm"]), prompt["canonical_request_key"]
@@ -569,6 +573,87 @@ def _request_outcomes_locked(run_dir: Path, protocol: dict, prompts: list[dict],
         result[pair] = {"status": status, "canonical_request_key": key, "attempt_count": last,
                         "error_type": outcome.get("error_type") if outcome else None}
     return result
+
+
+
+_READONLY_OPTIONAL = ("response_attempts.jsonl", "response_outcomes.jsonl", "responses.jsonl", "failures.jsonl")
+
+
+def _readonly_fingerprint(run_dir: Path) -> dict:
+    """Fingerprint only the fixed input allowlist; no files are created."""
+    result = {}
+    for name in ("protocol.json", *FROZEN_ROWS, *_READONLY_OPTIONAL, ".execution.lock"):
+        path = run_dir / name
+        if path.is_symlink():
+            raise ValueError("read-only artifact snapshots do not follow symlinked files")
+        try:
+            before = path.stat()
+        except FileNotFoundError:
+            result[name] = None
+            continue
+        body = path.read_bytes()
+        after = path.stat()
+        stamp = lambda st: (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+        if stamp(before) != stamp(after):
+            raise RuntimeError("experiment artifacts changed during read-only snapshot")
+        result[name] = (stamp(after), digest_bytes(body))
+    return result
+
+
+@contextmanager
+def _readonly_existing_lock(run_dir: Path):
+    """Use an existing cooperating-writer lock read-only; never create one.
+
+    Offline copies may omit the lock. Byte/identity fingerprints then reject
+    observable concurrent changes instead of claiming a transaction lock.
+    """
+    lock_path = run_dir / ".execution.lock"
+    if lock_path.is_symlink():
+        raise ValueError("read-only snapshot lock cannot be a symlink")
+    try:
+        handle = lock_path.open("rb")
+    except FileNotFoundError:
+        yield
+        return
+    with handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("experiment directory is busy; no read-only result produced") from None
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def read_run_state_readonly(run_dir: Path) -> dict:
+    """Validate a coherent artifact snapshot without repair or lock creation.
+
+    Missing/short valid failure mirrors are derived from authoritative outcomes
+    in memory. Contradictions still fail. No returned result is produced if the
+    fixed artifacts change while they are read. This reader is suitable for a
+    read-only artifact copy; it does not resume, recover or score a paid batch.
+    """
+    run_dir = Path(run_dir)
+    if not run_dir.is_dir():
+        raise ValueError("read-only snapshot requires an existing experiment directory")
+    with _readonly_existing_lock(run_dir):
+        before = _readonly_fingerprint(run_dir)
+        protocol, prompts, references, completed = _load_run_locked(run_dir, repair_mirror=False)
+        outcomes = _request_outcomes_locked(run_dir, protocol, prompts, completed, repair_mirror=False)
+        frozen = {name: read_jsonl(run_dir / name) for name in FROZEN_ROWS}
+        if before != _readonly_fingerprint(run_dir):
+            raise RuntimeError("experiment artifacts changed during read-only snapshot")
+        current_code = _code_hashes()
+        if any(current_code.get(name) != expected for name, expected in protocol["code_sha256"].items()):
+            raise ValueError("runner/evaluator code changed during read-only snapshot")
+    return {"protocol": protocol, "prompts": prompts, "references": references,
+            "completed": completed, "outcomes": outcomes, "frozen_rows": frozen}
+
+
+def load_run_readonly(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]:
+    state = read_run_state_readonly(run_dir)
+    return state["protocol"], state["prompts"], state["references"], state["completed"]
 
 
 def request_outcomes(run_dir: Path, protocol: dict | None = None, prompts: list[dict] | None = None,
@@ -609,8 +694,6 @@ def generate_run(run_dir: Path, *, max_calls: int, key: str | None = None) -> di
                 row = {**response, **intent}
                 row["response_sha256"] = stable_digest(row)
                 _validate_response(row, protocol, prompt)
-                _append(run_dir / "responses.jsonl", row)
-                _append(run_dir / "response_outcomes.jsonl", {**intent, "status": "success", "retryable": False})
             except Exception as exc:
                 identity = isinstance(exc, (ValueError, KeyError, TypeError))
                 retryable = isinstance(exc, (URLError, TimeoutError, ConnectionError, RuntimeError))
@@ -622,6 +705,14 @@ def generate_run(run_dir: Path, *, max_calls: int, key: str | None = None) -> di
                 _append(run_dir / "failures.jsonl", outcome)
                 if identity:
                     raise ValueError("provider identity or response integrity rejected; run cannot be formally scored") from None
+            else:
+                # Persistence is not a provider failure. If either write raises,
+                # leave the intent unresolved instead of appending a conflicting
+                # failure. A validated response already on disk is explicitly
+                # recoverable without another paid request. Malformed/partial
+                # journal writes are still rejected by the ordinary validator.
+                _append(run_dir / "responses.jsonl", row)
+                _append(run_dir / "response_outcomes.jsonl", {**intent, "status": "success", "retryable": False})
             protocol, prompts, _, completed = _load_run_locked(run_dir)
         return _status_locked(run_dir, protocol, prompts, completed, actual_calls_this_invocation=count)
 
