@@ -1,6 +1,6 @@
 {
   "schema_version": "colab-v2-execution-checkpoint-v1",
-  "recorded_utc": "2026-11-04T16:21:00Z",
+  "recorded_utc": "2026-11-04T16:29:25.159Z",
   "status": "partial_checkpoint_only_no_effectiveness_result",
   "code_revision": "c6784e92d4717cab365be0ca0aaf9bf65c423062",
   "merged_implementation_commit": "83edd7b751e62cd60534ce87a7906e70ad243f44",
@@ -26,7 +26,7 @@
       "reader_requests": 1500,
       "complete_input_preparation": true,
       "all_13_repeated_session_id_groups_preserved": true,
-      "retained_verified_responses": 120,
+      "retained_verified_responses": 360,
       "reference_judge_labels": 0
     },
     "locomo10": {
@@ -46,13 +46,13 @@
       "verified_hashed_members": 37
     },
     {
-      "name": "longmemeval_s_cleaned-v2-reader-120.zip",
-      "bytes": 61838,
-      "sha256": "38e44d19c9d9a3216b48ce31f3b7a6162da9c36ec03e0d6860fc2dcd1d3e262d",
+      "name": "longmemeval_s_cleaned-v2-reader-360.zip",
+      "bytes": 138179,
+      "sha256": "327c15468f1737ae1c9a5b388bf6c211723f5e40b47ebc71c6d21b08730afd37",
       "verified_hashed_members": 7,
-      "responses": 120,
-      "unique_requests": 120,
-      "complete_three_arm_question_pairs": 40
+      "responses": 360,
+      "unique_requests": 360,
+      "complete_three_arm_question_pairs": 120
     }
   ],
   "retention": "Raw benchmark-derived archives retained in controlled project storage; public record contains metadata only.",
