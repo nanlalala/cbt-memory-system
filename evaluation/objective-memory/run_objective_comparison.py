@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
+from contextlib import contextmanager
+import fcntl
 from datetime import datetime, timedelta, timezone
 from html import escape
 import json
@@ -39,10 +41,10 @@ from memory_manager import MemoryManager  # noqa: E402
 from sqlite_store import SQLiteMemoryStore  # noqa: E402
 from memory_use_policy import assess_memory_use  # noqa: E402
 
-VERSION = "objective-public-qa-quote-control-v1"
+VERSION = "objective-public-qa-source-index-v2.1"
 ARMS = ("short_term", "raw_history_rag", "managed_memory_rag")
 MAX_ATTEMPTS = 2
-FROZEN_ROWS = ("cases.jsonl", "references.jsonl", "prompts.jsonl", "inventory.jsonl")
+FROZEN_ROWS = ("cases.jsonl", "references.jsonl", "prompts.jsonl", "inventory.jsonl", "semantic_index.jsonl")
 CASE_FIELDS = {
     "case_id", "group_id", "subject_id", "dataset_key", "task", "query", "options",
     "history", "events", "as_of", "ordering_kind", "history_scope_id",
@@ -95,7 +97,7 @@ def _replace_rows(path: Path, rows: list[dict]) -> None:
 
 
 def _code_hashes() -> dict[str, str]:
-    paths = [Path(__file__), ROOT / "evaluation/end-to-end-dialogue/run_three_arm.py",
+    paths = [Path(__file__), ROOT / "evaluation/objective-memory/semantic_source_index.py", ROOT / "evaluation/end-to-end-dialogue/run_three_arm.py",
              ROOT / "evaluation/end-to-end-dialogue/execution_lock.py",
              ROOT / "evaluation/objective-memory/objective_datasets.py",
              ROOT / "evaluation/objective-memory/score_objective_comparison.py",
@@ -260,11 +262,15 @@ def _messages(case: dict, short_text: str, long_text: str) -> list[dict]:
 
 
 def _prepare_prompt(case: dict, arm: str, documents: list[HistoryTurn], managed: list[HistoryTurn],
-                    store_trace: list[dict], excluded: list[dict], settings: Settings, ranker: HistoryRanker) -> dict:
+                    store_trace: list[dict], excluded: list[dict], settings: Settings, ranker: HistoryRanker,
+                    semantic_index: list[dict] | None = None) -> dict:
     short = documents[-settings.short_turns:]
     short_ids = {item.document_id for item in short}
     older = [item for item in (managed if arm == ARMS[2] else documents) if item.document_id not in short_ids]
     selected = ranker.rank(case["query"], older, scope_id=case["subject_id"]) if arm != ARMS[0] else []
+    if arm == ARMS[2] and semantic_index is not None:
+        from semantic_source_index import rank_sources
+        selected = rank_sources(case["query"], older, semantic_index, ranker, subject_id=case["subject_id"])
     _, recent_ids, short_dropped = fit_turns(list(reversed(short)), settings.short_chars)
     recent_set = set(recent_ids)
     short_text, recent_ids, _ = fit_turns([item for item in short if item.document_id in recent_set], settings.short_chars)
@@ -279,6 +285,8 @@ def _prepare_prompt(case: dict, arm: str, documents: list[HistoryTurn], managed:
         "request_key": stable_digest([case["case_id"], arm]), "canonical_request_key": prompt_hash,
         "prompt_sha256": prompt_hash, "messages": messages,
         "trace": {"encoding": "released_source_quotes_no_semantic_extraction", "source_unit_count": len(documents),
+                  "selection_representation": "semantic_index_unverified_hints" if arm == ARMS[2] and semantic_index is not None else "source_quotes",
+                  "semantic_candidate_count": len(semantic_index) if arm == ARMS[2] and semantic_index is not None else None,
                   "stored_quote_count": len(store_trace) if arm == ARMS[2] else None,
                   "storage_inventory_sha256": stable_digest(store_trace) if arm == ARMS[2] else None,
                   "storage": [row for row in store_trace if row["document_id"] in set(recent_ids + long_ids)] if arm == ARMS[2] else [],
@@ -291,7 +299,8 @@ def _prepare_prompt(case: dict, arm: str, documents: list[HistoryTurn], managed:
 
 
 def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, settings: Settings,
-                api_base: str, dataset_manifest: dict, *, fixture_only: bool = False) -> dict:
+                api_base: str, dataset_manifest: dict, *, fixture_only: bool = False,
+                semantic_index: list[dict] | None = None) -> dict:
     """Freeze a new run. Small explicitly labelled fixtures never become formal data."""
     if not fixture_only:
         require_colab()
@@ -305,6 +314,17 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
         raise ValueError("references must have exactly one row per frozen case")
     for case in cases:
         _validate_case(case)
+    index_by_case = None
+    if semantic_index is not None:
+        if not isinstance(semantic_index, list):
+            raise ValueError("semantic index must be a per-case list")
+        index_by_case = {}
+        for row in semantic_index:
+            if not isinstance(row, dict) or set(row) != {"case_id", "candidates"} or row["case_id"] in index_by_case:
+                raise ValueError("invalid or duplicate semantic index case")
+            index_by_case[row["case_id"]] = row["candidates"]
+        if set(index_by_case) != {c["case_id"] for c in cases}:
+            raise ValueError("semantic index must cover exactly the frozen cohort, including empty candidate lists")
     output_dir = Path(output_dir)
     with exclusive_directory(output_dir):
         if (output_dir / "protocol.json").exists():
@@ -320,6 +340,10 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
             if history_key not in history_cache:
                 history_cache[history_key] = _managed_quotes(case, admitted)
             managed, store_trace = history_cache[history_key]
+            hints = None
+            if index_by_case is not None:
+                from semantic_source_index import validate_index
+                hints = validate_index(index_by_case[case["case_id"]], documents=managed, subject_id=case["subject_id"])
             compact_cases.append({**{key: value for key, value in case.items() if key != "history"},
                                   "history_inventory_sha256": history_key})
             storage_by_id = {entry["document_id"]: entry for entry in store_trace}
@@ -330,7 +354,7 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
                 if key not in seen_inventory:
                     inventory.append(item)
                     seen_inventory.add(key)
-            prompts.extend(_prepare_prompt(case, arm, docs, managed, store_trace, excluded, settings, ranker) for arm in ARMS)
+            prompts.extend(_prepare_prompt(case, arm, docs, managed, store_trace, excluded, settings, ranker, hints) for arm in ARMS)
         messages_by_key = {}
         for prompt in prompts:
             key = prompt["canonical_request_key"]
@@ -346,7 +370,7 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
                        "arm_requests": len(prompts), "unique_provider_requests": len(messages_by_key),
                        "policy": "exact_messages_hash_deduplicated_call",
                        "interpretation": "equivalent quote controls; shared response is not an independent observation"}
-        rows_by_name = dict(zip(FROZEN_ROWS, (compact_cases, references, prompts, inventory)))
+        rows_by_name = dict(zip(FROZEN_ROWS, (compact_cases, references, prompts, inventory, semantic_index or [])))
         for name, rows in rows_by_name.items():
             write_jsonl(output_dir / name, rows)
         code_hashes = _code_hashes()
@@ -362,7 +386,11 @@ def prepare_run(cases: list[dict], references: list[dict], output_dir: Path, set
                                    "metric_version": "released-upstream-substring-exact-match-or-option-parser-v1"},
             "file_sha256": {name: digest_bytes((output_dir / name).read_bytes()) for name in FROZEN_ROWS},
             "maximum_attempts_per_request": MAX_ATTEMPTS, "deduplication": equivalence,
-            "representation": {"version": "source_verified_quote_v1", "semantic_candidate_artifact": None,
+            "representation": {"version": "semantic_source_index_v1" if index_by_case is not None else "source_verified_quote_v1",
+                               "semantic_candidate_artifact": "semantic_index.jsonl" if index_by_case is not None else None,
+                               "semantic_boundary": "unverified index hints select eligible original quotes only; no summary confirmation, task agreement or version suppression is inferred",
+                               "index_generation_provenance": "external artifact; gold-blind generation and independent semantic review not authenticated by this preparer" if index_by_case is not None else "not_applicable",
+                               "index_generation_cost": "unreported; response-only costs are not total pipeline costs" if index_by_case is not None else "not_applicable",
                                "origin_policy": "all released data system_observation, including synthetic role=user; unconfirmed candidates, no user consent fabricated",
                                "current_use": False, "source_roles": "all released visible roles, retained equally in raw and managed",
                                "clock_policy": "released timestamps if present; otherwise internal source-order schema clock never rendered as calendar",
@@ -411,7 +439,8 @@ def _validate_response(row: dict, protocol: dict, prompt: dict) -> None:
         raise ValueError("response integrity mismatch")
 
 
-def _journals_locked(run_dir: Path, protocol: dict, prompts: list[dict]) -> tuple[dict, dict, dict]:
+def _journals_locked(run_dir: Path, protocol: dict, prompts: list[dict], *,
+                     repair_mirror: bool = True) -> tuple[dict, dict, dict]:
     canonical = _canonical(prompts)
     attempts, outcomes, responses = {}, {}, {}
     for row in read_jsonl(run_dir / "response_attempts.jsonl"):
@@ -458,12 +487,12 @@ def _journals_locked(run_dir: Path, protocol: dict, prompts: list[dict]) -> tupl
     # outcomes is authoritative. A crash can interrupt its diagnostic mirror.
     if failures != expected_failures[:len(failures)]:
         raise ValueError("failure journal differs from outcome ledger")
-    if failures != expected_failures:
+    if failures != expected_failures and repair_mirror:
         _replace_rows(run_dir / "failures.jsonl", expected_failures)
     return attempts, outcomes, responses
 
 
-def _load_run_locked(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]:
+def _load_run_locked(run_dir: Path, *, repair_mirror: bool = True) -> tuple[dict, list[dict], list[dict], dict]:
     run_dir = Path(run_dir)
     protocol = json.loads((run_dir / "protocol.json").read_text(encoding="utf-8"))
     if protocol.get("protocol_version") != VERSION or protocol.get("arms") != list(ARMS):
@@ -499,7 +528,7 @@ def _load_run_locked(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]
         if key in identities and identities[key] != prompt["messages"]:
             raise ValueError("canonical digest collision")
         identities[key] = prompt["messages"]
-    _, outcomes, raw = _journals_locked(run_dir, protocol, prompts)
+    _, outcomes, raw = _journals_locked(run_dir, protocol, prompts, repair_mirror=repair_mirror)
     canonical = _canonical(prompts)
     completed = {}
     for prompt in prompts:
@@ -524,8 +553,9 @@ def load_run(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]:
         return _load_run_locked(Path(run_dir))
 
 
-def _request_outcomes_locked(run_dir: Path, protocol: dict, prompts: list[dict], completed: dict) -> dict:
-    attempts, outcomes, _ = _journals_locked(Path(run_dir), protocol, prompts)
+def _request_outcomes_locked(run_dir: Path, protocol: dict, prompts: list[dict], completed: dict, *,
+                             repair_mirror: bool = True) -> dict:
+    attempts, outcomes, _ = _journals_locked(Path(run_dir), protocol, prompts, repair_mirror=repair_mirror)
     result = {}
     for prompt in prompts:
         pair, key = (prompt["example_id"], prompt["arm"]), prompt["canonical_request_key"]
@@ -543,6 +573,87 @@ def _request_outcomes_locked(run_dir: Path, protocol: dict, prompts: list[dict],
         result[pair] = {"status": status, "canonical_request_key": key, "attempt_count": last,
                         "error_type": outcome.get("error_type") if outcome else None}
     return result
+
+
+
+_READONLY_OPTIONAL = ("response_attempts.jsonl", "response_outcomes.jsonl", "responses.jsonl", "failures.jsonl")
+
+
+def _readonly_fingerprint(run_dir: Path) -> dict:
+    """Fingerprint only the fixed input allowlist; no files are created."""
+    result = {}
+    for name in ("protocol.json", *FROZEN_ROWS, *_READONLY_OPTIONAL, ".execution.lock"):
+        path = run_dir / name
+        if path.is_symlink():
+            raise ValueError("read-only artifact snapshots do not follow symlinked files")
+        try:
+            before = path.stat()
+        except FileNotFoundError:
+            result[name] = None
+            continue
+        body = path.read_bytes()
+        after = path.stat()
+        stamp = lambda st: (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
+        if stamp(before) != stamp(after):
+            raise RuntimeError("experiment artifacts changed during read-only snapshot")
+        result[name] = (stamp(after), digest_bytes(body))
+    return result
+
+
+@contextmanager
+def _readonly_existing_lock(run_dir: Path):
+    """Use an existing cooperating-writer lock read-only; never create one.
+
+    Offline copies may omit the lock. Byte/identity fingerprints then reject
+    observable concurrent changes instead of claiming a transaction lock.
+    """
+    lock_path = run_dir / ".execution.lock"
+    if lock_path.is_symlink():
+        raise ValueError("read-only snapshot lock cannot be a symlink")
+    try:
+        handle = lock_path.open("rb")
+    except FileNotFoundError:
+        yield
+        return
+    with handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RuntimeError("experiment directory is busy; no read-only result produced") from None
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def read_run_state_readonly(run_dir: Path) -> dict:
+    """Validate a coherent artifact snapshot without repair or lock creation.
+
+    Missing/short valid failure mirrors are derived from authoritative outcomes
+    in memory. Contradictions still fail. No returned result is produced if the
+    fixed artifacts change while they are read. This reader is suitable for a
+    read-only artifact copy; it does not resume, recover or score a paid batch.
+    """
+    run_dir = Path(run_dir)
+    if not run_dir.is_dir():
+        raise ValueError("read-only snapshot requires an existing experiment directory")
+    with _readonly_existing_lock(run_dir):
+        before = _readonly_fingerprint(run_dir)
+        protocol, prompts, references, completed = _load_run_locked(run_dir, repair_mirror=False)
+        outcomes = _request_outcomes_locked(run_dir, protocol, prompts, completed, repair_mirror=False)
+        frozen = {name: read_jsonl(run_dir / name) for name in FROZEN_ROWS}
+        if before != _readonly_fingerprint(run_dir):
+            raise RuntimeError("experiment artifacts changed during read-only snapshot")
+        current_code = _code_hashes()
+        if any(current_code.get(name) != expected for name, expected in protocol["code_sha256"].items()):
+            raise ValueError("runner/evaluator code changed during read-only snapshot")
+    return {"protocol": protocol, "prompts": prompts, "references": references,
+            "completed": completed, "outcomes": outcomes, "frozen_rows": frozen}
+
+
+def load_run_readonly(run_dir: Path) -> tuple[dict, list[dict], list[dict], dict]:
+    state = read_run_state_readonly(run_dir)
+    return state["protocol"], state["prompts"], state["references"], state["completed"]
 
 
 def request_outcomes(run_dir: Path, protocol: dict | None = None, prompts: list[dict] | None = None,
@@ -583,8 +694,6 @@ def generate_run(run_dir: Path, *, max_calls: int, key: str | None = None) -> di
                 row = {**response, **intent}
                 row["response_sha256"] = stable_digest(row)
                 _validate_response(row, protocol, prompt)
-                _append(run_dir / "responses.jsonl", row)
-                _append(run_dir / "response_outcomes.jsonl", {**intent, "status": "success", "retryable": False})
             except Exception as exc:
                 identity = isinstance(exc, (ValueError, KeyError, TypeError))
                 retryable = isinstance(exc, (URLError, TimeoutError, ConnectionError, RuntimeError))
@@ -596,6 +705,14 @@ def generate_run(run_dir: Path, *, max_calls: int, key: str | None = None) -> di
                 _append(run_dir / "failures.jsonl", outcome)
                 if identity:
                     raise ValueError("provider identity or response integrity rejected; run cannot be formally scored") from None
+            else:
+                # Persistence is not a provider failure. If either write raises,
+                # leave the intent unresolved instead of appending a conflicting
+                # failure. A validated response already on disk is explicitly
+                # recoverable without another paid request. Malformed/partial
+                # journal writes are still rejected by the ordinary validator.
+                _append(run_dir / "responses.jsonl", row)
+                _append(run_dir / "response_outcomes.jsonl", {**intent, "status": "success", "retryable": False})
             protocol, prompts, _, completed = _load_run_locked(run_dir)
         return _status_locked(run_dir, protocol, prompts, completed, actual_calls_this_invocation=count)
 
@@ -664,6 +781,7 @@ def main() -> None:
     prepare.add_argument("--dataset", required=True)
     prepare.add_argument("--input", type=Path, required=True)
     prepare.add_argument("--context", type=Path)
+    prepare.add_argument("--semantic-index", type=Path, help="Separately logged source-bound index JSONL; new v2 protocol only")
     prepare.add_argument("--output-dir", type=Path, required=True)
     prepare.add_argument("--model", required=True)
     prepare.add_argument("--accepted-provider-model", action="append", default=[])
@@ -696,7 +814,8 @@ def main() -> None:
                             backend=args.backend, thinking_mode=args.thinking_mode, short_turns=args.short_turns,
                             top_k=args.top_k, short_chars=args.short_chars, long_chars=args.long_chars,
                             max_context_chars=args.max_context_chars, max_response_tokens=args.max_response_tokens)
-        result = prepare_run(cases, references, args.output_dir, settings, args.api_base, manifest)
+        index = read_jsonl(args.semantic_index) if args.semantic_index else None
+        result = prepare_run(cases, references, args.output_dir, settings, args.api_base, manifest, semantic_index=index)
     elif args.command == "generate":
         result = generate_run(args.run_dir, max_calls=args.max_calls)
     elif args.command == "recover":

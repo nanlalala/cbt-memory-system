@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RUN_REQUIRED = (
     "protocol.json", "cases.jsonl", "references.jsonl", "prompts.jsonl",
     "inventory.jsonl", "preparation_summary.json",
+    "semantic_index.jsonl",
 )
 RUN_OPTIONAL = (
     "response_attempts.jsonl", "response_outcomes.jsonl", "failures.jsonl", "responses.jsonl",
@@ -36,6 +37,7 @@ CODE_FILES = (
     "evaluation/objective-memory/run_objective_comparison.py",
     "evaluation/objective-memory/score_objective_comparison.py",
     "evaluation/objective-memory/objective_audit.py",
+    "evaluation/objective-memory/semantic_source_index.py",
     "evaluation/end-to-end-dialogue/run_three_arm.py",
     "evaluation/end-to-end-dialogue/execution_lock.py",
     "evaluation/memory-retrieval/benchmark_adapters.py",

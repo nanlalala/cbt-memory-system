@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
+import re
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "evaluation/objective-memory"))
 
 import replay_memory_controls as replay  # noqa: E402
+from memory_retriever import RetrievedMemory  # noqa: E402
 
 
 class ObjectiveControlReplayTests(unittest.TestCase):
@@ -41,8 +45,8 @@ class ObjectiveControlReplayTests(unittest.TestCase):
         self.assertTrue(self.report["acceptance_passed"])
         for arm in replay.ARMS:
             result = self.report["conditions"][arm]
-            self.assertEqual((result["queries"], result["passed_queries"]), (23, 23))
-            self.assertEqual(result["operation_checks"], 32)
+            self.assertEqual((result["queries"], result["passed_queries"]), (26, 26))
+            self.assertEqual(result["operation_checks"], 56)
             self.assertEqual(result["failed_operations"], 0)
             self.assertEqual(result["prohibited_exposure_queries"], 0)
             self.assertEqual(set(result["by_task"]), set(replay.TASKS))
@@ -124,7 +128,77 @@ class ObjectiveControlReplayTests(unittest.TestCase):
         self.assertFalse(report["acceptance_passed"])
         self.assertTrue(any(row["first_failure_stage"] == "storage"
                             for row in report["queries"] if row["arm"] == "raw_history_rag"))
-        self.assertEqual(report["conditions"]["managed_memory_rag"]["passed_queries"], 23)
+        self.assertEqual(report["conditions"]["managed_memory_rag"]["passed_queries"], 26)
+
+    def test_retrieval_has_irrelevant_distractors_zero_hits_and_more_than_top_k(self):
+        capped = self.row("retrieval_quality", "rank-under-cap")
+        single = self.row("retrieval_quality", "single-relevant")
+        zero = self.row("retrieval_quality", "zero-relevance")
+        self.assertEqual(len(capped["eligible_ids"]), 12)
+        self.assertEqual(capped["retrieved_ids"], ["orchid-00", "orchid-01", "orchid-02"])
+        self.assertEqual(single["retrieved_ids"], ["cobalt-target"])
+        self.assertEqual(zero["retrieved_ids"], [])
+
+    def test_return_all_mutation_fails_retrieval_acceptance(self):
+        def return_everything(retriever, query, **kwargs):
+            return [RetrievedMemory(record, 1.0, {"relevance": 1.0})
+                    for record in retriever.records]
+        with patch.object(replay.MemoryRetriever, "search", return_everything):
+            report = replay.run_replay()
+        self.assertFalse(report["acceptance_passed"])
+        challenges = [r for r in report["queries"] if r["case_id"] == "retrieval_quality"]
+        self.assertEqual(len(challenges), 6)
+        self.assertTrue(all(r["first_failure_stage"] == "retrieval" for r in challenges))
+
+    def test_ignoring_question_but_respecting_top_k_still_fails(self):
+        def ignore_query(retriever, query, **kwargs):
+            return [RetrievedMemory(record, 1.0, {"relevance": 1.0})
+                    for record in retriever.records[:retriever.policy.top_k]]
+        with patch.object(replay.MemoryRetriever, "search", ignore_query):
+            report = replay.run_replay()
+        self.assertFalse(report["acceptance_passed"])
+        zero = [r for r in report["queries"] if r["case_id"] == "retrieval_quality"
+                and r["check_id"] == "zero-relevance"]
+        self.assertTrue(all(not r["stages"]["retrieval"] for r in zero))
+
+    def test_preserved_ids_cannot_hide_replaced_final_prompt_body(self):
+        real_builder = replay.build_context
+        replaced = []
+        def alter_body(**kwargs):
+            result = real_builder(**kwargs)
+            def corrupt(match):
+                replaced.append(match.group(2))
+                return match.group(1) + "Incorrect task status and strength." + match.group(3)
+            prompt = re.sub(r"(<memory\b[^>]*>)(.*?)(</memory>)", corrupt,
+                            result.prompt_context, flags=re.S)
+            return replace(result, prompt_context=prompt)
+        with patch.object(replay, "build_context", alter_body):
+            report = replay.run_replay()
+        self.assertGreater(len(replaced), 0)
+        self.assertFalse(report["acceptance_passed"])
+        changed = [r for r in report["queries"] if r["included_ids"]]
+        self.assertTrue(all(r["trace_matches_prompt"] for r in changed))
+        self.assertTrue(all(r["stages"]["storage"] and r["stages"]["retrieval"] for r in changed))
+        self.assertTrue(all(r["first_failure_stage"] == "context_source_integrity" for r in changed))
+
+    def test_changed_final_prompt_metadata_is_rejected_even_when_text_matches(self):
+        real_builder = replay.build_context
+        def alter_confirmation(**kwargs):
+            result = real_builder(**kwargs)
+            return replace(result, prompt_context=result.prompt_context.replace(
+                'confirmation="user_confirmed"', 'confirmation="unconfirmed"'))
+        with patch.object(replay, "build_context", alter_confirmation):
+            report = replay.run_replay()
+        self.assertFalse(report["acceptance_passed"])
+        self.assertTrue(any(r["first_failure_stage"] == "context_source_integrity"
+                            for r in report["queries"]))
+
+    def test_escaped_source_text_is_verified_as_exact_decoded_quote(self):
+        row = self.row("retrieval_quality", "single-relevant")
+        _, ledger = replay.load_spec()
+        self.assertTrue(row["source_integrity_matches_prompt"])
+        self.assertEqual(row["rendered_text_sha256"]["cobalt-target"],
+                         ledger["checks"]["retrieval_quality:single-relevant"]["verbatim_text_sha256"]["cobalt-target"])
 
     def test_unchanged_id_and_fields_cannot_hide_altered_verbatim_text(self):
         class CorruptContent(replay.RawHistoryControlStore):
