@@ -57,6 +57,28 @@ outside Colab. Importing its rendering helpers does not load models or widgets.
 It is a software demonstration, not a benchmark or clinical result; the small
 research safety gate is not a production crisis-detection/referral service.
 
+## Complete-cohort evaluation in the same notebook
+
+After the demo, the notebook offers a separate `verify → prepare → reader → judge
+→ status/export` workflow. Select one complete dataset: 1,540 eligible LoCoMo
+questions or all 500 LongMemEval-S questions. Preparation uses hybrid retrieval
+on the Colab GPU. Reader and judge cells each require explicit opt-in and attempt
+at most 60 calls per execution; rerunning resumes the frozen intent journals.
+No automatic loop, model change, case removal or Drive mount is used.
+
+Download a checkpoint after each batch and before ending the runtime. The normal
+export contains raw scoring inputs/outputs, code snapshots and SHA-256 checksums;
+partial runs remain `final: false`. If validation stops an export, a separately
+acknowledged `invalid_unscored` backup preserves only allowlisted original
+artifacts, without derived scores or any result claim. Neither export includes
+keys, environment variables, SQLite files or the full original dataset downloads.
+Keep benchmark-derived archives under controlled access.
+
+These are historical-QA comparisons with unconfirmed source records, not evidence
+of improved CBT care. The [next validation plan](../docs/validation-next.md)
+separately covers CBT continuity and semantic memory, including source and
+annotation gates.
+
 ## Fixed-fixture CLI
 
 This is a small CLI for showing the memory lifecycle with fictional data. It is

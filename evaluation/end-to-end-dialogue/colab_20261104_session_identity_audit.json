@@ -1,0 +1,230 @@
+{
+  "code_revision": "0191f5d7317ed364aecd337aaea283be86db3f5e",
+  "dataset_sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+  "counts": {
+    "same_turns_True_same_dates_False": 13
+  },
+  "duplicates": [
+    {
+      "question_id": "58bf7951",
+      "source_session_id": "07b7a667_1",
+      "occurrences": [
+        {
+          "position": 17,
+          "date": "2023/05/23 (Tue) 23:54",
+          "turn_sha256": "ac76325e60727a873a393696d6818198e5a4c2409f27cf6346dcaee31a4b42a9"
+        },
+        {
+          "position": 47,
+          "date": "2023/05/29 (Mon) 13:56",
+          "turn_sha256": "ac76325e60727a873a393696d6818198e5a4c2409f27cf6346dcaee31a4b42a9"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "1e043500",
+      "source_session_id": "d5d1f9c4",
+      "occurrences": [
+        {
+          "position": 11,
+          "date": "2023/05/21 (Sun) 11:42",
+          "turn_sha256": "541c841380faa8eda1b38c0f3cab35aeec0c16aa697876ddbd1b752e58bc4af6"
+        },
+        {
+          "position": 26,
+          "date": "2023/05/24 (Wed) 06:24",
+          "turn_sha256": "541c841380faa8eda1b38c0f3cab35aeec0c16aa697876ddbd1b752e58bc4af6"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "001be529",
+      "source_session_id": "sharegpt_SYbLHTK_0",
+      "occurrences": [
+        {
+          "position": 25,
+          "date": "2023/05/25 (Thu) 12:40",
+          "turn_sha256": "b932adbc7a17d89929689da46e2881c4d81bdffc22063636db9e0be117dc433e"
+        },
+        {
+          "position": 49,
+          "date": "2023/05/30 (Tue) 04:52",
+          "turn_sha256": "b932adbc7a17d89929689da46e2881c4d81bdffc22063636db9e0be117dc433e"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "d23cf73b",
+      "source_session_id": "334ab2f1",
+      "occurrences": [
+        {
+          "position": 31,
+          "date": "2023/05/26 (Fri) 12:34",
+          "turn_sha256": "3b2fb56330916098cf3ce117a64ace8397da301135635fb80bb0591888afd5bb"
+        },
+        {
+          "position": 34,
+          "date": "2023/05/27 (Sat) 12:59",
+          "turn_sha256": "3b2fb56330916098cf3ce117a64ace8397da301135635fb80bb0591888afd5bb"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "caf03d32",
+      "source_session_id": "sharegpt_YCfhENU_0",
+      "occurrences": [
+        {
+          "position": 9,
+          "date": "2023/05/23 (Tue) 05:09",
+          "turn_sha256": "03325f04dc920010007e640f0d3800e58f27bc6e069cf588dc5f202820f55409"
+        },
+        {
+          "position": 12,
+          "date": "2023/05/24 (Wed) 05:53",
+          "turn_sha256": "03325f04dc920010007e640f0d3800e58f27bc6e069cf588dc5f202820f55409"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "91b15a6e",
+      "source_session_id": "sharegpt_fgnzLtE_0",
+      "occurrences": [
+        {
+          "position": 3,
+          "date": "2023/05/21 (Sun) 08:40",
+          "turn_sha256": "80893969da8e9341292263af6b5848b13d9b347306c0af40f3b00b954b9716e4"
+        },
+        {
+          "position": 5,
+          "date": "2023/05/22 (Mon) 00:50",
+          "turn_sha256": "80893969da8e9341292263af6b5848b13d9b347306c0af40f3b00b954b9716e4"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "078150f1",
+      "source_session_id": "sharegpt_z7Ogy29_0",
+      "occurrences": [
+        {
+          "position": 11,
+          "date": "2023/05/22 (Mon) 17:27",
+          "turn_sha256": "8432466ef18e7fae61c02d5913e3584a250846a6d514b4babebb8c30d6038ef8"
+        },
+        {
+          "position": 32,
+          "date": "2023/05/28 (Sun) 07:12",
+          "turn_sha256": "8432466ef18e7fae61c02d5913e3584a250846a6d514b4babebb8c30d6038ef8"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "gpt4_4929293b",
+      "source_session_id": "sharegpt_81riySf_0",
+      "occurrences": [
+        {
+          "position": 8,
+          "date": "2023/04/12 (Wed) 05:52",
+          "turn_sha256": "f36defd85e50da9933d72e3ab97fb9c9d7915eff7e093139f4ee621844fa6059"
+        },
+        {
+          "position": 27,
+          "date": "2023/04/30 (Sun) 18:46",
+          "turn_sha256": "f36defd85e50da9933d72e3ab97fb9c9d7915eff7e093139f4ee621844fa6059"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "gpt4_76048e76",
+      "source_session_id": "8fcaf3a9_2",
+      "occurrences": [
+        {
+          "position": 9,
+          "date": "2023/03/10 (Fri) 13:21",
+          "turn_sha256": "1f35de39f11ede2aad73ca094cc9eae60d5ab062dfe6962a47a1b13f8494b399"
+        },
+        {
+          "position": 19,
+          "date": "2023/03/10 (Fri) 17:38",
+          "turn_sha256": "1f35de39f11ede2aad73ca094cc9eae60d5ab062dfe6962a47a1b13f8494b399"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "gpt4_c27434e8_abs",
+      "source_session_id": "8c64ce26_3",
+      "occurrences": [
+        {
+          "position": 1,
+          "date": "2023/05/23 (Tue) 05:34",
+          "turn_sha256": "76f2deacb679cff353f9d4e3d2226adc2581615509afa32e4c1bf14d73aed7a3"
+        },
+        {
+          "position": 27,
+          "date": "2023/05/23 (Tue) 09:46",
+          "turn_sha256": "76f2deacb679cff353f9d4e3d2226adc2581615509afa32e4c1bf14d73aed7a3"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "18bc8abd",
+      "source_session_id": "sharegpt_vyHqfrX_0",
+      "occurrences": [
+        {
+          "position": 13,
+          "date": "2023/04/10 (Mon) 11:41",
+          "turn_sha256": "5e6c1e2052d4a2bf055cc3abac3199ddd415fd18f746ddabb3942b79c524b6b0"
+        },
+        {
+          "position": 41,
+          "date": "2023/06/26 (Mon) 16:08",
+          "turn_sha256": "5e6c1e2052d4a2bf055cc3abac3199ddd415fd18f746ddabb3942b79c524b6b0"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "c7dc5443",
+      "source_session_id": "6b8e8bb3_1",
+      "occurrences": [
+        {
+          "position": 6,
+          "date": "2023/06/10 (Sat) 02:11",
+          "turn_sha256": "f0f50cbf335d3a2f90676952cf1a29c943f84fe89626cbda514909a922713a24"
+        },
+        {
+          "position": 44,
+          "date": "2023/07/10 (Mon) 19:09",
+          "turn_sha256": "f0f50cbf335d3a2f90676952cf1a29c943f84fe89626cbda514909a922713a24"
+        }
+      ],
+      "is_gold_source": false
+    },
+    {
+      "question_id": "1d4da289",
+      "source_session_id": "sharegpt_qktLFWS_21",
+      "occurrences": [
+        {
+          "position": 0,
+          "date": "2023/05/20 (Sat) 00:48",
+          "turn_sha256": "030e1e4dcc8ac6b54378f20e914ca409ecb5a5c7883c6cb8382c390007f06843"
+        },
+        {
+          "position": 45,
+          "date": "2023/05/29 (Mon) 02:12",
+          "turn_sha256": "030e1e4dcc8ac6b54378f20e914ca409ecb5a5c7883c6cb8382c390007f06843"
+        }
+      ],
+      "is_gold_source": false
+    }
+  ]
+}
