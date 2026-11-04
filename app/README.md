@@ -3,16 +3,48 @@
 ## Dialogue and memory controls in Colab
 
 Open [Structured Memory Colab](Structured_Memory_Colab.ipynb) in Colab. The
-notebook runs the dialogue demonstration, with candidate memories and their
-source quotes beside the conversation. Model loading, vector encoding and
+notebook runs the dialogue demonstration with automatic historical observations
+and an optional memory panel. Model loading, vector encoding and
 large evaluations belong in Colab, not on the operator's computer.
 
 The notebook UI uses the real extraction contract, memory manager, SQLite
 store, retriever and context builder. It does not start a web server or expose
 a public port. The default store is ephemeral and uses fictional inputs.
 
-1. Check **我只输入虚构演示资料**, enter a fictional fact or goal and send it.
-2. Check the extraction range, then click **整理当前窗口的记忆候选**. The service
+1. Check **我只输入虚构演示资料** and chat normally about a fictional goal,
+   assignment or obstacle. **自动记录对话中的历史信息** is on by default. Suitable
+   user statements are saved as exact, source-bound historical observations after
+   a successful reply. No extraction or confirmation click is needed for each turn.
+   This does not add an automatic model-extraction request.
+2. Start another session and revisit the task. The system distinguishes “you said
+   this earlier” from “this is still true.” Relevant uncertainty or changing goals
+   may prompt one natural question, such as asking whether thought records still
+   feel burdensome. Silence and an unrelated “yes” do not confirm a memory. Model
+   confidence alone cannot activate a claim or override deletion/access filters.
+3. Open **本次回答收到的记忆参考** if you want to inspect what was supplied to the
+   response and what was asked only to check the current situation. The trace
+   does not prove that an answer used the evidence correctly. Historical quotes
+   and AI inferences are labeled separately, without presenting a confidence
+   number as a calibrated probability of truth.
+4. Turn automatic recording off at any time. This stops new automatic records;
+   existing records remain available for inspection or deletion under
+   **查看、修改或删除记忆 · 可选**. Deletion first shows its scope, then asks whether
+   to remove the selected record and reset the current chat/last answer. Other
+   long-term records remain. Cancel leaves the current state unchanged.
+
+Automatic recording currently preserves selected original statements. It is not
+complete semantic extraction of CBT goals, homework outcomes or clinical patterns.
+Records remain candidates unless a distinct confirmation occurs; permitted
+historical use is a separate policy and is not disguised as confirmation.
+
+### Optional explicit review
+
+The management panel retains the stricter tools for inspecting extracted summaries
+and deliberately confirming current information. A separate
+`DialogueSession(memory_mode="review")` keeps the old manual-review behavior for
+controlled tests. In that workflow:
+
+1. Check the extraction range, then click **整理当前窗口的记忆候选**. The service
    retains at most 24 conversation messages by default; the page shows how many
    user turns remain, how many have moved out of the window and how many have
    not yet been processed. This button does not cover an entire long session.
@@ -31,16 +63,16 @@ a public port. The default store is ephemeral and uses fictional inputs.
    this limit and require removing the candidate and supplying explicit information
    again rather than offering an edit that will silently change its meaning.
    **确认这条记忆** creates a distinct, operator-triggered confirmation event.
-3. Start the next session and ask about the earlier information. Expand
+2. Start the next session and ask about the earlier information. Expand
    **本次回答收到的记忆参考** to read the memory text actually supplied in the final
    response context, with source IDs available for inspection and budget-dropped
    IDs listed separately. Inclusion is not proof that the generated answer
    relied on the information correctly. Restricted and dropped source bodies
    are not displayed in this trace. If unprocessed turns remain, switching
    sessions first offers a cancelable warning; they will not be saved automatically.
-4. Submit a correction to an active memory. It remains a candidate until a
+3. Submit a correction to an active memory. It remains a candidate until a
    separate confirmation replaces the current version.
-5. Click delete to review its scope before changing anything: it removes the
+4. Click delete to review its scope before changing anything: it removes the
    selected memory and resets the current short-term context and last response.
    Other long-term records remain. Cancel to keep the current state, or confirm
    the deletion explicitly. Clearing the chat prevents the deleted text returning
@@ -54,13 +86,14 @@ status separately reports requests attempted and valid responses, so a timeout o
 rejected empty answer does not appear as “not called.” A failed external request
 may still be billed; errors shown in the interface omit provider response bodies.
 
-Two modes are kept explicit:
+The response backend is separate from the memory-interaction mode:
 
 - **Offline demonstration** copies supported source text into candidates and
   uses template responses. It makes no model or network calls and does not
   establish extraction or dialogue quality.
 - **Colab model mode** uses the separately configured Colab provider. A
-  send/extract click can make an API request; the page renders without one.
+  send or optional manual-extract click can make an API request; automatic quote
+  recording adds no extraction call and the page renders without a model call.
   Only fictional inputs are supported. Credentials are handled outside the
   UI and must never be pasted into the conversation.
 
@@ -74,7 +107,10 @@ demo = launch_notebook_demo()
 ```
 
 `launch_notebook_demo(session=...)` also accepts a `DialogueSession` with a
-Colab-configured provider. The UI imports `ipywidgets` lazily and refuses launch
+Colab-configured provider. Use
+`DialogueSession(provider=provider, memory_mode="conversational")` for the low-friction
+interface; the lower-level class still defaults to `review` for compatibility.
+The notebook pins the executable code containing these options. The UI imports `ipywidgets` lazily and refuses launch
 outside Colab. Importing its rendering helpers does not load models or widgets.
 It is a software demonstration, not a benchmark or clinical result; the small
 research safety gate is not a production crisis-detection/referral service.

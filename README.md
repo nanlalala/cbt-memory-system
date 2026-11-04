@@ -49,6 +49,35 @@ In the target architecture, deterministic safety routing runs before both retrie
 
 The conversation also has a separate memory write path: supported information is extracted as a candidate, validated, versioned and managed through update, correction and forgetting rules before it becomes retrievable.
 
+## Memory during a conversation
+
+The default dialogue experience uses automatic history capture and
+**checking at the point of use**, rather than asking the user to organize and
+approve a list after every conversation. The strict review tools remain available.
+
+| Available evidence | How it should be used |
+| --- | --- |
+| A source-verified user quotation | Refer to it as something the user said at that time; this does not prove it is still true |
+| A changing goal, old preference or conflicting observation | Ask one relevant, optional question before relying on it as the current state |
+| An unsupported model interpretation | Keep it out of factual context; a model's high confidence does not verify it |
+
+For example, when discussing CBT practice: “You mentioned that thought records
+sometimes made you more tense. Has that changed, or does the exercise still feel
+burdensome?” The user can answer in ordinary conversation, correct the record or
+move on. Silence is not confirmation. Questions should support the current task,
+not become another checklist.
+
+Evidence quality, freshness and conflicts are separate trust signals. Their
+heuristics are not calibrated probabilities of truth. Automatic capture can be
+turned off, and correction/deletion remain available. The first implementation
+captures eligible quotations without an extra extraction-model call; it does
+not silently validate semantic summaries or infer homework completion.
+
+This mode passes **344 deterministic regression tests**, including automatic
+capture, historical/current-use separation, optional checks, source-tamper
+rejection, opt-out handling and correction/deletion. These are software checks;
+naturalness and reduced user effort still require a participant evaluation.
+
 ## Architecture components
 
 | Component | Responsibility |
@@ -113,11 +142,14 @@ as this new comparison.
 Memory Schema v1 and Memory Manager v1 are implemented, including provenance-aware extraction, SQLite storage, correction, conflict confirmation, expiry, deletion and user/sensitivity isolation. Model-extracted summaries remain unconfirmed candidates until a separately evidenced confirmation step. Lifecycle decisions and their audit events run in serialized transactions, stale correction targets are rejected, hard deletion remains final during concurrent expiry, and only one active version may occupy a memory slot. Long-term Memory RAG v1 and the Agent context builder provide relevance gating, temporal reranking, access filters, bounded personal/professional sections and accurate inclusion traces.
 
 A Colab dialogue interface now connects the extraction contract, SQLite memory manager,
-retriever and context builder. Fictional inputs can be turned into candidates, explicitly
-confirmed, recalled in a new session, corrected and deleted. The default responder is an
+retriever and context builder. Its conversational mode automatically captures eligible
+fictional user quotations and checks changing information when it becomes relevant.
+Saved observations remain distinguishable from confirmed facts. Optional review mode
+supports candidate revision, explicit confirmation, correction and deletion.
+The default responder is an
 offline software demonstration; an optional capped provider enables real model responses.
 The small safety gate is a research safeguard, not a complete crisis service.
-Candidates can be revised before confirmation. The interface shows the actual
+In the optional review panel, candidates can be revised before confirmation. The interface shows the actual
 extraction window and warns before discarding unprocessed messages. Memory
 references are readable and labeled as context supplied to the agent, not proof
 of use. Deletion explains its chat-reset effect before a separate confirmation.

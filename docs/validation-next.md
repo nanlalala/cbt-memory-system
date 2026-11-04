@@ -67,6 +67,41 @@ consent: automatic candidates remain unconfirmed under an explicitly labeled
 research access policy. Do not relabel them as user-confirmed facts. The separate
 event-replay test supplies explicit synthetic confirmation events.
 
+### Low-friction memory use
+
+The intended product default is automatic capture of eligible user quotations,
+with an optional natural-language check only when an uncertain or potentially
+outdated item is relevant to the current task. Saving a dated observation is not
+the same as confirming a summary or its present-day validity. User silence, a
+retrieval hit, repeated model output and high self-reported model confidence do
+not supply confirmation.
+
+Keep that interaction policy equal in the raw-history and managed-memory arms.
+Both may quote verified earlier statements as history; both must observe the
+same rules for current-state use and checks. A separate, prespecified interface
+comparison may contrast conversational checking with item-by-item review. Do not
+confound memory representation with different amounts of user labor or secretly
+give one arm extra user answers.
+
+Add these outcomes to the participant and replay reports:
+
+- explicit review/confirmation actions per successful follow-up;
+- relevant versus unnecessary or repeated checks, with a fixed denominator of
+  follow-ups and independently eligible check opportunities;
+- stale/current-state errors and unsupported personal assertions after checks;
+- corrections correctly incorporated, unanswered checks left unresolved and
+  opt-out content not stored or re-imported;
+- automatic capture, retrieval and checking cost, including any additional model
+  calls and failed work.
+
+Evidence strength, freshness and conflict flags are engineering signals, not
+validated probability estimates. Freeze thresholds and cooldowns on development
+cases. If numeric confidence is later interpreted as probability, assess its
+calibration on independent labeled cases before making that claim. Do not measure
+lower burden merely by counting fewer clicks while adding many interruptions.
+The existing frozen v2 QA run retains its old access/prompt policy; the new mode
+requires a new version and cannot inherit those scores.
+
 After the fixed-budget comparison, optionally report a prespecified quality/cost
 curve at several budgets. Include extraction, updates, indexing, retrieval,
 generation and failed-call cost. Separate preparation cost from per-follow-up
@@ -170,12 +205,13 @@ operational measures are informed by the [ISO 9241-11
 framework](https://www.iso.org/standard/63500.html); ISO does not prescribe this
 study or validate our questions.
 
-The interface changes in this revision support candidate revision before
-confirmation, show the actual extraction window and unprocessed content at
-session switch, explain included memory in readable language, and disclose
-deletion's chat-reset effect before the action. These are implementation changes
-with mocked/software checks; participant usability has not been measured.
-Count confirmation/review effort as a cost, not free participant labor.
+The interface retains optional candidate revision/review and readable references,
+and explains deletion's chat-reset effect before the action. Its conversational
+mode should remove manual extraction and item-by-item confirmation from the normal
+path; automatic quotations, check questions and confirmed facts must stay visibly
+distinct. These are implementation changes with mocked/software checks;
+participant usability has not been measured. Count review effort, interruptions
+and correction recovery as costs, not free participant labor.
 
 Open-ended reflection quality needs independent arm-blinded reviewers, anchored
 criteria, double scoring and disagreement/adjudication reporting. CBT-trained
