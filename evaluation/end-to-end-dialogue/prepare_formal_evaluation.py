@@ -17,7 +17,7 @@ import os
 import re
 import sys
 from collections import Counter
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -27,11 +27,19 @@ sys.path.insert(0, str(ROOT / "evaluation/memory-retrieval"))
 from benchmark_adapters import RetrievalExample, load_locomo, load_longmemeval  # noqa: E402
 
 
-SCHEMA_VERSION = "formal-cohort-manifest-v1"
+SCHEMA_VERSION = "formal-cohort-manifest-v2"
 PLAN_VERSION = "structured-memory-evaluation-plan-v1"
 ARMS = ("none", "short_term", "short_plus_structured_candidate")
 DEFAULT_PLAN = Path(__file__).with_name("formal_evaluation_plan.json")
 HISTORY_FIELDS = frozenset({"dia_id", "role", "speaker", "text", "content"})
+SESSION_IDENTITY_POLICY = {
+    "version": "longmemeval-source-session-occurrences-v1",
+    "repeated_ids": "retain every source occurrence with a deterministic question-local ID from original ID and zero-based position; no content or date deduplication",
+    "provenance": "manifest preserves original IDs, positions, source date/turn hashes and generation session hashes",
+    "source_hash_boundary": "source-turn hashes are preparation receipts verified against the pinned input during preparation; stripped source annotations cannot be rederived from sanitized cohort files alone",
+    "gold_mapping": "scoring references preserve original evidence IDs and expand a repeated gold ID to all its occurrences; gold never determines occurrence IDs",
+    "statistics": "group with original session IDs and exact sanitized content; never treat repetitions as independent subjects",
+}
 FINAL_CLAIM_REQUIREMENTS = [
     "all frozen cases evaluated", "predeclared independent-group minimum", "frozen reference-based evaluator and judge",
     "paired cluster confidence interval meets precision target", "directional improvement requires confidence-interval lower bound above zero",
@@ -135,7 +143,8 @@ def load_plan(path: Path) -> dict:
     return plan
 
 
-def history_groups(examples: Sequence[RetrievalExample], dataset_key: str) -> dict[str, str]:
+def history_groups(examples: Sequence[RetrievalExample], dataset_key: str,
+                   session_identity_audit: Sequence[dict] = ()) -> dict[str, str]:
     """Conservative transitive grouping of shared sessions; never pool retrieval scopes."""
     if len({example.example_id for example in examples}) != len(examples):
         raise ValueError("duplicate benchmark question identity")
@@ -152,10 +161,13 @@ def history_groups(examples: Sequence[RetrievalExample], dataset_key: str) -> di
     def union(left: int, right: int) -> None:
         parent[find(right)] = find(left)
 
+    aliases = session_original_ids(session_identity_audit)
     owner: dict[str, int] = {}
     for index, example in enumerate(examples):
         for session in example.sessions:
-            tokens = ["id:" + str(session["session_id"]),
+            sid = str(session["session_id"])
+            original_id = aliases.get(example.example_id, {}).get(sid, sid)
+            tokens = ["id:" + original_id,
                       "history:" + stable_digest({"date": session.get("date"), "turns": sanitized_turns(session["turns"])})]
             for token in tokens:
                 if token in owner:
@@ -183,15 +195,145 @@ def sanitized_turns(turns: Sequence[dict]) -> list[dict]:
     return result
 
 
+def session_occurrence_id(example_id: str, original_id: str, source_position: int) -> str:
+    """Source-only identity: never consumes the question text, gold or labels."""
+    return "lme-occurrence-v1:" + stable_digest([example_id, original_id, source_position])
+
+
+def session_original_ids(audit: Sequence[dict]) -> dict[str, dict[str, str]]:
+    return {row["example_id"]: {
+        occurrence["session_id"]: item["original_session_id"]
+        for item in row["duplicates"] for occurrence in item["occurrences"]
+    } for row in audit}
+
+
+def normalize_session_repeats(
+    examples: Sequence[RetrievalExample], dataset_key: str,
+) -> tuple[list[RetrievalExample], list[dict]]:
+    """Preserve every LongMemEval source occurrence, including different dates.
+
+    The general adapter remains lossless and unchanged. Only repeated IDs need
+    a question-local internal identity; the original ID and source positions stay
+    in the cohort manifest. No source occurrence is dropped or merged, even if
+    its text is identical to another occurrence. Labels never enter this step.
+    """
+    if dataset_key != "longmemeval_s_cleaned":
+        return list(examples), []
+    normalized, audit = [], []
+    for example in examples:
+        by_id: dict[str, list[int]] = {}
+        for index, session in enumerate(example.sessions):
+            sid = str(session["session_id"])
+            if sid.startswith("lme-occurrence-v1:"):
+                raise ValueError("original session IDs cannot use the reserved occurrence namespace; provide the unchanged source dataset")
+            by_id.setdefault(sid, []).append(index)
+        repeated = {sid for sid, positions in by_id.items() if len(positions) > 1}
+        if not repeated:
+            normalized.append(example)
+            continue
+        sessions, duplicates = [], []
+        occurrences = {sid: [] for sid in repeated}
+        for index, session in enumerate(example.sessions):
+            original_id = str(session["session_id"])
+            if original_id not in repeated:
+                sessions.append(session)
+                continue
+            sid = session_occurrence_id(example.example_id, original_id, index)
+            sessions.append({**session, "session_id": sid})
+            occurrences[original_id].append({
+                "session_id": sid, "source_position": index,
+                "source_date_sha256": stable_digest(session.get("date")),
+                "source_turns_sha256": stable_digest(session["turns"]),
+                "generation_session_sha256": stable_digest({
+                    "date": session.get("date"), "turns": sanitized_turns(session["turns"]),
+                }),
+            })
+        if len({str(session["session_id"]) for session in sessions}) != len(sessions):
+            raise ValueError("generated occurrence ID collides with an original session ID")
+        for sid in by_id:  # Original source order, never a gold-dependent order.
+            if sid in repeated:
+                duplicates.append({"original_session_id": sid, "occurrences": occurrences[sid]})
+        audit.append({"example_id": example.example_id, "session_count": len(sessions), "duplicates": duplicates})
+        normalized.append(replace(example, sessions=tuple(sessions)))
+    return normalized, audit
+
+
+def mapped_evidence_session_ids(example: RetrievalExample, aliases: dict[str, str]) -> list[str]:
+    """Scoring-only expansion; every occurrence of an original gold ID counts."""
+    gold = set(example.evidence_ids)
+    return [str(session["session_id"]) for session in example.sessions
+            if aliases.get(str(session["session_id"]), str(session["session_id"])) in gold]
+
+
+def validate_session_identity_audit(manifest: dict, cases: Sequence[dict], dataset_key: str) -> None:
+    expected_policy = SESSION_IDENTITY_POLICY if dataset_key == "longmemeval_s_cleaned" else {"version": "unique-session-id-v1"}
+    if manifest.get("session_identity_policy") != expected_policy:
+        raise ValueError("cohort session identity policy differs; prepare a new versioned cohort")
+    audit = manifest.get("session_identity_audit")
+    if not isinstance(audit, list) or (dataset_key != "longmemeval_s_cleaned" and audit):
+        raise ValueError("invalid session identity audit")
+    cases_by_id = {case["example_id"]: case for case in cases}
+    audited_examples = set()
+    for row in audit:
+        if (not isinstance(row, dict) or set(row) != {"example_id", "session_count", "duplicates"}
+                or row["example_id"] not in cases_by_id or row["example_id"] in audited_examples):
+            raise ValueError("session identity audit does not match unique cohort questions")
+        audited_examples.add(row["example_id"])
+        sessions = cases_by_id[row["example_id"]]["sessions"]
+        duplicates = row["duplicates"]
+        if (type(row["session_count"]) is not int or row["session_count"] != len(sessions)
+                or not isinstance(duplicates, list) or not duplicates):
+            raise ValueError("invalid occurrence-session audit counts")
+        positions_seen, ids_seen = set(), set()
+        for item in duplicates:
+            if (not isinstance(item, dict) or set(item) != {"original_session_id", "occurrences"}
+                    or not isinstance(item["original_session_id"], str) or item["original_session_id"] in ids_seen
+                    or not isinstance(item["occurrences"], list) or len(item["occurrences"]) < 2):
+                raise ValueError("invalid occurrence-session audit entry")
+            ids_seen.add(item["original_session_id"])
+            previous = -1
+            for occurrence in item["occurrences"]:
+                if (not isinstance(occurrence, dict)
+                        or set(occurrence) != {"session_id", "source_position", "source_date_sha256",
+                                               "source_turns_sha256", "generation_session_sha256"}):
+                    raise ValueError("invalid occurrence-session source metadata")
+                position = occurrence["source_position"]
+                if (type(position) is not int or not 0 <= position < len(sessions)
+                        or position <= previous or position in positions_seen):
+                    raise ValueError("invalid occurrence-session source position")
+                previous = position
+                positions_seen.add(position)
+                session = sessions[position]
+                if (occurrence["session_id"] != session_occurrence_id(row["example_id"], item["original_session_id"], position)
+                        or session["session_id"] != occurrence["session_id"]
+                        or occurrence["source_date_sha256"] != stable_digest(session["date"])
+                        or occurrence["generation_session_sha256"] != stable_digest({"date": session["date"], "turns": session["turns"]})):
+                    raise ValueError("occurrence-session audit differs from retained generation content")
+                if not isinstance(occurrence["source_turns_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", occurrence["source_turns_sha256"]):
+                    raise ValueError("invalid original source-turn digest")
+        # Internal occurrence IDs cannot appear without their original-ID mapping.
+        mapped_ids = {occurrence["session_id"] for item in duplicates for occurrence in item["occurrences"]}
+        if any(str(session["session_id"]).startswith("lme-occurrence-v1:") and session["session_id"] not in mapped_ids for session in sessions):
+            raise ValueError("occurrence-session original provenance is missing")
+    for case in cases:
+        if case["example_id"] not in audited_examples and any(str(session["session_id"]).startswith("lme-occurrence-v1:") for session in case["sessions"]):
+            raise ValueError("occurrence-session original provenance is missing")
+
+
 def _exposure_state(plan: dict, dataset_key: str, examples: Sequence[RetrievalExample], groups: dict[str, str],
-                    exposure_ledger: dict | None) -> tuple[dict, list[str]]:
+                    exposure_ledger: dict | None, session_identity_audit: Sequence[dict] = ()) -> tuple[dict, list[str]]:
     base = plan["datasets"][dataset_key].get("development_exposure", {})
     added = (exposure_ledger or {}).get("datasets", {}).get(dataset_key, {})
     exposed_groups = set(base.get("group_ids", [])) | set(added.get("group_ids", []))
     example_ids = set(base.get("example_ids", [])) | set(added.get("example_ids", []))
     session_ids = set(base.get("session_ids", [])) | set(added.get("session_ids", []))
+    aliases = session_original_ids(session_identity_audit)
     for example in examples:
-        if example.example_id in example_ids or any(str(session["session_id"]) in session_ids for session in example.sessions):
+        if example.example_id in example_ids or any(
+            str(session["session_id"]) in session_ids
+            or aliases.get(example.example_id, {}).get(str(session["session_id"]), str(session["session_id"])) in session_ids
+            for session in example.sessions
+        ):
             exposed_groups.add(groups[example.example_id])
     observed_groups = set(groups.values())
     state = {
@@ -257,6 +399,7 @@ def prepare_examples(
     spec = plan["datasets"][dataset_key]
     if dataset_key == "longmemeval_s_cleaned":
         validate_full_s_spec(spec)
+    examples, session_audit = normalize_session_repeats(examples, dataset_key)
     eligible = [example for example in examples if example.category not in spec.get("exclude_categories", [])]
     if not eligible:
         raise ValueError("cohort has no eligible examples")
@@ -267,11 +410,11 @@ def prepare_examples(
             raise ValueError("all predeclared benchmark examples must be retained; no cherry-picked subset")
         if "expected_abstention_examples" in spec and sum(value.should_abstain for value in eligible) != spec["expected_abstention_examples"]:
             raise ValueError("released abstention examples must be preserved")
-    groups = history_groups(eligible, dataset_key)
+    groups = history_groups(eligible, dataset_key, session_audit)
     group_count = len(set(groups.values()))
     if not fixture_only and spec.get("expected_groups") is not None and group_count != spec["expected_groups"]:
         raise ValueError("unexpected number of conversation groups")
-    exposure, overlap = _exposure_state(plan, dataset_key, eligible, groups, exposure_ledger)
+    exposure, overlap = _exposure_state(plan, dataset_key, eligible, groups, exposure_ledger, session_audit)
     selected_role = role or spec["role"]
     if selected_role not in {"exploratory", "locked_external_test"}:
         raise ValueError("unknown cohort role")
@@ -282,6 +425,7 @@ def prepare_examples(
     blockers = _claim_blockers(plan, dataset_key, fixture_only=fixture_only, role=selected_role,
                                group_count=group_count, exposure=exposure)
     generation, references = [], []
+    aliases = session_original_ids(session_audit)
     for example in eligible:
         scope = ("locomo:" + example.example_id.split(":qa:")[0] if dataset_key == "locomo10"
                  else "longmemeval:" + example.example_id)
@@ -291,9 +435,13 @@ def prepare_examples(
             "sessions": [{"session_id": str(session["session_id"]), "date": session.get("date"),
                           "turns": sanitized_turns(session["turns"])} for session in example.sessions],
         })
-        references.append({"example_id": example.example_id, "category": example.category,
-                           "query": example.query, "reference_answer": example.answer,
-                           "should_abstain": example.should_abstain})
+        reference = {"example_id": example.example_id, "category": example.category,
+                     "query": example.query, "reference_answer": example.answer,
+                     "should_abstain": example.should_abstain}
+        if dataset_key == "longmemeval_s_cleaned":
+            reference.update(original_evidence_session_ids=list(example.evidence_ids),
+                             evidence_session_ids=mapped_evidence_session_ids(example, aliases.get(example.example_id, {})))
+        references.append(reference)
     # Do not overwrite earlier locks, outcomes or half-prepared cohorts.
     if output_dir.exists() and any(output_dir.iterdir()):
         raise ValueError("output cohort directory is not empty; preserve the old lock and use a new directory")
@@ -318,6 +466,8 @@ def prepare_examples(
                    "abstention_examples": sum(example.should_abstain for example in eligible),
                    "category_counts": dict(Counter(example.category for example in eligible))},
         "grouping_policy": spec["grouping"], "development_exposure": exposure,
+        "session_identity_policy": SESSION_IDENTITY_POLICY if dataset_key == "longmemeval_s_cleaned" else {"version": "unique-session-id-v1"},
+        "session_identity_audit": session_audit,
         "development_exposed_group_ids": exposure["known_development_group_ids"],
         "preparation_eligible_for_confirmatory_test": not blockers,
         "confirmatory_claim_allowed": False,
@@ -408,7 +558,10 @@ def validate_cohort(cohort_dir: Path) -> tuple[dict, list[dict], list[dict]]:
         if set(case) != {"example_id", "scope_id", "group_id", "query", "query_date", "sessions"}:
             raise ValueError("generation case contains unexpected or gold-label fields")
         reference = reference_by_id.get(case["example_id"])
-        if reference is None or set(reference) != {"example_id", "category", "query", "reference_answer", "should_abstain"}:
+        reference_fields = {"example_id", "category", "query", "reference_answer", "should_abstain"}
+        if dataset_key == "longmemeval_s_cleaned":
+            reference_fields |= {"original_evidence_session_ids", "evidence_session_ids"}
+        if reference is None or set(reference) != reference_fields:
             raise ValueError("generation/scoring IDs or reference schema do not match")
         if (case["query"] != reference["query"] or not isinstance(case["query"], str)
                 or not isinstance(reference["reference_answer"], str) or not isinstance(reference["category"], str)
@@ -431,13 +584,24 @@ def validate_cohort(cohort_dir: Path) -> tuple[dict, list[dict], list[dict]]:
             answer=reference["reference_answer"], evidence_ids=(), sessions=tuple(case["sessions"]),
             should_abstain=reference["should_abstain"], query_date=case["query_date"],
         ))
-    groups = history_groups(examples, dataset_key)
+    validate_session_identity_audit(manifest, cases, dataset_key)
+    aliases = session_original_ids(manifest["session_identity_audit"])
+    if dataset_key == "longmemeval_s_cleaned":
+        for example in examples:
+            reference = reference_by_id[example.example_id]
+            original = reference["original_evidence_session_ids"]
+            mapped = reference["evidence_session_ids"]
+            if (not isinstance(original, list) or any(not isinstance(value, str) for value in original)
+                    or not isinstance(mapped, list) or any(not isinstance(value, str) for value in mapped)
+                    or mapped != mapped_evidence_session_ids(replace(example, evidence_ids=tuple(original)), aliases.get(example.example_id, {}))):
+                raise ValueError("scoring evidence occurrence mapping differs from original session IDs")
+    groups = history_groups(examples, dataset_key, manifest["session_identity_audit"])
     for case in cases:
         expected_scope = ("locomo:" + case["example_id"].split(":qa:")[0] if dataset_key == "locomo10"
                           else "longmemeval:" + case["example_id"])
         if case["group_id"] != groups[case["example_id"]] or case["scope_id"] != expected_scope:
             raise ValueError("statistical group or retrieval scope does not match the actual history")
-    exposure, overlap = _exposure_state(plan, dataset_key, examples, groups, ledger)
+    exposure, overlap = _exposure_state(plan, dataset_key, examples, groups, ledger, manifest["session_identity_audit"])
     if role == "locked_external_test" and (overlap or spec["role"] != "locked_external_test"):
         raise ValueError("independent test overlaps development groups or an exploratory dataset")
     group_count = len(set(groups.values()))

@@ -106,6 +106,13 @@ The small safety gate is a research safeguard, not a complete crisis service.
 full datasets.** Production benchmark preparation and API adapters refuse ordinary local
 execution. No local model download or personal-computer GPU is required.
 
+The same notebook now provides `verify → prepare → reader → judge → status/export`
+for the full frozen v2 cohorts. Reader and judge run in explicit batches of at
+most 60 calls, with checkpoint download controls and no automatic loop or Drive
+mount. Exports retain raw audit artifacts and checksums; partial checkpoints are
+not final results. The [next validation plan](docs/validation-next.md) separates
+this historical-QA comparison from later CBT continuity and semantic-memory work.
+
 The next comparison is specified in a [frozen evaluation plan](evaluation/end-to-end-dialogue/formal_evaluation_plan.json):
 
 - Complete eligible LoCoMo: **1,540 questions**, three conditions, **4,620 planned responses**.
@@ -134,13 +141,16 @@ corpus and evaluation. The seven legacy knowledge sources remain disabled, so no
 full-corpus knowledge score is claimed. Archived pilot results and the separately
 verified turn-retrieval table below remain historical results of their recorded code.
 
-Validation after the sixth review: **262 deterministic tests pass**, including
+Validation after the sixth review and workflow fixes: **283 deterministic tests pass**, including
 real two-process contention with a mocked provider, failed dialogue operations,
 and synthetic PDF → evidence-card provenance checks. Both historical audit commands
 still recompute their original published results. These checks use no paid API or
 real model and do not establish improved dialogue quality.
 
-Formal response generation and reference judging are not yet complete. The historical
+The current v2 response generation and reference judging are not yet complete.
+A [recovered older-run log](evaluation/end-to-end-dialogue/colab_20261102_legacy_log_note.md)
+reports a completed v1 LoCoMo run, but its raw scoring archive is unavailable and
+the logged numbers cannot yet be independently recomputed. The historical
 20-question pilot below remains unchanged and is reported separately.
 
 Earlier Week 4 work:
@@ -242,6 +252,7 @@ The interactive demo only accepts the supplied fictional fixtures. Do not enter 
 - [System architecture](docs/architecture.md)
 - [Three-arm experiment: commands and limits](evaluation/end-to-end-dialogue/README.md)
 - [Colab dialogue and memory demo](app/README.md)
+- [Next validation: CBT continuity and semantic memory](docs/validation-next.md)
 - [Source policy and evidence cards](modules/cbt-knowledge-rag/README.md)
 - [Pinned development environment](docs/development.md)
 - [CBT Knowledge RAG report](modules/cbt-knowledge-rag/CBT_RAG_v1_Report.md)

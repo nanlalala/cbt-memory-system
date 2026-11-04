@@ -7,6 +7,7 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,7 +16,8 @@ sys.path.insert(0, str(ROOT / "evaluation/end-to-end-dialogue"))
 
 from prepare_formal_evaluation import (  # noqa: E402
     DEFAULT_PLAN, _verify_pilot_exposure_source, file_identity, history_groups,
-    load_plan, prepare_dataset, prepare_examples, stable_digest, validate_cohort, validate_full_s_spec, validate_plan,
+    load_plan, normalize_session_repeats, prepare_dataset, prepare_examples, session_occurrence_id,
+    stable_digest, validate_cohort, validate_full_s_spec, validate_plan,
 )
 from benchmark_adapters import RetrievalExample  # noqa: E402
 
@@ -67,6 +69,124 @@ class FormalEvaluationPreparationTests(unittest.TestCase):
         self.assertEqual(groups["q2"], groups["q3"])
         self.assertNotEqual(groups["q1"], groups["q4"])
         self.assertEqual(len(set(groups.values())), 2)
+
+    def test_repeated_original_ids_preserve_different_dates_content_and_source_order(self):
+        first = example()
+        earlier = first.sessions[0]
+        middle = {"session_id": "middle", "date": "2026-09-02T10:00:00Z",
+                  "turns": [{"role": "user", "content": "A distinct middle session."}]}
+        later = {**earlier, "date": "2026-09-03T10:00:00Z",
+                 "turns": [{"role": "user", "content": "A different later observation."}]}
+        original = replace(first, sessions=(earlier, middle, later), evidence_ids=("s1",))
+        normalized, audit = normalize_session_repeats([original], "longmemeval_s_cleaned")
+        sessions = normalized[0].sessions
+        self.assertEqual(len(sessions), 3)
+        self.assertEqual([session["date"] for session in sessions], [session["date"] for session in original.sessions])
+        self.assertEqual([session["turns"] for session in sessions], [session["turns"] for session in original.sessions])
+        self.assertEqual([session["session_id"] for session in sessions],
+                         [session_occurrence_id("q1", "s1", 0), "middle", session_occurrence_id("q1", "s1", 2)])
+        self.assertEqual(normalized[0].evidence_ids, original.evidence_ids)
+        occurrences = audit[0]["duplicates"][0]["occurrences"]
+        self.assertEqual([item["source_position"] for item in occurrences], [0, 2])
+        self.assertNotEqual(occurrences[0]["source_date_sha256"], occurrences[1]["source_date_sha256"])
+        self.assertNotEqual(occurrences[0]["source_turns_sha256"], occurrences[1]["source_turns_sha256"])
+
+    def test_identical_repeated_sessions_are_not_silently_merged_and_ids_ignore_gold(self):
+        base = example()
+        first = replace(base, sessions=(base.sessions[0], copy.deepcopy(base.sessions[0])))
+        changed_gold = replace(first, query="A different question", answer="A different gold answer", evidence_ids=("other",))
+        rows, audit = normalize_session_repeats([first], "longmemeval_s_cleaned")
+        altered, altered_audit = normalize_session_repeats([changed_gold], "longmemeval_s_cleaned")
+        self.assertEqual(len(rows[0].sessions), 2)
+        self.assertEqual(rows[0].sessions, altered[0].sessions)
+        self.assertEqual(audit, altered_audit)
+
+    def test_occurrence_cohort_preserves_original_grouping_and_scoring_only_gold_mapping(self):
+        base = example()
+        repeated = replace(base, sessions=(base.sessions[0], {**base.sessions[0], "date": "2026-09-03T10:00:00Z"}),
+                           evidence_ids=("s1",))
+        shared_id = example("q2", session_id="s1", text="Different content at a shared original ID.")
+        before = history_groups([repeated, shared_id], "longmemeval_s_cleaned")
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = self.prepare([repeated, shared_id], directory)
+            manifest, cases, references = validate_cohort(Path(directory) / "cohort")
+            self.assertEqual({case["example_id"]: case["group_id"] for case in cases}, before)
+            first_case = cases[0]
+            reference = references[0]
+            self.assertEqual(reference["original_evidence_session_ids"], ["s1"])
+            self.assertEqual(reference["evidence_session_ids"], [session["session_id"] for session in first_case["sessions"]])
+            self.assertNotIn("evidence_session_ids", first_case)
+            self.assertNotIn("original_evidence_session_ids", json.dumps(first_case))
+            self.assertEqual(manifest["session_identity_policy"]["version"], "longmemeval-source-session-occurrences-v1")
+            self.assertEqual(manifest["counts"]["examples"], 2)
+
+    def test_occurrence_audit_tampering_and_missing_original_mapping_are_rejected(self):
+        base = example()
+        repeated = replace(base, sessions=(base.sessions[0], {**base.sessions[0], "date": "2026-09-03T10:00:00Z"}))
+        for alter in ("position", "date_hash", "missing"):
+            with self.subTest(alter=alter), tempfile.TemporaryDirectory() as directory:
+                self.prepare([repeated], directory)
+                target = Path(directory) / "cohort"
+                path = target / "cohort_manifest.json"
+                manifest = json.loads(path.read_text())
+                if alter == "missing":
+                    manifest["session_identity_audit"] = []
+                elif alter == "position":
+                    manifest["session_identity_audit"][0]["duplicates"][0]["occurrences"][0]["source_position"] = 1
+                else:
+                    manifest["session_identity_audit"][0]["duplicates"][0]["occurrences"][0]["source_date_sha256"] = "0" * 64
+                manifest["cohort_sha256"] = stable_digest({key: value for key, value in manifest.items() if key != "cohort_sha256"})
+                path.write_text(json.dumps(manifest), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "occurrence-session"):
+                    validate_cohort(target)
+
+    def test_original_session_exposure_matches_renamed_occurrences(self):
+        base = example()
+        repeated = replace(base, sessions=(base.sessions[0], {**base.sessions[0], "date": "2026-09-03T10:00:00Z"}))
+        ledger = {"datasets": {"longmemeval_s_cleaned": {"session_ids": ["s1"], "exposure_review_complete": True}}}
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = self.prepare([repeated], directory, exposure_ledger=ledger, role="exploratory")
+            validated, _, _ = validate_cohort(Path(directory) / "cohort")
+            self.assertEqual(manifest, validated)
+            self.assertEqual(len(manifest["development_exposure"]["overlapping_development_group_ids"]), 1)
+            self.assertIn("exploratory_dataset_with_prior_development_exposure", manifest["confirmatory_preparation_blockers"])
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "development-overlapping"):
+                self.prepare([repeated], directory, exposure_ledger=ledger, role="locked_external_test")
+
+    def test_occurrences_pass_structured_preparation_without_losing_temporal_eligibility(self):
+        from run_structured_memory import load_run, prepare_structured_run
+        from run_three_arm import Settings
+
+        base = example()
+        recent = {"session_id": "recent", "date": "2026-09-02T10:00:00Z",
+                  "turns": [{"role": "user", "content": "I watched a film."}]}
+        later = {**base.sessions[0], "date": "2026-09-03T10:00:00Z"}
+        repeated = replace(base, query_date="2026-09-02T12:00:00Z",
+                           sessions=(base.sessions[0], recent, later), evidence_ids=("s1",))
+        model = self.plan["shared_response_configuration"]
+        settings = Settings(model=model["model"], accepted_provider_models=tuple(model["accepted_provider_models"]),
+                            max_response_tokens=4096, thinking_mode="disabled")
+        with tempfile.TemporaryDirectory() as directory:
+            self.prepare([repeated], directory)
+            root = Path(directory)
+            summary = prepare_structured_run(root / "cohort", root / "run", settings, model["api_base"])
+            _, prompts, references, _ = load_run(root / "run")
+            self.assertEqual(summary["candidate_records"], 1)
+            self.assertEqual(summary["requests"], 3)
+            first_id, future_id = session_occurrence_id("q1", "s1", 0), session_occurrence_id("q1", "s1", 2)
+            self.assertEqual(references[0]["evidence_session_ids"], [first_id, future_id])
+            for prompt in prompts:
+                self.assertEqual(prompt["future_session_ids_excluded"], [future_id])
+                self.assertNotIn("original_evidence_session_ids", json.dumps(prompt["messages"]))
+                self.assertFalse(any(future_id in value for value in prompt["included_source_turn_ids"]))
+
+    def test_original_source_cannot_spoof_the_reserved_occurrence_namespace(self):
+        row = example(session_id="lme-occurrence-v1:pretend-original")
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "reserved occurrence namespace"):
+                self.prepare([row], directory)
+            self.assertFalse((Path(directory) / "cohort").exists())
 
     def test_generation_is_gold_free_and_not_user_confirmed(self):
         with tempfile.TemporaryDirectory() as directory:

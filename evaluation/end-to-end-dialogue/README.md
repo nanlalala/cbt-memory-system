@@ -7,6 +7,18 @@ MemoryRetriever and Agent context assembly. **The full-cohort answer generation
 and reference-judge evaluation are not yet completed.** The older 20-question
 raw-history pilot remains unchanged below.
 
+A [recovered 2 November notebook log](colab_20261102_legacy_log_note.md)
+reports a completed older v1 LoCoMo run. Its raw scoring archive is unavailable,
+so the observed console numbers are kept separate and are not independently
+recomputed results or the current v2 endpoint.
+
+For the complete workflow, use `run_formal_pipeline.py`: `verify`, `prepare`,
+`reader`, `judge`, `status` and `export`. Each reader/judge invocation requires
+an explicit finite `--max-calls`; preparation is skipped only after validating
+the frozen artifacts. Export preserves raw scoring inputs, source code and
+`SHA256SUMS`, with partial checkpoints clearly distinguished from final results.
+The Colab notebook provides the same stages and checkpoint download controls.
+
 | New condition | Available information |
 | --- | --- |
 | `none` | Current question, no conversation history |
@@ -26,6 +38,14 @@ candidate inventory and potentially retrieved context: rebuild prompts and model
 extraction artifacts in **new v2 directories**. Do not append v2 responses to v1
 runs or reuse their scores. Existing benchmark input releases and the frozen
 statistical plan stay unchanged; the historical audit files remain byte-preserved.
+
+**Cohort v2 — 4 November:** the pinned LongMemEval-S release contains 13 repeated
+session IDs with identical turns but different dates, verified in
+[this metadata-only Colab audit](colab_20261104_session_identity_audit.json).
+Every occurrence remains in order with its date and a deterministic internal ID.
+The manifest retains original IDs, positions and hashes. Gold-ID expansion is
+scoring-only; grouping and exposure checks still use original IDs. All 500
+questions remain eligible. Rebuild old cohorts; do not relabel existing runs.
 
 Response generation, extraction and reference grading exclusively lock the output
 directory before checking attempt budgets or contacting a provider. A concurrent
