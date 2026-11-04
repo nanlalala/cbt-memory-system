@@ -1,0 +1,78 @@
+{
+  "schema": "capstone-evidence-status-v1",
+  "checkpoint": "research-workflow-after-pr23",
+  "implementation_base_commit": "63911d66003f3446f7d720b183d7cc3e2df0c584",
+  "objective_executable_commit": "1511706b3a4b0ac71416998b5b4d752a13c4e313",
+  "execution_location": "independent Codex cloud Linux for software and archive review; genuine hosted Colab for previous model calls and full-data inventory",
+  "user_computer_used": false,
+  "new_model_calls_after_previous_pilots": 0,
+  "completed_previous_objective_pilots": {
+    "quote_control": {
+      "eligible_questions_in_pilot": 16,
+      "logical_arm_rows": 48,
+      "actual_provider_calls": 32,
+      "reported_tokens": 57908,
+      "official_credited_answers": {"short_term": 0, "raw_history_rag": 2, "managed_memory_rag": 2},
+      "independent_families": 1,
+      "raw_managed_inputs_identical": true,
+      "credited_answer_caveat": "Both credited RAG replies list candidate entities in UNKNOWN/refusal text; official substring credit is not evidence of reliable conflict resolution.",
+      "audit_zip_sha256": "b6591495178e0e902307d2cc9346a5f7ff122d0c96e838050115eab2f14369dd"
+    },
+    "semantic_development_followup": {
+      "questions": 4,
+      "previously_exposed_subset_of_16": true,
+      "extraction_calls": 18,
+      "qa_calls": 11,
+      "reported_pipeline_tokens": 103537,
+      "official_credited_answers": {"short_term": 0, "raw_history_rag": 1, "managed_memory_rag": 0},
+      "independent_families": 1,
+      "empty_extraction_responses": 16,
+      "raw_managed_inputs_identical": false,
+      "interpretation": "Negative exploratory development result; not four new independent histories. Source-path observations do not establish a unique causal failure stage without independent evidence labels.",
+      "audit_zip_sha256": "db963856d95030a72ac57d852200a6e14d7800ebbe4e46a7ba6ce853629339f6"
+    },
+    "actual_provider_calls_total": 61,
+    "reported_tokens_total": 161445,
+    "api_failures_recorded": 0,
+    "monetary_cost": null,
+    "monetary_cost_status": "No verified frozen price schedule; token use is not a verified monetary bill."
+  },
+  "full_v3_1": {
+    "planned_questions": 1389,
+    "planned_logical_arm_rows": 4167,
+    "memoryagentbench_questions": 800,
+    "memoryagentbench_conservative_families": 1,
+    "personamem_questions": 589,
+    "personamem_connected_groups": 20,
+    "status": "not_executed",
+    "provider_calls": 0,
+    "blocker": "Hosted Colab browser-control transport unavailable; independent Codex cloud has no authorized CBT_EVAL_API_KEY. No local fallback or environment-guard spoofing.",
+    "managed_representation_boundary": "Synthetic MAB source-order fact-version view; PersonaMem raw/managed quotation controls remain identical. Not validated CBT semantic goal/homework extraction."
+  },
+  "independent_cbt_review": {
+    "archived_actual_responses_prepared": 32,
+    "fictional_scenarios": 16,
+    "source": "modules/cbt-knowledge-rag/results/expanded_dialogue_v3_results.csv",
+    "contrast": "historical knowledge-RAG versus no knowledge-RAG, not memory management",
+    "development_exposed": true,
+    "new_model_calls": 0,
+    "qualified_human_ratings_received": 0,
+    "clinical_claim": false
+  },
+  "four_visit_feasibility": {
+    "status": "collection_and_analysis_tooling_only_not_launched",
+    "planned_slots": 60,
+    "actual_enrolled_participants": 0,
+    "completed_participants": 0,
+    "qualified_reviewers_completed": 0,
+    "statistical_unit": "participant, not individual visits or tasks",
+    "clinical_power_or_efficacy_established": false
+  },
+  "clinical_outcomes": {
+    "actual_patients": 0,
+    "symptom_observations": 0,
+    "functioning_observations": 0,
+    "benefit_established": false,
+    "status": "separate approved matched-comparator clinical study required"
+  }
+}
