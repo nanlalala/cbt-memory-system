@@ -12,18 +12,40 @@ store, retriever and context builder. It does not start a web server or expose
 a public port. The default store is ephemeral and uses fictional inputs.
 
 1. Check **我只输入虚构演示资料**, enter a fictional fact or goal and send it.
-2. Click **整理本次记忆候选**. Read each candidate and its exact source quote.
-   **确认这条记忆** creates a distinct, operator-triggered confirmation event;
-   extraction alone never activates a memory.
+2. Check the extraction range, then click **整理当前窗口的记忆候选**. The service
+   retains at most 24 conversation messages by default; the page shows how many
+   user turns remain, how many have moved out of the window and how many have
+   not yet been processed. This button does not cover an entire long session.
+   Only pending turns can supply new candidates; already processed turns remain
+   available as context but are not re-imported, so revising a candidate does not
+   make the next extraction recreate its old wording.
+   Read each candidate and its exact source quote. If it is inaccurate, edit it
+   and click **保存修订，保持待确认** before deciding whether to confirm. Revision
+   never accepts the old wording, adds it to ordinary chat or activates a memory.
+   The original extraction quote remains available beside the revision evidence
+   only after the service verifies the matching operator revision event; model
+   payload fields cannot create a displayed revision history. Goal and assignment
+   slots keep their type and slot when revised, with status reset to `unknown`.
+   Emotion, cognitive-pattern, assignment-outcome and safety slots need structured
+   field editing, which this text-only demo does not provide. Their cards explain
+   this limit and require removing the candidate and supplying explicit information
+   again rather than offering an edit that will silently change its meaning.
+   **确认这条记忆** creates a distinct, operator-triggered confirmation event.
 3. Start the next session and ask about the earlier information. Expand
-   **本次回答用到了什么** to see only the memory IDs included in the final
-   response context, with budget-dropped IDs shown separately.
+   **本次回答收到的记忆参考** to read the memory text actually supplied in the final
+   response context, with source IDs available for inspection and budget-dropped
+   IDs listed separately. Inclusion is not proof that the generated answer
+   relied on the information correctly. Restricted and dropped source bodies
+   are not displayed in this trace. If unprocessed turns remain, switching
+   sessions first offers a cancelable warning; they will not be saved automatically.
 4. Submit a correction to an active memory. It remains a candidate until a
    separate confirmation replaces the current version.
-5. Delete a memory. The service also clears the current short-term context
-   and last response so a forgotten fact cannot return from the old chat
-   context. Deleting one version does not claim to erase a provider's logs,
-   database backups or every related memory.
+5. Click delete to review its scope before changing anything: it removes the
+   selected memory and resets the current short-term context and last response.
+   Other long-term records remain. Cancel to keep the current state, or confirm
+   the deletion explicitly. Clearing the chat prevents the deleted text returning
+   through that old context; deleting one version does not erase every related
+   memory, a provider's logs or database backups.
 
 Correction text is management evidence attached to the correction record; it is
 not added to ordinary chat or re-extracted as a standard fact. Failed sends and
