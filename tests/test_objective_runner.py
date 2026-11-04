@@ -171,6 +171,49 @@ class ObjectiveRunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "identity"):
                 runner.load_run(path)
 
+    def test_resume_repairs_missing_failure_mirror_before_another_timeout(self):
+        for mirror_state in ("missing", "empty", "short_prefix"):
+            with self.subTest(mirror_state=mirror_state), tempfile.TemporaryDirectory() as directory:
+                path = Path(directory)
+                self.prepare(path, fixture_only=False)
+                with patch.object(runner, "require_colab"), patch.object(runner, "generate_response", side_effect=TimeoutError) as provider:
+                    runner.generate_run(path, max_calls=2, key="synthetic-fixture")
+                    mirror = path / "failures.jsonl"
+                    if mirror_state == "missing":
+                        mirror.unlink()
+                    elif mirror_state == "empty":
+                        mirror.write_text("", encoding="utf-8")
+                    else:
+                        runner._replace_rows(mirror, runner.read_jsonl(mirror)[:1])
+                    final = runner.generate_run(path, max_calls=2, key="synthetic-fixture")
+                    self.assertTrue(final["complete"])
+                    self.assertEqual(final["arm_outcomes"]["exhausted_failure"], 3)
+                    self.assertEqual(provider.call_count, 4)
+                outcomes = runner.read_jsonl(path / "response_outcomes.jsonl")
+                self.assertEqual(runner.read_jsonl(mirror), outcomes)
+                # Scoring and continuation remain possible; no attempts vanish.
+                import score_objective_comparison as scorer
+                summary = scorer.score_run(path)
+                self.assertEqual(summary["status"], "complete")
+                self.assertEqual(runner.status_run(path)["actual_provider_attempts"], 4)
+
+    def test_divergent_failure_mirror_is_rejected_before_provider(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            self.prepare(path, fixture_only=False)
+            with patch.object(runner, "require_colab"), patch.object(runner, "generate_response", side_effect=TimeoutError):
+                runner.generate_run(path, max_calls=1, key="synthetic-fixture")
+            mirror = path / "failures.jsonl"
+            rows = runner.read_jsonl(mirror)
+            rows[0]["error_type"] = "ChangedDiagnostic"
+            runner._replace_rows(mirror, rows)
+            before = mirror.read_bytes()
+            with patch.object(runner, "require_colab"), patch.object(runner, "generate_response") as provider:
+                with self.assertRaisesRegex(ValueError, "failure journal differs"):
+                    runner.generate_run(path, max_calls=1, key="synthetic-fixture")
+                provider.assert_not_called()
+            self.assertEqual(mirror.read_bytes(), before)
+
     def test_gold_fields_and_unknown_lifecycle_events_rejected(self):
         for field, value in (("accepted_answers", ["blue"]), ("events", [{"type": "delete"}])):
             with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:

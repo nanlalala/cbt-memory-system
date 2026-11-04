@@ -458,6 +458,8 @@ def _journals_locked(run_dir: Path, protocol: dict, prompts: list[dict]) -> tupl
     # outcomes is authoritative. A crash can interrupt its diagnostic mirror.
     if failures != expected_failures[:len(failures)]:
         raise ValueError("failure journal differs from outcome ledger")
+    if failures != expected_failures:
+        _replace_rows(run_dir / "failures.jsonl", expected_failures)
     return attempts, outcomes, responses
 
 
