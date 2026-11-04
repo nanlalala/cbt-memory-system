@@ -1,0 +1,70 @@
+{
+  "schema_version": "colab-v2-execution-checkpoint-v1",
+  "recorded_utc": "2026-11-04T16:21:00Z",
+  "status": "partial_checkpoint_only_no_effectiveness_result",
+  "code_revision": "c6784e92d4717cab365be0ca0aaf9bf65c423062",
+  "merged_implementation_commit": "83edd7b751e62cd60534ce87a7906e70ad243f44",
+  "execution_location": "hosted Google Colab",
+  "gpu": "Tesla T4",
+  "comparison": [
+    "none",
+    "short_term",
+    "short_plus_structured_candidate"
+  ],
+  "representation": "verbatim source-preserving unconfirmed candidates; not semantic extraction or user consent",
+  "knowledge_condition": "empty in every arm",
+  "model": {
+    "requested": "deepseek-v4.1-flash",
+    "reported_in_verified_checkpoint": "deepseek-v4-1-flash-260910",
+    "identity_checked": true
+  },
+  "cohorts": {
+    "longmemeval_s_cleaned": {
+      "questions": 500,
+      "abstention_questions": 30,
+      "independent_history_groups": 1,
+      "reader_requests": 1500,
+      "complete_input_preparation": true,
+      "all_13_repeated_session_id_groups_preserved": true,
+      "retained_verified_responses": 120,
+      "reference_judge_labels": 0
+    },
+    "locomo10": {
+      "questions": 1540,
+      "independent_history_groups": 10,
+      "reader_requests": 4620,
+      "complete_input_preparation": true,
+      "retained_verified_responses": 0,
+      "reference_judge_labels": 0
+    }
+  },
+  "retained_artifacts": [
+    {
+      "name": "longmemeval_s_cleaned-v2-prepared.zip",
+      "bytes": 94499676,
+      "sha256": "3819bcece929a93c23981dc0ea2ffdc95d898702d6f9c2826935c28e3dcb52fc",
+      "verified_hashed_members": 37
+    },
+    {
+      "name": "longmemeval_s_cleaned-v2-reader-120.zip",
+      "bytes": 61838,
+      "sha256": "38e44d19c9d9a3216b48ce31f3b7a6162da9c36ec03e0d6860fc2dcd1d3e262d",
+      "verified_hashed_members": 7,
+      "responses": 120,
+      "unique_requests": 120,
+      "complete_three_arm_question_pairs": 40
+    }
+  ],
+  "retention": "Raw benchmark-derived archives retained in controlled project storage; public record contains metadata only.",
+  "verification_scope": "Downloaded bytes match Colab-declared SHA-256; all archive SHA256SUMS members verified. These checks do not independently authenticate the provider or establish response correctness.",
+  "software_validation": {
+    "deterministic_tests": 283,
+    "github_ci": "passed",
+    "github_ci_run_id": 41863237973
+  },
+  "continuation": "Finite batches of at most 60 calls with frozen lifetime attempt caps; full cohort required before final scoring. Counts here refer only to the retained verified checkpoint, not a live counter.",
+  "final_effectiveness_result": false,
+  "confirmatory_claim": false,
+  "clinical_claim": false,
+  "historical_log_policy": "The separate 2 November v1 console observation is not pooled with this v2 run."
+}

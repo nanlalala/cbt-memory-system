@@ -148,6 +148,9 @@ still recompute their original published results. These checks use no paid API o
 real model and do not establish improved dialogue quality.
 
 The current v2 response generation and reference judging are not yet complete.
+The [4 November execution checkpoint](evaluation/end-to-end-dialogue/colab_20261104_v2_progress.json)
+records complete input preparation in Colab and the first 120 retained, hash-verified
+LongMemEval-S responses. Generation is continuing; no final score is reported.
 A [recovered older-run log](evaluation/end-to-end-dialogue/colab_20261102_legacy_log_note.md)
 reports a completed v1 LoCoMo run, but its raw scoring archive is unavailable and
 the logged numbers cannot yet be independently recomputed. The historical
