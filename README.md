@@ -73,7 +73,7 @@ turned off, and correction/deletion remain available. The first implementation
 captures eligible quotations without an extra extraction-model call; it does
 not silently validate semantic summaries or infer homework completion.
 
-This mode passes **346 deterministic regression tests**, including automatic
+The repository passes **439 deterministic regression tests**, including automatic
 capture, historical/current-use separation, optional checks, source-tamper
 rejection, opt-out handling and correction/deletion. These are software checks;
 naturalness and reduced user effort still require a participant evaluation.
@@ -110,7 +110,8 @@ cbt-memory-system/
 ├── evaluation/
 │   ├── knowledge-retrieval/
 │   ├── memory-retrieval/
-│   ├── end-to-end-dialogue/
+│   ├── end-to-end-dialogue/             # Frozen historical-QA experiment
+│   ├── objective-memory/                # Public-gold comparison and control replay
 │   └── safety/
 └── app/                                # Colab dialogue/memory UI and synthetic CLI
 ```
@@ -125,10 +126,17 @@ response model and context budget. Knowledge and safety conditions stay fixed.
 
 | Evidence | What will be reported | Current boundary |
 | --- | --- | --- |
-| Public tasks with released answers | Deterministic scores on MemoryAgentBench conflict-resolution tasks and PersonaMem-v1 choices | Selected; adapters and new comparison not yet run |
-| Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation; errors traced from extraction to answer | Regression checks exist; comparative effect results pending |
+| Public tasks with released answers | Fixed official answer rules on MemoryAgentBench fact conflicts and PersonaMem-v1 choices | Adapters and deterministic scorer implemented; hosted execution tracked separately |
+| Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation | Synthetic event replay: both arms pass 23/23 queries and 32/32 control operations; no user-benefit claim |
 | User workflow | Four visits: set a goal, report progress, revise, review/delete; completion, errors, time and review effort | Interface improved; participant study not conducted |
 | Open-ended support | Independent review of relevance, collaboration and appropriate boundaries | Model-assisted QA remains supplementary; no clinical outcome claim |
+
+The executable [objective comparison](evaluation/objective-memory/README.md)
+keeps official scoring answers out of preparation and generation. The hosted
+PersonaMem census contains 589 questions but only 20 independent persona/context
+groups. Current managed records preserve original quotations. The runner checks
+whether raw-history and managed prompts are actually different; identical inputs
+share one recorded response and cannot establish a management effect.
 
 The [evaluation protocol](docs/validation-next.md) defines denominators, fair
 baselines, stage-level attribution, costs and independent-history analysis. It

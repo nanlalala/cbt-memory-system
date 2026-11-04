@@ -1,0 +1,59 @@
+{
+  "schema_version": "objective-dataset-registry-v1",
+  "datasets": {
+    "memoryagentbench_conflict": {
+      "enabled": true,
+      "dataset_repository": "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench",
+      "data_revision": "7ea066982b140a19337e17e60d45d4076e042faf",
+      "code_repository": "https://github.com/HUST-AI-HYZ/MemoryAgentBench",
+      "code_revision": "538026089d1a8a8eff05121d0db89b388f360eba",
+      "license": "MIT",
+      "license_evidence": "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench/blob/7ea066982b140a19337e17e60d45d4076e042faf/README.md",
+      "split": "Conflict_Resolution",
+      "eligible_source_pattern": "^factconsolidation_(sh|mh)_(6k|32k|64k|262k)$",
+      "official_metric": "substring_exact_match",
+      "independence_unit": "conservative_entire_factconsolidation_family",
+      "interpretation": "Exploratory conflict-resolution benchmark. Multiple questions and context-length variants are not independent users; no CBT or clinical labels.",
+      "files": {
+        "data": {
+          "path": "data/Conflict_Resolution-00000-of-00001.parquet",
+          "url": "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench/resolve/7ea066982b140a19337e17e60d45d4076e042faf/data/Conflict_Resolution-00000-of-00001.parquet",
+          "bytes": 1491588,
+          "sha256": "24d5c3f09ce0ce15625cb9f8a98f44f0d864ca6c94d7b4ad04eb697ca3a5ff45"
+        }
+      }
+    },
+    "personamem_v1": {
+      "enabled": true,
+      "dataset_repository": "https://huggingface.co/datasets/bowen-upenn/PersonaMem-v1",
+      "data_revision": "a8076d5608c93ba2a28983cd78aa99b01a163ae7",
+      "code_repository": "https://github.com/bowen-upenn/PersonaMem",
+      "code_revision": "d07e6ade22e85e0e5d562247323a9c3e07553226",
+      "license": "MIT",
+      "license_evidence": "https://huggingface.co/datasets/bowen-upenn/PersonaMem-v1/blob/a8076d5608c93ba2a28983cd78aa99b01a163ae7/README.md",
+      "split": "32k",
+      "released_question_count": 589,
+      "official_metric": "extract_answer_option_set",
+      "independence_unit": "connected_persona_and_shared_context_components",
+      "interpretation": "Synthetic evolving-persona multiple-choice benchmark; objective released option labels, not real users or CBT treatment outcomes.",
+      "future_boundary": "shared_context[:int(end_index_in_shared_context)] before all extraction, import and retrieval",
+      "files": {
+        "questions": {
+          "path": "questions_32k.csv",
+          "url": "https://huggingface.co/datasets/bowen-upenn/PersonaMem-v1/resolve/a8076d5608c93ba2a28983cd78aa99b01a163ae7/questions_32k.csv",
+          "bytes": 1305366,
+          "sha256": "cccd34cf53e0bc4d9536c04cff5ca045156d9a4e227e83327112482840bbc93c",
+          "git_blob_sha1": "4e178038845532f7eb865aa18e228dc664658b66"
+        },
+        "contexts": {
+          "path": "shared_contexts_32k.jsonl",
+          "url": "https://huggingface.co/datasets/bowen-upenn/PersonaMem-v1/resolve/a8076d5608c93ba2a28983cd78aa99b01a163ae7/shared_contexts_32k.jsonl",
+          "bytes": 5613210,
+          "sha256": "217247ebfec9e8442fc53570c795ab69f21aad08745f7de78d9beab51b122d4a",
+          "git_blob_sha1": "473447f007a1bcec2ee9d149b9396271b6b78fc4"
+        }
+      },
+      "identity_note": "Upstream non-LFS Git blob SHA-1 and byte size were verified during hosted Colab census on 2026-11-04; the independently computed byte SHA-256 values above were then frozen. Future loads verify all identities. Git object hashes are not byte SHA-256."
+    }
+  }
+}

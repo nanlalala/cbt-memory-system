@@ -1,0 +1,51 @@
+{
+  "schema_version": "objective-hosted-source-inventory-v1",
+  "recorded_utc": "2026-11-04T18:54:00Z",
+  "execution_location": "hosted Google Colab, Python 3 Google Compute Engine",
+  "local_full_dataset_execution": false,
+  "paid_model_calls_in_this_inventory": 0,
+  "personamem_v1_32k": {
+    "data_revision": "a8076d5608c93ba2a28983cd78aa99b01a163ae7",
+    "verification": "Released byte sizes and Git blob SHA-1 checked; byte SHA-256 calculated from downloaded files",
+    "files": {
+      "questions_32k.csv": {
+        "bytes": 1305366,
+        "sha256": "cccd34cf53e0bc4d9536c04cff5ca045156d9a4e227e83327112482840bbc93c"
+      },
+      "shared_contexts_32k.jsonl": {
+        "bytes": 5613210,
+        "sha256": "217247ebfec9e8442fc53570c795ab69f21aad08745f7de78d9beab51b122d4a"
+      }
+    },
+    "questions": 589,
+    "personas": 20,
+    "shared_contexts_used": 37,
+    "connected_persona_context_groups": 20,
+    "all_exclusive_history_cutoffs_in_bounds": true,
+    "question_types": {
+      "recall_user_shared_facts": 129,
+      "provide_preference_aligned_recommendations": 55,
+      "suggest_new_ideas": 93,
+      "recalling_the_reasons_behind_previous_updates": 99,
+      "track_full_preference_evolution": 139,
+      "generalizing_to_new_scenarios": 57,
+      "recalling_facts_mentioned_by_the_user": 17
+    }
+  },
+  "memoryagentbench_conflict": {
+    "data_revision": "7ea066982b140a19337e17e60d45d4076e042faf",
+    "bytes": 1491588,
+    "sha256": "24d5c3f09ce0ce15625cb9f8a98f44f0d864ca6c94d7b4ad04eb697ca3a5ff45",
+    "questions": 800,
+    "source_variants": 8,
+    "questions_per_variant": 100,
+    "variants": [
+      "factconsolidation_mh_6k", "factconsolidation_mh_32k",
+      "factconsolidation_mh_64k", "factconsolidation_mh_262k",
+      "factconsolidation_sh_6k", "factconsolidation_sh_32k",
+      "factconsolidation_sh_64k", "factconsolidation_sh_262k"
+    ],
+    "independence_policy": "One conservative fact-consolidation family; repeated length variants are not independent users"
+  },
+  "boundary": "Source inventory, not response accuracy, management-effect or clinical evidence. Full benchmark texts stay in hosted/controlled storage."
+}

@@ -1,7 +1,8 @@
 # Validation protocol: manageable memory and cross-session continuity
 
-**Status — 4 November 2026:** revised evaluation protocol, not a completed effect
-study. The frozen LoCoMo / LongMemEval v2 experiment remains unchanged. Its
+**Status — 5 November 2026:** executable public-gold comparison and synthetic
+control replay implemented; a completed semantic-memory/user-benefit study is still
+missing. The frozen LoCoMo / LongMemEval v2 experiment remains unchanged. Its
 historical-QA results and model-assisted grading are supporting evidence; they do
 not establish that semantic memory improves CBT follow-up. Regression tests
 establish software behavior, not user benefit.
@@ -124,10 +125,20 @@ Only two new external task families are needed initially:
 | [PersonaMem-v1](https://github.com/bowen-upenn/PersonaMem/blob/main/README.md): dynamic preferences and their application | Released correct option versus prediction using the [official parser](https://github.com/bowen-upenn/PersonaMem/blob/main/inference.py) | Deterministic multiple-choice correctness. Apply the released `end_index_in_shared_context` history boundary. These are synthetic personas; option accuracy is not free-dialogue helpfulness. |
 
 Before running, pin dataset/evaluator commits, license and redistribution terms,
-file sizes/hashes, eligible counts, group/split IDs and adapter changes. These
-links explain selection; they are **not a frozen manifest or implemented adapter**.
+file sizes/hashes, eligible counts, group/split IDs and adapter changes. The executable [objective comparison](../evaluation/objective-memory/README.md)
+now provides the frozen registry, adapters, runner, deterministic scorer and audit
+export. Hosted progress/results remain separately labeled; code readiness is not
+a completed effect study.
 Preserve official scores alongside adaptations. Do not silently replace a
 published parser; malformed answers fail under the frozen rule.
+
+The first comparison preserves original quotations. Measure actual prompt identity
+before generation: identical raw/managed inputs share one canonical response and
+are reported as control equivalence by construction, without an inferential
+management-effect interval. This cannot validate semantic extraction. PersonaMem
+32k has 589 released questions but 20 connected history groups; MemoryAgentBench
+length variants are one conservatively grouped family. These are exploratory
+benchmarks, not independent participant trials.
 
 Keep LoCoMo evidence Recall@k as a retrieval diagnostic and LongMemEval
 reference-judge results as model-assisted historical-QA evidence. Neither

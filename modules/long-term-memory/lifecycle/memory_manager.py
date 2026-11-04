@@ -88,14 +88,57 @@ class MemoryManager:
         text from different source turns is retained as separate provenance.
         """
 
-        checked = []
+        return self._ingest_verbatim_candidate_batch(
+            records, user_id=user_id, source_turns=source_turns, actor=actor,
+            required_origin=Origin.EXPLICIT_USER_STATEMENT.value,
+            observation_sources=False,
+        )
+
+    def ingest_verbatim_observation_candidates(
+        self,
+        records: Sequence[MemoryRecord],
+        *,
+        user_id: str,
+        source_turns: Mapping[tuple[str, str], Mapping[str, str]],
+        actor: str = "system",
+    ) -> list[WriteResult]:
+        """Batch exact external quotes without asserting a user statement/consent.
+
+        Each record must be a ``system_observation`` and stay an unconfirmed
+        candidate. Every source entry requires ``text``, ``observed_at``, a
+        ``source_role`` in user/assistant/system/context, and a nonempty
+        ``provenance_kind``. Roles describe the quoted source only; even a
+        benchmark role named "user" is not authenticated user confirmation.
+        Source-role and provenance metadata are stored in the same atomic audit
+        transaction as the candidate, including rejected replay observations.
+        """
+
+        return self._ingest_verbatim_candidate_batch(
+            records, user_id=user_id, source_turns=source_turns, actor=actor,
+            required_origin=Origin.SYSTEM_OBSERVATION.value,
+            observation_sources=True,
+        )
+
+    def _ingest_verbatim_candidate_batch(
+        self,
+        records: Sequence[MemoryRecord],
+        *,
+        user_id: str,
+        source_turns: Mapping[tuple[str, str], Mapping[str, str]],
+        actor: str,
+        required_origin: str,
+        observation_sources: bool,
+    ) -> list[WriteResult]:
+        """Shared candidate-only checks and one-pass transactional import."""
+
+        checked: list[tuple[MemoryRecord, dict]] = []
         for item in records:
             record = MemoryRecord.from_dict(item.to_dict())
             evidence = record.source_evidence
             if (
                 record.user_id != user_id
                 or record.memory_type != MemoryType.EXPLICIT_FACT.value
-                or record.origin != Origin.EXPLICIT_USER_STATEMENT.value
+                or record.origin != required_origin
                 or record.confirmation_state != ConfirmationState.UNCONFIRMED.value
                 or record.lifecycle_status != LifecycleStatus.CANDIDATE.value
                 or record.structured_payload or record.tags or record.related_memory_ids
@@ -105,14 +148,31 @@ class MemoryManager:
                 raise ValueError("bulk import accepts only unslotted verbatim unconfirmed candidates")
             source = source_turns.get((evidence.session_id, evidence.turn_ids[0]))
             if (
-                source is None or record.content != evidence.supporting_text
+                source is None or not isinstance(source, Mapping)
+                or record.content != evidence.supporting_text
                 or record.content != source.get("text")
                 or any(timestamp != source.get("observed_at") for timestamp in (
                     record.created_at, record.observed_at, record.updated_at, record.valid_from
                 ))
             ):
                 raise ValueError("verbatim candidate requires its exact source quote and timestamp")
-            checked.append(record)
+            source_metadata = {}
+            if observation_sources:
+                source_role = source.get("source_role")
+                provenance_kind = source.get("provenance_kind")
+                if not isinstance(source_role, str) or source_role not in {"user", "assistant", "system", "context"} or (
+                    not isinstance(provenance_kind, str) or not provenance_kind.strip()
+                ):
+                    raise ValueError("observation candidate requires its source role and provenance kind")
+                source_metadata = {
+                    "source_role": source_role,
+                    "provenance_kind": provenance_kind,
+                    "source_session_id": evidence.session_id,
+                    "source_turn_ids": list(evidence.turn_ids),
+                    "observation_only": True,
+                    "user_consent": False,
+                }
+            checked.append((record, source_metadata))
 
         with self.store.transaction(immediate=True):
             existing = self.store.list_for_user(user_id)
@@ -125,7 +185,7 @@ class MemoryManager:
                     # list_for_user uses the same ordering as serial ingest.
                     by_assertion.setdefault(_duplicate_key(record), record)
             pending, audits, results = [], [], []
-            for record in checked:
+            for record, source_metadata in checked:
                 if record.memory_id in stored_ids:
                     raise ValueError(f"memory_id already exists: {record.memory_id}")
                 assertion = _duplicate_key(record)
@@ -134,7 +194,7 @@ class MemoryManager:
                     audits.append({
                         "user_id": user_id, "memory_id": duplicate.memory_id,
                         "action": "duplicate_rejected", "occurred_at": record.updated_at,
-                        "actor": actor, "details": {"rejected_memory_id": record.memory_id},
+                        "actor": actor, "details": {"rejected_memory_id": record.memory_id, **source_metadata},
                     })
                     results.append(WriteResult("duplicate_rejected", record.memory_id,
                                                duplicate.memory_id, "same normalized assertion and source evidence"))
@@ -145,7 +205,8 @@ class MemoryManager:
                 audits.append({
                     "user_id": user_id, "memory_id": record.memory_id, "action": "created",
                     "occurred_at": record.updated_at, "actor": actor,
-                    "details": {"status": LifecycleStatus.CANDIDATE.value, "origin": record.origin},
+                    "details": {"status": LifecycleStatus.CANDIDATE.value, "origin": record.origin,
+                                **source_metadata},
                 })
                 results.append(WriteResult("created", record.memory_id, reason="stored as candidate"))
             self.store.atomic_write(records=pending, audits=audits)
