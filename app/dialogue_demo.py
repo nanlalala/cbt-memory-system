@@ -68,7 +68,7 @@ def render_chat_html(snapshot: dict[str, Any]) -> str:
     return "".join(blocks) if blocks else "<p>当前会话还没有消息。可以先输入一条虚构的目标或经历。</p>"
 
 
-def render_record_html(record: dict[str, Any]) -> str:
+def render_record_html(record: dict[str, Any], *, conversational: bool = False) -> str:
     """Escape all source/model-controlled text; never render it as markup."""
     source = record.get("source_evidence")
     source = source if isinstance(source, dict) else {}
@@ -85,10 +85,24 @@ def render_record_html(record: dict[str, Any]) -> str:
         + _paragraph(original.get("supporting_text", "")) + "</details>"
         if original else ""
     )
+    label = STATE_LABELS.get(status, status)
+    trust_html = ""
+    if conversational and status == "candidate":
+        decision = record.get("memory_use_decision")
+        decision = decision if isinstance(decision, dict) else {}
+        action = decision.get("action")
+        label = (
+            "AI 推断 · 未确认" if record.get("origin") == "agent_inference" else
+            "AI 整理摘要 · 未核验，仅原话可参考" if decision.get("evidence_label") == "verified_source_only" else
+            "历史自报 · 不代表现在仍如此" if action == "use_as_history" else
+            "相关时核对" if action == "check_current" else "待核对记录"
+        )
+        trust_html = "<small>保存不等于确认；时效与来源会影响这条信息能否用于当前对话。</small>"
     return (
         '<div style="padding:8px 0">'
-        f"<strong>{_text(STATE_LABELS.get(status, status))}</strong>"
+        f"<strong>{_text(label)}</strong>"
         + _paragraph(record.get("content", ""))
+        + trust_html
         + '<details><summary>查看原话与来源</summary>'
         + _paragraph(source.get("supporting_text", ""))
         + f"<small>会话：{_text(source.get('session_id', ''))}；原话 ID：{_text(turn_ids)}</small>"
@@ -104,6 +118,7 @@ def render_trace_html(snapshot: dict[str, Any]) -> str:
     if not reply:
         return "<p>发送消息后，这里会列出真正进入本次回答上下文的记忆。</p>"
     ids = tuple(str(value) for value in reply.get("memory_ids", ()))
+    history_ids = tuple(str(value) for value in reply.get("history_memory_ids", ()))
     dropped = tuple(str(value) for value in reply.get("dropped_memory_ids", ()))
     # Show only sources actually included by the service. Never look up dropped
     # text from the memory inventory or infer answer grounding from inclusion.
@@ -113,6 +128,8 @@ def render_trace_html(snapshot: dict[str, Any]) -> str:
                if isinstance(source, dict) and source.get("sensitivity") != "restricted"}
     included = []
     for memory_id in ids:
+        if snapshot.get("memory_mode") == "conversational" and memory_id in history_ids:
+            continue
         if memory_id in restricted:
             continue
         source = sources.get(memory_id, {})
@@ -122,11 +139,46 @@ def render_trace_html(snapshot: dict[str, Any]) -> str:
             + '<details><summary>来源编号</summary>' + _paragraph(memory_id) + "</details></li>"
         )
     included_html = "<ul>" + "".join(included) + "</ul>" if included else "<p>无。</p>"
+    # Conversational observations are historical quotations, not silently
+    # promoted confirmed/current facts. Their trace remains a separate section.
+    historical = []
+    history_sources = {str(source.get("memory_id")): source for source in reply.get("history_sources", ())
+                       if isinstance(source, dict) and source.get("sensitivity") != "restricted"}
+    for memory_id in history_ids:
+        if memory_id in restricted:
+            continue
+        source = history_sources.get(memory_id)
+        if source is None:
+            continue
+        historical.append('<li>' + _paragraph(source.get("content") or source.get("supporting_text", "")) + "</li>")
+    historical_html = (
+        "<p><strong>提供给本次回答的历史自报：</strong></p><ul>" + "".join(historical)
+        + "</ul><small>这说明你过去说过这些话，不代表目前仍然适用。</small>"
+        if historical else ""
+    )
+    checks = []
+    for check in reply.get("memory_checks", ()):
+        if not isinstance(check, dict) or str(check.get("memory_id")) in restricted:
+            continue
+        if check.get("sensitivity") == "restricted" or not check.get("question"):
+            continue
+        checks.append('<li>' + _paragraph(check["question"]) + "</li>")
+    check_html = (
+        "<p><strong>本次为了解当前情况而核对：</strong></p><ul>" + "".join(checks)
+        + "</ul><small>这是一次询问；不回答不会被当成确认。</small>"
+        if checks else ""
+    )
     dropped_html = "、".join(_text(value) for value in dropped) or "无"
     safety = "<p>本次进入演示安全分流，未走普通回答流程。</p>" if reply.get("safety_bypass") else ""
+    ordinary_html = (
+        f"<p><strong>送入本次回答上下文的长期记忆：</strong></p>{included_html}"
+        if included or not historical_html else ""
+    )
     return (
         safety
-        + f"<p><strong>送入本次回答上下文的长期记忆：</strong></p>{included_html}"
+        + ordinary_html
+        + historical_html
+        + check_html
         + f"<p>因上下文预算未放入的记忆：{dropped_html}</p>"
         + "<small>这只说明信息已提供给模型；回答是否确实依据它、使用是否正确，尚未核验。"
         "未列入不代表已删除。</small>"
@@ -160,6 +212,24 @@ def render_extraction_scope_html(snapshot: dict[str, Any]) -> str:
     return summary
 
 
+def render_memory_mode_html(snapshot: dict[str, Any]) -> str:
+    """Explain actual software behavior without presenting confidence as truth."""
+    if snapshot.get("memory_mode") != "conversational":
+        return "<p>审核模式：整理候选后，由你选择是否启用。可在独立会话中体验自动记忆模式。</p>"
+    enabled = snapshot.get("automatic_memory_enabled") is True
+    text = (
+        "自动记录已开启：成功发送的、适合保存的用户原话会自动留下历史记录，"
+        "不用逐条整理确认。相关但过时或不确定的信息，会在使用时自然询问。"
+        if enabled else
+        "自动记录已关闭：后续消息不会自动写入长期记录。已有记录仍保留，可在记忆管理中删除。"
+    )
+    status = snapshot.get("memory_processing")
+    status = status if isinstance(status, dict) else {}
+    if status.get("status") in {"failed", "error", "auto_write_failed"}:
+        text += " 本次自动记录未完成，已成功的聊天回答仍保留。"
+    return _paragraph(text) + "<small>目前保存的是你的原话，不会自动把它当作已经确认的目标或结论。历史情况也可能变化。</small>"
+
+
 def _candidate_revision_policy(record: dict[str, Any]) -> tuple[bool, str]:
     """Use the service's presentation policy; old snapshots fail conservatively."""
     if record.get("lifecycle_status") != "candidate":
@@ -178,6 +248,7 @@ def build_view(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Build a widget-independent presentation for lightweight regression tests."""
     validate_snapshot(snapshot)
     backend_mode = snapshot["backend_mode"]
+    conversational = snapshot.get("memory_mode") == "conversational"
     execution = snapshot.get("provider_execution") or {}
     if execution.get("last_call_status") == "attempted_failed":
         execution_state = "attempted_failed"
@@ -214,9 +285,12 @@ def build_view(snapshot: dict[str, Any]) -> dict[str, Any]:
         "chat_html": render_chat_html(snapshot),
         "trace_html": render_trace_html(snapshot),
         "extraction_scope_html": render_extraction_scope_html(snapshot),
+        "memory_mode": "conversational" if conversational else "review",
+        "memory_mode_html": render_memory_mode_html(snapshot),
+        "automatic_memory_enabled": conversational and snapshot.get("automatic_memory_enabled") is True,
         "safety_paused": snapshot.get("safety_paused") is True,
         "record_views": [
-            {"memory_id": str(record.get("memory_id", "")), "html": render_record_html(record),
+            {"memory_id": str(record.get("memory_id", "")), "html": render_record_html(record, conversational=conversational),
              "can_confirm": record.get("lifecycle_status") == "candidate",
              "can_revise": _candidate_revision_policy(record)[0],
              "revision_reason": _candidate_revision_policy(record)[1],
@@ -244,7 +318,7 @@ def _new_session() -> Any:
         path = str(ROOT / relative)
         if path not in sys.path:
             sys.path.insert(0, path)
-    return importlib.import_module("dialogue_service").DialogueSession()
+    return importlib.import_module("dialogue_service").DialogueSession(memory_mode="conversational")
 
 
 def launch_notebook_demo(session: Any = None) -> Any:
@@ -253,23 +327,30 @@ def launch_notebook_demo(session: Any = None) -> Any:
     A caller may pass a Colab-configured ``DialogueSession(provider=...)``.  No
     provider is created or invoked while rendering the UI.  Every model call
     requires a separate send/extract click after the fictional-data checkbox.
-    Confirmation and deletion commands are created only by their explicit item
-    buttons; candidate extraction never calls confirmation automatically.
+    The product default stores source-bound observations automatically. Saving
+    does not call confirmation. Review mode remains available for controlled
+    comparisons and advanced item management.
     """
     _require_colab()
     widgets = importlib.import_module("ipywidgets")
     display = importlib.import_module("IPython.display").display
     session = _new_session() if session is None else session
     validate_snapshot(session.snapshot())
+    initial_view = build_view(session.snapshot())
+    conversational = initial_view["memory_mode"] == "conversational"
 
     title = widgets.HTML("<h3>CBT Memory System · 记忆对话演示</h3>")
     mode = widgets.HTML()
     paused_notice = widgets.HTML()
     notice = widgets.HTML(
-        "<p>使用虚构资料体验记忆确认、更正和删除。默认数据只在当前 Colab 运行时保存。"
+        "<p>使用虚构资料体验跨会话记忆、更正和删除。默认数据只在当前 Colab 运行时保存。"
         "这是软件演示，不提供诊断或治疗。</p>"
     )
     acknowledge = widgets.Checkbox(value=False, description="我只输入虚构演示资料", indent=False)
+    automatic_memory = widgets.Checkbox(
+        value=initial_view["automatic_memory_enabled"], description="自动记录对话中的历史信息", indent=False,
+    )
+    memory_mode_notice = widgets.HTML()
     chat = widgets.HTML()
     message = widgets.Textarea(
         value="", placeholder="例如：本周的目标是午饭后散步两次。", description="消息",
@@ -286,8 +367,8 @@ def launch_notebook_demo(session: Any = None) -> Any:
     trace_panel = widgets.Accordion(children=[trace])
     trace_panel.set_title(0, "本次回答收到的记忆参考")
     trace_panel.selected_index = None
-    state = {"busy": False, "safety_paused": False, "decision_pending": False}
-    main_actions = [send, extract, next_session]
+    state = {"busy": False, "safety_paused": False, "decision_pending": False, "refreshing_controls": False}
+    main_actions = [send, next_session] + ([] if conversational else [extract])
     item_actions: list[Any] = []
     decision_actions: list[Any] = []
 
@@ -300,6 +381,9 @@ def launch_notebook_demo(session: Any = None) -> Any:
             extract.disabled = True
         message.disabled = not enabled or state["safety_paused"]
         acknowledge.disabled = state["busy"] or state["decision_pending"]
+        automatic_memory.disabled = not enabled or state["safety_paused"]
+        if conversational:
+            extract.disabled = not enabled or state["safety_paused"]
         for button in decision_actions:
             button.disabled = state["busy"] or not acknowledge.value
 
@@ -366,6 +450,11 @@ def launch_notebook_demo(session: Any = None) -> Any:
         )
         chat.value = view["chat_html"]
         trace.value = view["trace_html"]
+        memory_mode_notice.value = view["memory_mode_html"]
+        if automatic_memory.value != view["automatic_memory_enabled"]:
+            state["refreshing_controls"] = True
+            automatic_memory.value = view["automatic_memory_enabled"]
+            state["refreshing_controls"] = False
         extraction_scope.value = view["extraction_scope_html"]
         cards = []
         item_actions.clear()
@@ -440,7 +529,8 @@ def launch_notebook_demo(session: Any = None) -> Any:
             session.send_message(text)
             message.value = ""
 
-        perform(act, "已处理这条消息。可另行整理当前窗口内的记忆候选，范围见按钮下方。")
+        perform(act, "已回复。历史记录会自动处理，需要时再核对；你也可以随时查看、更正或删除。"
+                if conversational else "已处理这条消息。可另行整理当前窗口内的记忆候选，范围见按钮下方。")
 
     def next_session_clicked(_: Any) -> None:
         data = session.snapshot()
@@ -465,11 +555,27 @@ def launch_notebook_demo(session: Any = None) -> Any:
     ))
     next_session.on_click(next_session_clicked)
     acknowledge.observe(lambda _: update_enabled(), names="value")
-    root = widgets.VBox([
-        title, mode, paused_notice, notice, acknowledge, chat, message, widgets.HBox(main_actions),
-        extraction_scope, decision_panel, status,
-        widgets.HTML("<h4>记忆管理</h4>"), memories, trace_panel,
-    ], layout=widgets.Layout(width="100%", max_width="960px"))
+    def automatic_changed(change: dict[str, Any]) -> None:
+        if state["refreshing_controls"] or not acknowledge.value or state["busy"] or state["decision_pending"]:
+            return
+        perform(lambda: session.set_automatic_memory_enabled(bool(change["new"])),
+                "已更新自动记录设置；已有长期记录未删除。")
+
+    automatic_memory.observe(automatic_changed, names="value")
+    if conversational:
+        management = widgets.Accordion(children=[widgets.VBox([
+            extraction_scope, widgets.HBox([extract]), memories,
+        ])])
+        management.set_title(0, "查看、修改或删除记忆 · 可选")
+        management.selected_index = None
+        children = [title, mode, paused_notice, notice, acknowledge, automatic_memory,
+                    memory_mode_notice, chat, message, widgets.HBox(main_actions),
+                    decision_panel, status, trace_panel, management]
+    else:
+        children = [title, mode, paused_notice, notice, acknowledge, memory_mode_notice,
+                    chat, message, widgets.HBox(main_actions), extraction_scope,
+                    decision_panel, status, widgets.HTML("<h4>记忆管理</h4>"), memories, trace_panel]
+    root = widgets.VBox(children, layout=widgets.Layout(width="100%", max_width="960px"))
     refresh()
     display(root)
     return root

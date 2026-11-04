@@ -49,6 +49,7 @@ class FakeWidget:
         self.description = kwargs.get("description", "")
         self.click_handlers = []
         self.observers = []
+        self.titles = {}
 
     def on_click(self, callback) -> None:
         self.click_handlers.append(callback)
@@ -56,8 +57,8 @@ class FakeWidget:
     def observe(self, callback, **kwargs) -> None:
         self.observers.append(callback)
 
-    def set_title(self, *args) -> None:
-        pass
+    def set_title(self, index, title) -> None:
+        self.titles[index] = title
 
     def click(self) -> None:
         if not self.disabled:
@@ -128,11 +129,170 @@ class SessionStub:
         self.data["last_reply"] = None
 
 
+class ConversationalSessionStub(SessionStub):
+    def __init__(self) -> None:
+        super().__init__()
+        self.data.update(memory_mode="conversational", automatic_memory_enabled=True,
+                         memory_processing={"status": "idle"})
+
+    def set_automatic_memory_enabled(self, enabled):
+        self.calls.append(("automatic_memory", enabled))
+        self.data["automatic_memory_enabled"] = enabled
+
+
 class NotebookDialogueUITests(unittest.TestCase):
     def launch_stub(self, session):
         modules = {"ipywidgets": fake_widgets(), "IPython.display": SimpleNamespace(display=lambda _: None)}
         with patch.object(ui, "_require_colab"), patch.object(ui.importlib, "import_module", side_effect=lambda name: modules[name]):
             return ui.launch_notebook_demo(session)
+
+    def test_product_session_defaults_to_conversational_without_changing_legacy_api(self) -> None:
+        created = []
+
+        def create(**kwargs):
+            created.append(kwargs)
+            return "fake-session"
+
+        with patch.object(ui.importlib, "import_module", return_value=SimpleNamespace(DialogueSession=create)):
+            self.assertEqual(ui._new_session(), "fake-session")
+        self.assertEqual(created, [{"memory_mode": "conversational"}])
+
+    def test_capped_notebook_provider_uses_conversational_mode_without_enabling_paid_calls(self) -> None:
+        spec = importlib.util.spec_from_file_location("conversational_notebook_builder", ROOT / "tools/build_structured_notebook.py")
+        builder = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(builder)
+        built = builder.build("0" * 40)  # Parse/build only; never execute Colab cells.
+        provider_cell = next(cell["source"] for cell in built["cells"]
+                             if "live_session = DialogueSession(" in cell["source"])
+        self.assertIn("memory_mode='conversational'", provider_cell)
+        self.assertIn("ENABLE_PAID_DEMO = False", provider_cell)
+        self.assertTrue(all(not cell.get("outputs") for cell in built["cells"]))
+
+    def test_conversational_ui_keeps_review_optional_and_auto_recording_controllable(self) -> None:
+        session = ConversationalSessionStub()
+        root = self.launch_stub(session)
+        checkboxes = [node for node in walk(root) if node.kind == "Checkbox"]
+        acknowledge, automatic = checkboxes
+        self.assertTrue(automatic.value)
+        self.assertTrue(automatic.disabled)
+        acknowledge.change(True)
+        self.assertFalse(automatic.disabled)
+        management = next(node for node in walk(root)
+                          if node.kind == "Accordion" and node.titles.get(0) == "查看、修改或删除记忆 · 可选")
+        self.assertIsNone(management.selected_index)
+        self.assertTrue(any(node.description == "确认这条记忆" for node in walk(management)))
+        primary_buttons = [node.description for child in root.children if child.kind == "HBox"
+                           for node in child.children]
+        self.assertEqual(primary_buttons, ["发送消息", "开始下一次会话"])
+        automatic.change(False)
+        self.assertEqual(session.calls, [("automatic_memory", False)])
+        rendered = "\n".join(str(node.value) for node in walk(root) if node.kind == "HTML")
+        self.assertIn("自动记录已关闭", rendered)
+        self.assertIn("已有记录仍保留", rendered)
+        self.assertNotIn("90%", rendered)
+
+    def test_conversational_trace_separates_history_from_current_check_without_duplicates(self) -> None:
+        data = snapshot()
+        data["memory_mode"] = "conversational"
+        data["records"].append({"memory_id": "restricted", "sensitivity": "restricted"})
+        quote = "填写思维记录曾让我觉得压力很大。 <script>data</script>"
+        question = "上次你提到思维记录有些负担，现在主要还是这样，还是有其他阻碍？"
+        data["last_reply"] = {
+            "memory_ids": ["history"], "sources": [{"memory_id": "history", "content": quote}],
+            "history_memory_ids": ["history"],
+            "history_sources": [{"memory_id": "history", "content": quote},
+                                {"memory_id": "unselected", "content": "NOT SELECTED"}],
+            "memory_checks": [{"memory_id": "check", "question": question},
+                              {"memory_id": "restricted", "question": "PRIVATE QUESTION"}],
+            "dropped_memory_ids": [],
+        }
+        rendered = ui.render_trace_html(data)
+        self.assertEqual(rendered.count("填写思维记录曾让我觉得压力很大"), 1)
+        self.assertIn("历史自报", rendered)
+        self.assertIn("现在主要还是这样", rendered)
+        self.assertIn("不回答不会被当成确认", rendered)
+        self.assertNotIn("PRIVATE QUESTION", rendered)
+        self.assertNotIn("NOT SELECTED", rendered)
+        self.assertNotIn("<script>", rendered)
+
+    def test_conversational_candidate_labels_do_not_present_confidence_as_truth(self) -> None:
+        data = snapshot()
+        data.update(memory_mode="conversational", automatic_memory_enabled=True,
+                    memory_processing={"status": "failed", "error_type": "private-provider-details"})
+        record = data["records"][0]
+        record["confidence"] = .99
+        record["memory_use_decision"] = {"action": "use_as_history"}
+        view = ui.build_view(data)
+        self.assertIn("历史自报", view["record_views"][0]["html"])
+        self.assertIn("不代表现在仍如此", view["record_views"][0]["html"])
+        self.assertNotIn("99%", view["record_views"][0]["html"])
+        self.assertIn("本次自动记录未完成", view["memory_mode_html"])
+        self.assertNotIn("private-provider-details", view["memory_mode_html"])
+        record["origin"] = "agent_inference"
+        record["memory_use_decision"] = {"action": "check_current"}
+        self.assertIn("AI 推断 · 未确认", ui.build_view(data)["record_views"][0]["html"])
+
+    def test_verified_source_does_not_label_an_unsupported_summary_as_a_self_report(self) -> None:
+        data = snapshot()
+        data.update(memory_mode="conversational", automatic_memory_enabled=True)
+        record = data["records"][0]
+        quote = "I like walking after lunch."
+        record["content"] = "The user lives in Paris."
+        record["origin"] = "explicit_user_statement"
+        record["source_evidence"]["supporting_text"] = quote
+        record["memory_use_decision"] = {"action": "use_as_history", "evidence_label": "verified_source_only",
+                                         "reference_text": quote}
+        card = ui.build_view(data)["record_views"][0]["html"]
+        self.assertIn("AI 整理摘要 · 未核验，仅原话可参考", card)
+        self.assertNotIn("历史自报 · 不代表现在仍如此", card)
+        data["last_reply"] = {
+            "memory_ids": [record["memory_id"]], "sources": [],
+            "history_memory_ids": [record["memory_id"]],
+            "history_sources": [{"memory_id": record["memory_id"], "content": quote}],
+            "memory_checks": [], "dropped_memory_ids": [],
+        }
+        trace = ui.render_trace_html(data)
+        self.assertIn(quote, trace)
+        self.assertNotIn("Paris", trace)
+
+    def test_real_conversational_ui_auto_records_checks_and_deletes_without_review_steps(self) -> None:
+        # This is a synthetic software path, not a dialogue-quality/user study.
+        session = DialogueSession(memory_mode="conversational")
+        self.addCleanup(session.close)
+        root = self.launch_stub(session)
+        acknowledge = next(node for node in walk(root) if node.description == "我只输入虚构演示资料")
+        acknowledge.change(True)
+        field = next(node for node in walk(root) if node.kind == "Textarea")
+        field.value = "上次填写思维记录让我觉得压力很大。"
+        next(node for node in walk(root) if node.description == "发送消息").click()
+        records = session.snapshot()["records"]
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["lifecycle_status"], "candidate")
+        self.assertEqual(records[0]["confirmation_state"], "unconfirmed")
+        self.assertNotIn("user_confirmed", [event["action"] for event in session.snapshot()["audit"]])
+        self.assertEqual(session.snapshot()["memory_processing"]["status"], "saved")
+        next(node for node in walk(root) if node.description == "开始下一次会话").click()
+        self.assertFalse(any(node.description == "放弃未整理内容并切换会话" for node in walk(root)))
+        field.value = "这周的思维记录作业可以怎么安排？"
+        next(node for node in walk(root) if node.description == "发送消息").click()
+        reply = session.snapshot()["last_reply"]
+        self.assertEqual(reply["memory_ids"], [])
+        self.assertEqual(reply["check_memory_ids"], [records[0]["memory_id"]])
+        self.assertEqual(len(reply["memory_checks"]), 1)
+        question = reply["memory_checks"][0]["question"]
+        self.assertIn(question, ui.render_trace_html(session.snapshot()))
+        self.assertIn("变化", question)
+        self.assertNotIn("沿用这个安排", question)  # The source reported strain, not an agreed plan.
+        self.assertNotIn("别的阻碍", question)  # Do not presuppose continuing difficulty.
+        next(node for node in walk(root) if node.description == "自动记录对话中的历史信息").change(False)
+        field.value = "我这周想尝试午饭后散步。"
+        next(node for node in walk(root) if node.description == "发送消息").click()
+        self.assertEqual(len(session.snapshot()["records"]), 1)
+        next(node for node in walk(root) if node.description == "删除此条记忆").click()
+        next(node for node in walk(root) if node.description == "确认删除并重置当前聊天").click()
+        self.assertEqual(session.snapshot()["records"], [])
+        self.assertEqual(session.snapshot()["turns"], [])
+        self.assertFalse(session.snapshot()["live_model_or_network_used"])
 
     def test_actual_provider_failure_events_show_attempted_not_uncalled(self) -> None:
         # Use the real adapter/session/UI event path. Only transport and the

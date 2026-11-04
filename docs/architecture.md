@@ -2,7 +2,7 @@
 
 These diagrams describe the target research design, not a production deployment.
 The memory manager, retrievers and context builder are implemented; the current
-application is a fictional-data CLI lifecycle demo. A real risk detector,
+application includes fictional-data CLI and Colab dialogue demonstrations. A real risk detector,
 referral workflow, authenticated journal UI and production privacy controls
 remain unimplemented. The first three-arm runner tests released memory QA with
 raw history, not CBT treatment quality or automatic confirmed-memory extraction.
@@ -127,6 +127,29 @@ flowchart TD
 
 The write path creates traceable, correctable memories. The read path retrieves only relevant, valid and permitted memories.
 
+The dialogue mode adds a separate use decision after retrieval. Source-verified
+quotations may be referenced as dated self-reports without individual approval.
+Changing or uncertain information gets a relevant optional check; it is not
+silently promoted to a confirmed current fact. The core manager and frozen QA
+benchmarks keep their strict contracts.
+
+```mermaid
+flowchart TD
+    R["Relevant retrieved history"] --> P["Ownership, lifecycle and source checks"]
+    P --> D{"How may it be used?"}
+    D -->|"Verified past statement"| H["Dated history context"]
+    D -->|"Uncertain current state"| Q["One optional conversational check"]
+    D -->|"Not permitted or unsupported"| X["Exclude"]
+    H --> A["Response with readable source trace"]
+    Q --> A
+    U["User's new statement"] --> W["New sourced observation"]
+    W --> P
+```
+
+Evidence quality, age and conflicts guide this decision. A model's confidence
+number cannot override source or access checks. Automatic capture can be disabled;
+management evidence is separated from chat, and a non-answer is not confirmation.
+
 ## 6. Memory schema
 
 ```mermaid
@@ -182,10 +205,12 @@ flowchart TD
     U --> DB
     E --> DB
     H --> DB
-    DB --> F["Retrieve only active, valid and permitted memories"]
+    DB --> F["Strict active retrieval or separately gated history use"]
 ```
 
-Updates preserve provenance. Superseded, expired, deleted or restricted memories are excluded from normal retrieval.
+Updates preserve provenance. Superseded, expired, deleted or restricted memories
+are excluded from ordinary context. Conversational history use is a separate,
+source-checked policy and does not turn all candidates into retrievable facts.
 
 ## 8. Agent context assembly
 

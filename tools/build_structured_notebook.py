@@ -31,9 +31,13 @@ def build(revision: str) -> dict:
 
         Run in **hosted Google Colab only**. Select **T4 GPU → runtime version 2026.07**.
         Nothing in this notebook should be executed on a personal computer or a local runtime.
+        Start this notebook version in a fresh hosted runtime so older imported UI/service
+        modules are not reused. Preserve an earlier experiment's checkpoints before leaving it.
 
-        The interface demonstrates fictional dialogue, candidate extraction, explicit confirmation,
-        correction and deletion. The benchmark has no user-consent labels: its separately named
+        The interface records suitable fictional user statements automatically as historical
+        observations and asks about uncertain/current information only when relevant. Saving a
+        quote is not user confirmation. Optional review controls support correction and deletion.
+        The benchmark has no user-consent labels: its separately named
         **unconfirmed-candidate experiment** never invents confirmation. Software demo output is
         not an effectiveness result. Paid model calls are disabled by default.
     """)
@@ -69,9 +73,13 @@ def build(revision: str) -> dict:
     markdown("""
         ## 1. Try the memory interface
 
-        Acknowledge fictional data in the interface, send a fictional goal, and extract candidates.
-        Confirm one candidate, start a new session and ask about it. Try correcting and confirming
-        its replacement, then deleting it. The trace shows only memories actually included.
+        Acknowledge fictional data, then describe a goal or an obstacle such as finding a thought
+        record burdensome. Suitable source-bound statements are saved automatically; you do not
+        need to click extraction or confirmation after each message. Start another session and
+        revisit the task. Historical quotes remain distinct from current facts; relevant uncertainty
+        can prompt a natural question. Turn automatic recording off at any time. The optional
+        memory panel lets you review, edit or delete records, with deletion scope shown first.
+        Current automatic recording preserves exact source statements, not full semantic summaries.
         The default responder displays selected context deterministically; it is **not an LLM**.
     """)
     code("""
@@ -101,7 +109,7 @@ def build(revision: str) -> dict:
                 model='deepseek-v4.1-flash',
                 accepted_provider_models=('deepseek-v4-1-flash-260910',),
                 max_response_tokens=4096, thinking_mode='disabled')
-            live_session = DialogueSession(provider=provider)
+            live_session = DialogueSession(provider=provider, memory_mode='conversational')
             live_demo = launch_notebook_demo(session=live_session)
         else:
             print('Paid demo disabled. No Secret read and no model request.')
