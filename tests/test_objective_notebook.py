@@ -31,9 +31,7 @@ class ObjectiveNotebookTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 builder.build(invalid)
 
-    def test_cells_parse_and_cannot_start_a_paid_batch_by_default(self):
-        revision = "a" * 40
-        notebook = builder.build(revision)
+    def assert_safe_notebook(self, notebook, revision):
         self.assertEqual(notebook["metadata"]["code_revision"], revision)
         self.assertNotIn("accelerator", notebook["metadata"])
         code = []
@@ -53,6 +51,30 @@ class ObjectiveNotebookTests(unittest.TestCase):
         self.assertNotIn("drive.mount", combined)
         self.assertNotIn("pip install", combined)
         self.assertNotIn("while True", combined)
+
+    def test_cells_parse_and_cannot_start_a_paid_batch_by_default(self):
+        revision = "a" * 40
+        self.assert_safe_notebook(builder.build(revision), revision)
+
+    def test_delivered_notebook_is_pinned_clean_and_matches_builder(self):
+        path = builder.DEFAULT_OUTPUT
+        self.assertTrue(path.is_file(), "Commit the generated hosted Colab entry point")
+        notebook = json.loads(path.read_text(encoding="utf-8"))
+        revision = notebook["metadata"]["code_revision"]
+        self.assertRegex(revision, r"^[0-9a-f]{40}$")
+        self.assertNotEqual(revision, "0" * 40)
+        self.assert_safe_notebook(notebook, revision)
+        pins = []
+        for cell in notebook["cells"]:
+            if cell["cell_type"] != "code":
+                continue
+            for statement in ast.parse(cell["source"]).body:
+                if isinstance(statement, ast.Assign) and any(
+                        isinstance(target, ast.Name) and target.id == "CODE_REVISION"
+                        for target in statement.targets):
+                    pins.append(ast.literal_eval(statement.value))
+        self.assertEqual(pins, [revision], "The executable checkout must use the metadata revision")
+        self.assertEqual(notebook, builder.build(revision), "Regenerate the delivered notebook after builder changes")
 
     def test_fresh_hosted_runtime_and_separate_run_root_are_explicit(self):
         notebook = builder.build("b" * 40)

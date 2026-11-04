@@ -137,6 +137,14 @@ PersonaMem census contains 589 questions but only 20 independent persona/context
 groups. Current managed records preserve original quotations. The runner checks
 whether raw-history and managed prompts are actually different; identical inputs
 share one recorded response and cannot establish a management effect.
+This version uses identical quotations and retrieval in both RAG arms, so it is
+a control baseline rather than an estimate of semantic-memory benefit. Public
+QA answer errors remain unassigned to a pipeline stage without independent
+evidence annotations; the synthetic replay diagnoses software stages separately.
+
+Run the [objective comparison in hosted Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/feat/objective-memory-evaluation/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb).
+The [notebook](evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
+pins its executable code revision; preparation and paid batches start disabled.
 
 The [evaluation protocol](docs/validation-next.md) defines denominators, fair
 baselines, stage-level attribution, costs and independent-history analysis. It
@@ -162,11 +170,13 @@ extraction window and warns before discarding unprocessed messages. Memory
 references are readable and labeled as context supplied to the agent, not proof
 of use. Deletion explains its chat-reset effect before a separate confirmation.
 
-**Use [the Colab notebook](app/Structured_Memory_Colab.ipynb) for models, GPU work and
-full datasets.** Production benchmark preparation and API adapters refuse ordinary local
+**Use hosted Colab for models, GPU work and full datasets.** The
+[dialogue and frozen historical-QA notebook](app/Structured_Memory_Colab.ipynb)
+and the [objective comparison notebook](evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
+have separate experiment directories and protocols. Production benchmark preparation and API adapters refuse ordinary local
 execution. No local model download or personal-computer GPU is required.
 
-The same notebook now provides `verify → prepare → reader → judge → status/export`
+The historical-QA notebook provides `verify → prepare → reader → judge → status/export`
 for the full frozen v2 cohorts. Reader and judge run in explicit batches of at
 most 60 calls, with checkpoint download controls and no automatic loop or Drive
 mount. Exports retain raw audit artifacts and checksums; partial checkpoints are

@@ -7,6 +7,11 @@ LLM judge as the primary outcome, and it does not measure CBT treatment benefit.
 The main question is whether managed memory adds value over retrieval from the
 **same original history**, rather than whether more history helps a reader.
 
+[Open the objective comparison in Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/feat/objective-memory-evaluation/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
+or inspect the [notebook](Objective_Memory_Comparison_Colab.ipynb). It checks out
+the immutable executable revision recorded in its metadata and code cell.
+Use a fresh hosted runtime; preparation and paid batches are disabled by default.
+
 ## Conditions
 
 | Arm | Information available |
@@ -33,6 +38,11 @@ managed inputs are identical, a zero difference is a **control-equivalence resul
 by construction**, not empirical proof of no effect, statistical equivalence or
 better memory management. Changing a heading just to manufacture a difference
 would not answer the research question.
+
+In this version both RAG arms receive the same quotations and use the same
+retriever, so their prompts are identical. This is a control baseline for the
+pipeline and the value of older history; it cannot estimate a semantic-memory
+management benefit.
 
 The shared budget is measured in characters; actual provider prompt/completion
 tokens are reported separately. This is not an exact tokenizer-matched budget.
@@ -77,6 +87,13 @@ history preparation, retrieval or generation. Protocol, prompt, model identity,
 resume journal and output-directory locks are checked on continuation. Do not
 change a frozen run to accommodate a negative result.
 
+Public QA errors are currently marked `answer_incorrect_stage_unresolved` unless
+there is a recorded provider failure. The public labels do not identify which
+source evidence should survive each stage. The synthetic replay checks storage,
+visibility, retrieval and context assembly separately, but does not run natural
+language extraction or answer generation. A full source-to-answer error report
+remains pending independently annotated evidence.
+
 ## Lifecycle acceptance
 
 `replay_memory_controls.py` runs the real store, manager, retriever and context
@@ -94,7 +111,8 @@ python evaluation/objective-memory/replay_memory_controls.py --help
 
 ## Execution and artifacts
 
-Use the hosted Colab notebook for full data and API work. Start with a finite
+Use the [hosted Colab notebook](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/feat/objective-memory-evaluation/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
+for full data and API work. Start with a finite
 call budget and inspect progress before another batch. No automatic download of
 neural models or local-GPU requirement is introduced here. API credentials stay
 in the Colab secret/environment and are excluded from files and exports.
