@@ -1,6 +1,8 @@
 # Cloud experiment status — 5 November 2026
 
-**Incomplete model experiment. No new response-effectiveness result.**
+**Historical preflight snapshot.** The subsequent 16-question pilot completed
+32 provider calls and 48 arm rows. See [the completed pilot report](objective-pilot-results-20261105.md).
+The records below describe the earlier 0-call checkpoint and are retained unchanged.
 
 ## Verified execution
 
