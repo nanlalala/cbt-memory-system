@@ -73,7 +73,7 @@ turned off, and correction/deletion remain available. The first implementation
 captures eligible quotations without an extra extraction-model call; it does
 not silently validate semantic summaries or infer homework completion.
 
-This mode passes **346 deterministic regression tests**, including automatic
+The repository passes **441 deterministic regression tests**, including automatic
 capture, historical/current-use separation, optional checks, source-tamper
 rejection, opt-out handling and correction/deletion. These are software checks;
 naturalness and reduced user effort still require a participant evaluation.
@@ -110,7 +110,8 @@ cbt-memory-system/
 ├── evaluation/
 │   ├── knowledge-retrieval/
 │   ├── memory-retrieval/
-│   ├── end-to-end-dialogue/
+│   ├── end-to-end-dialogue/             # Frozen historical-QA experiment
+│   ├── objective-memory/                # Public-gold comparison and control replay
 │   └── safety/
 └── app/                                # Colab dialogue/memory UI and synthetic CLI
 ```
@@ -125,10 +126,25 @@ response model and context budget. Knowledge and safety conditions stay fixed.
 
 | Evidence | What will be reported | Current boundary |
 | --- | --- | --- |
-| Public tasks with released answers | Deterministic scores on MemoryAgentBench conflict-resolution tasks and PersonaMem-v1 choices | Selected; adapters and new comparison not yet run |
-| Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation; errors traced from extraction to answer | Regression checks exist; comparative effect results pending |
+| Public tasks with released answers | Fixed official answer rules on MemoryAgentBench fact conflicts and PersonaMem-v1 choices | Adapters and deterministic scorer implemented; hosted execution tracked separately |
+| Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation | Synthetic event replay: both arms pass 23/23 queries and 32/32 control operations; no user-benefit claim |
 | User workflow | Four visits: set a goal, report progress, revise, review/delete; completion, errors, time and review effort | Interface improved; participant study not conducted |
 | Open-ended support | Independent review of relevance, collaboration and appropriate boundaries | Model-assisted QA remains supplementary; no clinical outcome claim |
+
+The executable [objective comparison](evaluation/objective-memory/README.md)
+keeps official scoring answers out of preparation and generation. The hosted
+PersonaMem census contains 589 questions but only 20 independent persona/context
+groups. Current managed records preserve original quotations. The runner checks
+whether raw-history and managed prompts are actually different; identical inputs
+share one recorded response and cannot establish a management effect.
+This version uses identical quotations and retrieval in both RAG arms, so it is
+a control baseline rather than an estimate of semantic-memory benefit. Public
+QA answer errors remain unassigned to a pipeline stage without independent
+evidence annotations; the synthetic replay diagnoses software stages separately.
+
+Run the [objective comparison in hosted Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/feat/objective-memory-evaluation/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb).
+The [notebook](evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
+pins its executable code revision; preparation and paid batches start disabled.
 
 The [evaluation protocol](docs/validation-next.md) defines denominators, fair
 baselines, stage-level attribution, costs and independent-history analysis. It
@@ -154,11 +170,13 @@ extraction window and warns before discarding unprocessed messages. Memory
 references are readable and labeled as context supplied to the agent, not proof
 of use. Deletion explains its chat-reset effect before a separate confirmation.
 
-**Use [the Colab notebook](app/Structured_Memory_Colab.ipynb) for models, GPU work and
-full datasets.** Production benchmark preparation and API adapters refuse ordinary local
+**Use hosted Colab for models, GPU work and full datasets.** The
+[dialogue and frozen historical-QA notebook](app/Structured_Memory_Colab.ipynb)
+and the [objective comparison notebook](evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
+have separate experiment directories and protocols. Production benchmark preparation and API adapters refuse ordinary local
 execution. No local model download or personal-computer GPU is required.
 
-The same notebook now provides `verify → prepare → reader → judge → status/export`
+The historical-QA notebook provides `verify → prepare → reader → judge → status/export`
 for the full frozen v2 cohorts. Reader and judge run in explicit batches of at
 most 60 calls, with checkpoint download controls and no automatic loop or Drive
 mount. Exports retain raw audit artifacts and checksums; partial checkpoints are

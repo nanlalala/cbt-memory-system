@@ -1,0 +1,734 @@
+{
+  "kind": "independent_expected_control_ledger",
+  "version": "synthetic-control-replay-v1",
+  "derivation": "Authored from the declared event contract before replay. No manager/retriever output supplies expected states. This fixture is software acceptance, not naturally occurring or clinically scored data.",
+  "operation_errors": {
+    "corrections:confirm-appointment-stale": "ValueError",
+    "deletion_isolation:wrong-user-delete": "KeyError"
+  },
+  "checks": {
+    "goals:unconfirmed-hidden": {
+      "storage_statuses": {
+        "goal-old": "candidate"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "forbidden_ids": [
+        "goal-old"
+      ],
+      "forbidden_prompt_markers": [
+        "OldGoalMarker"
+      ],
+      "source_turn_ids": {
+        "goal-old": [
+          "turn-goal-old"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "goal-old": "61cf64de4bf185d6e14fb2d85a7db80eaa5ef0460e0869b13748356210df46bb"
+      }
+    },
+    "goals:initial-goal": {
+      "storage_statuses": {
+        "goal-old": "active"
+      },
+      "eligible_ids": [
+        "goal-old"
+      ],
+      "retrieved_ids": [
+        "goal-old"
+      ],
+      "included_ids": [
+        "goal-old"
+      ],
+      "fields": {
+        "goal-old": {
+          "status": "active"
+        }
+      },
+      "source_turn_ids": {
+        "goal-old": [
+          "turn-goal-old"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "goal-old": "61cf64de4bf185d6e14fb2d85a7db80eaa5ef0460e0869b13748356210df46bb"
+      }
+    },
+    "goals:pending-change": {
+      "storage_statuses": {
+        "goal-old": "active",
+        "goal-new": "candidate"
+      },
+      "eligible_ids": [
+        "goal-old"
+      ],
+      "retrieved_ids": [
+        "goal-old"
+      ],
+      "included_ids": [
+        "goal-old"
+      ],
+      "forbidden_ids": [
+        "goal-new"
+      ],
+      "forbidden_prompt_markers": [
+        "CurrentGoalMarker"
+      ],
+      "source_turn_ids": {
+        "goal-old": [
+          "turn-goal-old"
+        ],
+        "goal-new": [
+          "turn-goal-new"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "goal-old": "61cf64de4bf185d6e14fb2d85a7db80eaa5ef0460e0869b13748356210df46bb",
+        "goal-new": "a60edfeddfc0b5feb38210fe185711493d6b4d20613fe7c470ed5f8b5e88bf7d"
+      }
+    },
+    "goals:current-goal": {
+      "storage_statuses": {
+        "goal-old": "superseded",
+        "goal-new": "active"
+      },
+      "eligible_ids": [
+        "goal-new"
+      ],
+      "retrieved_ids": [
+        "goal-new"
+      ],
+      "included_ids": [
+        "goal-new"
+      ],
+      "fields": {
+        "goal-new": {
+          "description": "two short walks this week",
+          "status": "active"
+        }
+      },
+      "source_turn_ids": {
+        "goal-old": [
+          "turn-goal-old"
+        ],
+        "goal-new": [
+          "turn-goal-new"
+        ]
+      },
+      "forbidden_ids": [
+        "goal-old"
+      ],
+      "forbidden_prompt_markers": [
+        "OldGoalMarker"
+      ],
+      "verbatim_text_sha256": {
+        "goal-old": "61cf64de4bf185d6e14fb2d85a7db80eaa5ef0460e0869b13748356210df46bb",
+        "goal-new": "a60edfeddfc0b5feb38210fe185711493d6b4d20613fe7c470ed5f8b5e88bf7d"
+      }
+    },
+    "goals:budgeted-goal": {
+      "storage_statuses": {
+        "goal-old": "superseded",
+        "goal-new": "active"
+      },
+      "eligible_ids": [
+        "goal-new"
+      ],
+      "retrieved_ids": [
+        "goal-new"
+      ],
+      "included_ids": [],
+      "dropped_ids": [
+        "goal-new"
+      ],
+      "forbidden_prompt_markers": [
+        "OldGoalMarker",
+        "CurrentGoalMarker"
+      ],
+      "source_turn_ids": {
+        "goal-old": [
+          "turn-goal-old"
+        ],
+        "goal-new": [
+          "turn-goal-new"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "goal-old": "61cf64de4bf185d6e14fb2d85a7db80eaa5ef0460e0869b13748356210df46bb",
+        "goal-new": "a60edfeddfc0b5feb38210fe185711493d6b4d20613fe7c470ed5f8b5e88bf7d"
+      }
+    },
+    "homework:no-outcome-invented": {
+      "storage_statuses": {
+        "walk-assignment": "active"
+      },
+      "eligible_ids": [
+        "walk-assignment"
+      ],
+      "retrieved_ids": [
+        "walk-assignment"
+      ],
+      "included_ids": [
+        "walk-assignment"
+      ],
+      "fields": {
+        "walk-assignment": {
+          "status": "assigned"
+        }
+      },
+      "source_turn_ids": {
+        "walk-assignment": [
+          "turn-walk-assignment"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "walk-assignment": "c843e80a5647d06f20065b4fc770e05f9719751a5e700e9a377631a130d673a3"
+      }
+    },
+    "homework:unconfirmed-outcome": {
+      "storage_statuses": {
+        "walk-assignment": "active",
+        "walk-partial": "candidate"
+      },
+      "eligible_ids": [
+        "walk-assignment"
+      ],
+      "retrieved_ids": [
+        "walk-assignment"
+      ],
+      "included_ids": [
+        "walk-assignment"
+      ],
+      "forbidden_ids": [
+        "walk-partial"
+      ],
+      "source_turn_ids": {
+        "walk-assignment": [
+          "turn-walk-assignment"
+        ],
+        "walk-partial": [
+          "turn-walk-partial"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "walk-assignment": "c843e80a5647d06f20065b4fc770e05f9719751a5e700e9a377631a130d673a3",
+        "walk-partial": "8b75a8af73905deb417ddbe0bf325a8df2f5429c7913b25a25c249232fadd663"
+      }
+    },
+    "homework:explicit-partial": {
+      "storage_statuses": {
+        "walk-assignment": "active",
+        "walk-partial": "active"
+      },
+      "eligible_ids": [
+        "walk-assignment",
+        "walk-partial"
+      ],
+      "retrieved_ids": [
+        "walk-assignment",
+        "walk-partial"
+      ],
+      "included_ids": [
+        "walk-assignment",
+        "walk-partial"
+      ],
+      "fields": {
+        "walk-assignment": {
+          "status": "assigned"
+        },
+        "walk-partial": {
+          "completion_status": "partial",
+          "assignment_memory_id": "walk-assignment"
+        }
+      },
+      "source_turn_ids": {
+        "walk-assignment": [
+          "turn-walk-assignment"
+        ],
+        "walk-partial": [
+          "turn-walk-partial"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "walk-assignment": "c843e80a5647d06f20065b4fc770e05f9719751a5e700e9a377631a130d673a3",
+        "walk-partial": "8b75a8af73905deb417ddbe0bf325a8df2f5429c7913b25a25c249232fadd663"
+      }
+    },
+    "state:earlier-state": {
+      "storage_statuses": {
+        "worry-high": "active"
+      },
+      "eligible_ids": [
+        "worry-high"
+      ],
+      "retrieved_ids": [
+        "worry-high"
+      ],
+      "included_ids": [
+        "worry-high"
+      ],
+      "fields": {
+        "worry-high": {
+          "intensity": 6
+        }
+      },
+      "source_turn_ids": {
+        "worry-high": [
+          "turn-worry-high"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "worry-high": "618300c6d269163054140d55a29f2d59ec9653d2423edbcd222f68adfb2dd4a6"
+      }
+    },
+    "state:latest-state": {
+      "storage_statuses": {
+        "worry-high": "superseded",
+        "worry-low": "active"
+      },
+      "eligible_ids": [
+        "worry-low"
+      ],
+      "retrieved_ids": [
+        "worry-low"
+      ],
+      "included_ids": [
+        "worry-low"
+      ],
+      "fields": {
+        "worry-low": {
+          "intensity": 3
+        }
+      },
+      "source_turn_ids": {
+        "worry-high": [
+          "turn-worry-high"
+        ],
+        "worry-low": [
+          "turn-worry-low"
+        ]
+      },
+      "forbidden_ids": [
+        "worry-high"
+      ],
+      "forbidden_prompt_markers": [
+        "EarlierStateMarker"
+      ],
+      "verbatim_text_sha256": {
+        "worry-high": "618300c6d269163054140d55a29f2d59ec9653d2423edbcd222f68adfb2dd4a6",
+        "worry-low": "b85743cbb3da59d73ad531163a31738e75e46e6c8a9da8f20889fdbbd3825854"
+      }
+    },
+    "corrections:pending-correction": {
+      "storage_statuses": {
+        "appointment-old": "active",
+        "appointment-new": "candidate"
+      },
+      "eligible_ids": [
+        "appointment-old"
+      ],
+      "retrieved_ids": [
+        "appointment-old"
+      ],
+      "included_ids": [
+        "appointment-old"
+      ],
+      "forbidden_ids": [
+        "appointment-new"
+      ],
+      "forbidden_prompt_markers": [
+        "ThursdayVersionMarker"
+      ],
+      "source_turn_ids": {
+        "appointment-old": [
+          "turn-appointment-old"
+        ],
+        "appointment-new": [
+          "turn-appointment-new"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "appointment-old": "7d081f8d05e26d668e0ce4335c78d452ec39e07514e23cb5f11ab5c372a37906",
+        "appointment-new": "44555a785d96fb1212ca93645d9c6d88e5078b4819d5a00e6f16662e4741d9b5"
+      }
+    },
+    "corrections:confirmed-correction": {
+      "storage_statuses": {
+        "appointment-old": "superseded",
+        "appointment-new": "active"
+      },
+      "eligible_ids": [
+        "appointment-new"
+      ],
+      "retrieved_ids": [
+        "appointment-new"
+      ],
+      "included_ids": [
+        "appointment-new"
+      ],
+      "source_turn_ids": {
+        "appointment-old": [
+          "turn-appointment-old"
+        ],
+        "appointment-new": [
+          "turn-appointment-new"
+        ]
+      },
+      "forbidden_ids": [
+        "appointment-old"
+      ],
+      "forbidden_prompt_markers": [
+        "FridayVersionMarker"
+      ],
+      "verbatim_text_sha256": {
+        "appointment-old": "7d081f8d05e26d668e0ce4335c78d452ec39e07514e23cb5f11ab5c372a37906",
+        "appointment-new": "44555a785d96fb1212ca93645d9c6d88e5078b4819d5a00e6f16662e4741d9b5"
+      }
+    },
+    "corrections:stale-target-rejected": {
+      "storage_statuses": {
+        "appointment-old": "superseded",
+        "appointment-new": "active",
+        "appointment-stale": "candidate"
+      },
+      "eligible_ids": [
+        "appointment-new"
+      ],
+      "retrieved_ids": [
+        "appointment-new"
+      ],
+      "included_ids": [
+        "appointment-new"
+      ],
+      "forbidden_ids": [
+        "appointment-old",
+        "appointment-stale"
+      ],
+      "forbidden_prompt_markers": [
+        "FridayVersionMarker",
+        "StaleVersionMarker"
+      ],
+      "source_turn_ids": {
+        "appointment-old": [
+          "turn-appointment-old"
+        ],
+        "appointment-new": [
+          "turn-appointment-new"
+        ],
+        "appointment-stale": [
+          "turn-appointment-stale"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "appointment-old": "7d081f8d05e26d668e0ce4335c78d452ec39e07514e23cb5f11ab5c372a37906",
+        "appointment-new": "44555a785d96fb1212ca93645d9c6d88e5078b4819d5a00e6f16662e4741d9b5",
+        "appointment-stale": "bc69911ad897904c53c1d04021f01f34777dc75e66e001e6f16d1a9c16ecbb77"
+      }
+    },
+    "expiry:before-expiry": {
+      "storage_statuses": {
+        "temporary-goal": "active"
+      },
+      "eligible_ids": [
+        "temporary-goal"
+      ],
+      "retrieved_ids": [
+        "temporary-goal"
+      ],
+      "included_ids": [
+        "temporary-goal"
+      ],
+      "source_turn_ids": {
+        "temporary-goal": [
+          "turn-temporary-goal"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "temporary-goal": "0e48269a6b52d3b563c3dcda09c1c032581fa4c88004437b48885c6dfa57d0be"
+      }
+    },
+    "expiry:exact-expiry-boundary": {
+      "storage_statuses": {
+        "temporary-goal": "active"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "forbidden_ids": [
+        "temporary-goal"
+      ],
+      "forbidden_prompt_markers": [
+        "ExpiryMarker"
+      ],
+      "source_turn_ids": {
+        "temporary-goal": [
+          "turn-temporary-goal"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "temporary-goal": "0e48269a6b52d3b563c3dcda09c1c032581fa4c88004437b48885c6dfa57d0be"
+      }
+    },
+    "expiry:after-expiry": {
+      "storage_statuses": {
+        "temporary-goal": "expired"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "forbidden_ids": [
+        "temporary-goal"
+      ],
+      "forbidden_prompt_markers": [
+        "ExpiryMarker"
+      ],
+      "source_turn_ids": {
+        "temporary-goal": [
+          "turn-temporary-goal"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "temporary-goal": "0e48269a6b52d3b563c3dcda09c1c032581fa4c88004437b48885c6dfa57d0be"
+      }
+    },
+    "expiry:deleted-not-resurrected": {
+      "storage_statuses": {},
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "forbidden_ids": [
+        "temporary-goal"
+      ],
+      "forbidden_prompt_markers": [
+        "ExpiryMarker"
+      ],
+      "source_turn_ids": {},
+      "verbatim_text_sha256": {}
+    },
+    "deletion_isolation:default-sensitive-filter": {
+      "storage_statuses": {
+        "alice-standard": "active",
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "alice-standard"
+      ],
+      "retrieved_ids": [
+        "alice-standard"
+      ],
+      "included_ids": [
+        "alice-standard"
+      ],
+      "forbidden_ids": [
+        "alice-restricted",
+        "bob-standard"
+      ],
+      "forbidden_prompt_markers": [
+        "AliceRestrictedMarker",
+        "BobStandardMarker"
+      ],
+      "source_turn_ids": {
+        "alice-standard": [
+          "turn-alice-standard"
+        ],
+        "alice-restricted": [
+          "turn-alice-restricted"
+        ],
+        "bob-standard": [
+          "turn-bob-standard"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "alice-standard": "3838c9df6a521c5a4548a9026495a13c06acbdea3b513db776d7e9a3e4a462da",
+        "alice-restricted": "be79223b6eda46fb318e2975bdbc72a7964d02cfdabb93e19a275275a8cb347e",
+        "bob-standard": "cc2fe028e4aab7083bb117c626730077b4057c092707a9b83bdf83e9d07ae724"
+      }
+    },
+    "deletion_isolation:other-user-own-record": {
+      "storage_statuses": {
+        "alice-standard": "active",
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "bob-standard"
+      ],
+      "retrieved_ids": [
+        "bob-standard"
+      ],
+      "included_ids": [
+        "bob-standard"
+      ],
+      "forbidden_ids": [
+        "alice-standard",
+        "alice-restricted"
+      ],
+      "forbidden_prompt_markers": [
+        "AliceStandardMarker",
+        "AliceRestrictedMarker"
+      ],
+      "source_turn_ids": {
+        "alice-standard": [
+          "turn-alice-standard"
+        ],
+        "alice-restricted": [
+          "turn-alice-restricted"
+        ],
+        "bob-standard": [
+          "turn-bob-standard"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "alice-standard": "3838c9df6a521c5a4548a9026495a13c06acbdea3b513db776d7e9a3e4a462da",
+        "alice-restricted": "be79223b6eda46fb318e2975bdbc72a7964d02cfdabb93e19a275275a8cb347e",
+        "bob-standard": "cc2fe028e4aab7083bb117c626730077b4057c092707a9b83bdf83e9d07ae724"
+      }
+    },
+    "deletion_isolation:explicit-sensitive-access": {
+      "storage_statuses": {
+        "alice-standard": "active",
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "alice-standard",
+        "alice-restricted"
+      ],
+      "retrieved_ids": [
+        "alice-standard",
+        "alice-restricted"
+      ],
+      "included_ids": [
+        "alice-standard",
+        "alice-restricted"
+      ],
+      "forbidden_ids": [
+        "bob-standard"
+      ],
+      "forbidden_prompt_markers": [
+        "BobStandardMarker"
+      ],
+      "source_turn_ids": {
+        "alice-standard": [
+          "turn-alice-standard"
+        ],
+        "alice-restricted": [
+          "turn-alice-restricted"
+        ],
+        "bob-standard": [
+          "turn-bob-standard"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "alice-standard": "3838c9df6a521c5a4548a9026495a13c06acbdea3b513db776d7e9a3e4a462da",
+        "alice-restricted": "be79223b6eda46fb318e2975bdbc72a7964d02cfdabb93e19a275275a8cb347e",
+        "bob-standard": "cc2fe028e4aab7083bb117c626730077b4057c092707a9b83bdf83e9d07ae724"
+      }
+    },
+    "deletion_isolation:wrong-user-no-effect": {
+      "storage_statuses": {
+        "alice-standard": "active",
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "alice-standard"
+      ],
+      "retrieved_ids": [
+        "alice-standard"
+      ],
+      "included_ids": [
+        "alice-standard"
+      ],
+      "forbidden_ids": [
+        "alice-restricted",
+        "bob-standard"
+      ],
+      "forbidden_prompt_markers": [
+        "AliceRestrictedMarker",
+        "BobStandardMarker"
+      ],
+      "source_turn_ids": {
+        "alice-standard": [
+          "turn-alice-standard"
+        ],
+        "alice-restricted": [
+          "turn-alice-restricted"
+        ],
+        "bob-standard": [
+          "turn-bob-standard"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "alice-standard": "3838c9df6a521c5a4548a9026495a13c06acbdea3b513db776d7e9a3e4a462da",
+        "alice-restricted": "be79223b6eda46fb318e2975bdbc72a7964d02cfdabb93e19a275275a8cb347e",
+        "bob-standard": "cc2fe028e4aab7083bb117c626730077b4057c092707a9b83bdf83e9d07ae724"
+      }
+    },
+    "deletion_isolation:default-after-delete": {
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "forbidden_ids": [
+        "alice-standard",
+        "alice-restricted",
+        "bob-standard"
+      ],
+      "forbidden_prompt_markers": [
+        "AliceStandardMarker",
+        "AliceRestrictedMarker",
+        "BobStandardMarker"
+      ],
+      "source_turn_ids": {
+        "alice-restricted": [
+          "turn-alice-restricted"
+        ],
+        "bob-standard": [
+          "turn-bob-standard"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "alice-restricted": "be79223b6eda46fb318e2975bdbc72a7964d02cfdabb93e19a275275a8cb347e",
+        "bob-standard": "cc2fe028e4aab7083bb117c626730077b4057c092707a9b83bdf83e9d07ae724"
+      }
+    },
+    "deletion_isolation:delete-remains-final": {
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "forbidden_ids": [
+        "alice-standard",
+        "alice-restricted",
+        "bob-standard"
+      ],
+      "forbidden_prompt_markers": [
+        "AliceStandardMarker",
+        "AliceRestrictedMarker",
+        "BobStandardMarker"
+      ],
+      "source_turn_ids": {
+        "alice-restricted": [
+          "turn-alice-restricted"
+        ],
+        "bob-standard": [
+          "turn-bob-standard"
+        ]
+      },
+      "verbatim_text_sha256": {
+        "alice-restricted": "be79223b6eda46fb318e2975bdbc72a7964d02cfdabb93e19a275275a8cb347e",
+        "bob-standard": "cc2fe028e4aab7083bb117c626730077b4057c092707a9b83bdf83e9d07ae724"
+      }
+    }
+  }
+}

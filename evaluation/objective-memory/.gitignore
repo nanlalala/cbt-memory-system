@@ -1,0 +1,15 @@
+__pycache__/
+data/
+outputs/
+runs/
+*.sqlite
+*.sqlite-*
+*.zip
+cases.jsonl
+histories.jsonl
+prompts.jsonl
+references.jsonl
+responses.jsonl
+response_attempts.jsonl
+response_outcomes.jsonl
+failures.jsonl

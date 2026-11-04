@@ -1,0 +1,579 @@
+{
+  "kind": "synthetic_controlled_memory_events",
+  "version": "synthetic-control-replay-v1",
+  "description": "Six hand-authored functional scenarios. Typed source metadata and explicit management events are supplied equally to both arms. No natural-language extraction or clinical gold answers.",
+  "cases": [
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "events": [
+        {
+          "op": "observe",
+          "event_id": "observe-old",
+          "at": "2026-01-01T10:00:00Z",
+          "record": {
+            "memory_id": "goal-old",
+            "user_id": "alice",
+            "text": "Walking goal is three short walks this week. OldGoalMarker.",
+            "session_id": "session-1",
+            "turn_id": "turn-goal-old",
+            "memory_type": "goal",
+            "slot_key": "weekly-walking",
+            "fields": {
+              "description": "three short walks this week",
+              "status": "active"
+            }
+          }
+        },
+        {
+          "op": "query",
+          "event_id": "unconfirmed-hidden",
+          "at": "2026-01-01T10:00:01Z",
+          "as_of": "2026-01-01T10:00:01Z",
+          "user_id": "alice",
+          "text": "walking goal"
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-goal-old",
+          "at": "2026-01-01T10:01:00Z",
+          "user_id": "alice",
+          "memory_id": "goal-old",
+          "consent_event_id": "explicit-consent-goal-old"
+        },
+        {
+          "op": "query",
+          "event_id": "initial-goal",
+          "at": "2026-01-01T10:02:00Z",
+          "as_of": "2026-01-01T10:02:00Z",
+          "user_id": "alice",
+          "text": "walking goal"
+        },
+        {
+          "op": "observe",
+          "event_id": "observe-new",
+          "at": "2026-01-01T10:03:00Z",
+          "record": {
+            "memory_id": "goal-new",
+            "user_id": "alice",
+            "text": "Walking goal is two short walks this week. CurrentGoalMarker.",
+            "session_id": "session-1",
+            "turn_id": "turn-goal-new",
+            "memory_type": "goal",
+            "slot_key": "weekly-walking",
+            "fields": {
+              "description": "two short walks this week",
+              "status": "active"
+            }
+          }
+        },
+        {
+          "op": "query",
+          "event_id": "pending-change",
+          "at": "2026-01-01T10:04:00Z",
+          "as_of": "2026-01-01T10:04:00Z",
+          "user_id": "alice",
+          "text": "walking goal"
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-goal-new",
+          "at": "2026-01-01T10:05:00Z",
+          "user_id": "alice",
+          "memory_id": "goal-new",
+          "consent_event_id": "explicit-consent-goal-new"
+        },
+        {
+          "op": "query",
+          "event_id": "current-goal",
+          "at": "2026-01-01T10:06:00Z",
+          "as_of": "2026-01-01T10:06:00Z",
+          "user_id": "alice",
+          "text": "walking goal"
+        },
+        {
+          "op": "query",
+          "event_id": "budgeted-goal",
+          "at": "2026-01-01T10:07:00Z",
+          "as_of": "2026-01-01T10:07:00Z",
+          "user_id": "alice",
+          "text": "walking goal",
+          "max_chars": 512
+        }
+      ]
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "events": [
+        {
+          "op": "observe",
+          "event_id": "observe-assignment",
+          "at": "2026-01-02T10:00:00Z",
+          "record": {
+            "memory_id": "walk-assignment",
+            "user_id": "alice",
+            "text": "Walking homework is three ten-minute walks this week.",
+            "session_id": "session-2",
+            "turn_id": "turn-walk-assignment",
+            "memory_type": "cbt_assignment",
+            "fields": {
+              "description": "three ten-minute walks",
+              "status": "assigned"
+            }
+          }
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-walk-assignment",
+          "at": "2026-01-02T10:01:00Z",
+          "user_id": "alice",
+          "memory_id": "walk-assignment",
+          "consent_event_id": "explicit-consent-walk-assignment"
+        },
+        {
+          "op": "query",
+          "event_id": "no-outcome-invented",
+          "at": "2026-01-02T10:02:00Z",
+          "as_of": "2026-01-02T10:02:00Z",
+          "user_id": "alice",
+          "text": "walking homework"
+        },
+        {
+          "op": "observe",
+          "event_id": "observe-partial",
+          "at": "2026-01-02T10:03:00Z",
+          "record": {
+            "memory_id": "walk-partial",
+            "user_id": "alice",
+            "text": "Walking homework report: completed two of three walks; the remaining walk was not done.",
+            "session_id": "session-2",
+            "turn_id": "turn-walk-partial",
+            "memory_type": "assignment_outcome",
+            "fields": {
+              "assignment_memory_id": "walk-assignment",
+              "completion_status": "partial"
+            }
+          }
+        },
+        {
+          "op": "query",
+          "event_id": "unconfirmed-outcome",
+          "at": "2026-01-02T10:04:00Z",
+          "as_of": "2026-01-02T10:04:00Z",
+          "user_id": "alice",
+          "text": "walking homework"
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-walk-partial",
+          "at": "2026-01-02T10:05:00Z",
+          "user_id": "alice",
+          "memory_id": "walk-partial",
+          "consent_event_id": "explicit-consent-walk-partial"
+        },
+        {
+          "op": "query",
+          "event_id": "explicit-partial",
+          "at": "2026-01-02T10:06:00Z",
+          "as_of": "2026-01-02T10:06:00Z",
+          "user_id": "alice",
+          "text": "walking homework"
+        }
+      ]
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "events": [
+        {
+          "op": "observe",
+          "event_id": "observe-high",
+          "at": "2026-01-03T10:00:00Z",
+          "record": {
+            "memory_id": "worry-high",
+            "user_id": "alice",
+            "text": "Meeting worry is six out of ten before today meeting. EarlierStateMarker.",
+            "session_id": "session-3",
+            "turn_id": "turn-worry-high",
+            "memory_type": "emotion_record",
+            "slot_key": "meeting-worry",
+            "fields": {
+              "emotion": "worry",
+              "intensity": 6,
+              "situation": "meeting"
+            }
+          }
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-worry-high",
+          "at": "2026-01-03T10:01:00Z",
+          "user_id": "alice",
+          "memory_id": "worry-high",
+          "consent_event_id": "explicit-consent-worry-high"
+        },
+        {
+          "op": "query",
+          "event_id": "earlier-state",
+          "at": "2026-01-03T10:02:00Z",
+          "as_of": "2026-01-03T10:02:00Z",
+          "user_id": "alice",
+          "text": "meeting worry"
+        },
+        {
+          "op": "observe",
+          "event_id": "observe-low",
+          "at": "2026-01-03T10:03:00Z",
+          "record": {
+            "memory_id": "worry-low",
+            "user_id": "alice",
+            "text": "Meeting worry is three out of ten after today meeting. CurrentStateMarker.",
+            "session_id": "session-3",
+            "turn_id": "turn-worry-low",
+            "memory_type": "emotion_record",
+            "slot_key": "meeting-worry",
+            "fields": {
+              "emotion": "worry",
+              "intensity": 3,
+              "situation": "meeting"
+            }
+          }
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-worry-low",
+          "at": "2026-01-03T10:04:00Z",
+          "user_id": "alice",
+          "memory_id": "worry-low",
+          "consent_event_id": "explicit-consent-worry-low"
+        },
+        {
+          "op": "query",
+          "event_id": "latest-state",
+          "at": "2026-01-03T10:05:00Z",
+          "as_of": "2026-01-03T10:05:00Z",
+          "user_id": "alice",
+          "text": "meeting worry"
+        }
+      ]
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "events": [
+        {
+          "op": "observe",
+          "event_id": "observe-friday",
+          "at": "2026-01-04T10:00:00Z",
+          "record": {
+            "memory_id": "appointment-old",
+            "user_id": "alice",
+            "text": "The workshop appointment is Friday. FridayVersionMarker.",
+            "session_id": "session-4",
+            "turn_id": "turn-appointment-old",
+            "slot_key": "workshop-appointment"
+          }
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-appointment-old",
+          "at": "2026-01-04T10:01:00Z",
+          "user_id": "alice",
+          "memory_id": "appointment-old",
+          "consent_event_id": "explicit-consent-appointment-old"
+        },
+        {
+          "op": "observe",
+          "event_id": "observe-thursday",
+          "at": "2026-01-04T10:02:00Z",
+          "record": {
+            "memory_id": "appointment-new",
+            "user_id": "alice",
+            "text": "The workshop appointment is Thursday. ThursdayVersionMarker.",
+            "session_id": "session-4",
+            "turn_id": "turn-appointment-new",
+            "memory_type": "user_correction",
+            "supersedes_memory_id": "appointment-old",
+            "fields": {
+              "corrected_content": "The workshop appointment is Thursday."
+            }
+          }
+        },
+        {
+          "op": "query",
+          "event_id": "pending-correction",
+          "at": "2026-01-04T10:03:00Z",
+          "as_of": "2026-01-04T10:03:00Z",
+          "user_id": "alice",
+          "text": "workshop appointment"
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-appointment-new",
+          "at": "2026-01-04T10:04:00Z",
+          "user_id": "alice",
+          "memory_id": "appointment-new",
+          "consent_event_id": "explicit-consent-appointment-new"
+        },
+        {
+          "op": "query",
+          "event_id": "confirmed-correction",
+          "at": "2026-01-04T10:05:00Z",
+          "as_of": "2026-01-04T10:05:00Z",
+          "user_id": "alice",
+          "text": "workshop appointment"
+        },
+        {
+          "op": "observe",
+          "event_id": "observe-stale",
+          "at": "2026-01-04T10:06:00Z",
+          "record": {
+            "memory_id": "appointment-stale",
+            "user_id": "alice",
+            "text": "The workshop appointment is Wednesday. StaleVersionMarker.",
+            "session_id": "session-4",
+            "turn_id": "turn-appointment-stale",
+            "memory_type": "user_correction",
+            "supersedes_memory_id": "appointment-old",
+            "fields": {
+              "corrected_content": "The workshop appointment is Wednesday."
+            }
+          }
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-appointment-stale",
+          "at": "2026-01-04T10:07:00Z",
+          "user_id": "alice",
+          "memory_id": "appointment-stale",
+          "consent_event_id": "explicit-consent-appointment-stale"
+        },
+        {
+          "op": "query",
+          "event_id": "stale-target-rejected",
+          "at": "2026-01-04T10:08:00Z",
+          "as_of": "2026-01-04T10:08:00Z",
+          "user_id": "alice",
+          "text": "workshop appointment"
+        }
+      ]
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "events": [
+        {
+          "op": "observe",
+          "event_id": "observe-temporary",
+          "at": "2026-01-05T10:00:00Z",
+          "record": {
+            "memory_id": "temporary-goal",
+            "user_id": "alice",
+            "text": "Temporary walking goal is one walk before lunch. ExpiryMarker.",
+            "session_id": "session-5",
+            "turn_id": "turn-temporary-goal",
+            "memory_type": "goal",
+            "valid_to": "2026-01-05T11:00:00Z",
+            "fields": {
+              "description": "one walk before lunch",
+              "status": "active"
+            }
+          }
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-temporary-goal",
+          "at": "2026-01-05T10:01:00Z",
+          "user_id": "alice",
+          "memory_id": "temporary-goal",
+          "consent_event_id": "explicit-consent-temporary-goal"
+        },
+        {
+          "op": "query",
+          "event_id": "before-expiry",
+          "at": "2026-01-05T10:59:59Z",
+          "as_of": "2026-01-05T10:59:59Z",
+          "user_id": "alice",
+          "text": "temporary walking goal"
+        },
+        {
+          "op": "query",
+          "event_id": "exact-expiry-boundary",
+          "at": "2026-01-05T11:00:00Z",
+          "as_of": "2026-01-05T11:00:00Z",
+          "user_id": "alice",
+          "text": "temporary walking goal"
+        },
+        {
+          "op": "expire",
+          "event_id": "run-expiry",
+          "at": "2026-01-05T11:00:01Z"
+        },
+        {
+          "op": "query",
+          "event_id": "after-expiry",
+          "at": "2026-01-05T11:00:02Z",
+          "as_of": "2026-01-05T11:00:02Z",
+          "user_id": "alice",
+          "text": "temporary walking goal"
+        },
+        {
+          "op": "delete",
+          "event_id": "delete-expired",
+          "at": "2026-01-05T11:01:00Z",
+          "user_id": "alice",
+          "memory_id": "temporary-goal"
+        },
+        {
+          "op": "expire",
+          "event_id": "cleanup-after-delete",
+          "at": "2026-01-05T11:02:00Z"
+        },
+        {
+          "op": "query",
+          "event_id": "deleted-not-resurrected",
+          "at": "2026-01-05T11:03:00Z",
+          "as_of": "2026-01-05T11:03:00Z",
+          "user_id": "alice",
+          "text": "temporary walking goal"
+        }
+      ]
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "events": [
+        {
+          "op": "observe",
+          "event_id": "observe-public",
+          "at": "2026-01-06T10:00:00Z",
+          "record": {
+            "memory_id": "alice-standard",
+            "user_id": "alice",
+            "text": "Walking note is a park route. AliceStandardMarker.",
+            "session_id": "session-6",
+            "turn_id": "turn-alice-standard"
+          }
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-alice-standard",
+          "at": "2026-01-06T10:01:00Z",
+          "user_id": "alice",
+          "memory_id": "alice-standard",
+          "consent_event_id": "explicit-consent-alice-standard"
+        },
+        {
+          "op": "observe",
+          "event_id": "observe-private",
+          "at": "2026-01-06T10:02:00Z",
+          "record": {
+            "memory_id": "alice-restricted",
+            "user_id": "alice",
+            "text": "Walking note is a private route. AliceRestrictedMarker.",
+            "session_id": "session-6",
+            "turn_id": "turn-alice-restricted",
+            "sensitivity": "restricted"
+          }
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-alice-restricted",
+          "at": "2026-01-06T10:03:00Z",
+          "user_id": "alice",
+          "memory_id": "alice-restricted",
+          "consent_event_id": "explicit-consent-alice-restricted"
+        },
+        {
+          "op": "observe",
+          "event_id": "observe-bob",
+          "at": "2026-01-06T10:04:00Z",
+          "record": {
+            "memory_id": "bob-standard",
+            "user_id": "bob",
+            "text": "Walking note is a river route. BobStandardMarker.",
+            "session_id": "session-6",
+            "turn_id": "turn-bob-standard"
+          }
+        },
+        {
+          "op": "confirm",
+          "event_id": "confirm-bob-standard",
+          "at": "2026-01-06T10:05:00Z",
+          "user_id": "bob",
+          "memory_id": "bob-standard",
+          "consent_event_id": "explicit-consent-bob-standard"
+        },
+        {
+          "op": "query",
+          "event_id": "default-sensitive-filter",
+          "at": "2026-01-06T10:06:00Z",
+          "as_of": "2026-01-06T10:06:00Z",
+          "user_id": "alice",
+          "text": "walking note"
+        },
+        {
+          "op": "query",
+          "event_id": "other-user-own-record",
+          "at": "2026-01-06T10:07:00Z",
+          "as_of": "2026-01-06T10:07:00Z",
+          "user_id": "bob",
+          "text": "walking note"
+        },
+        {
+          "op": "query",
+          "event_id": "explicit-sensitive-access",
+          "at": "2026-01-06T10:08:00Z",
+          "as_of": "2026-01-06T10:08:00Z",
+          "user_id": "alice",
+          "text": "walking note",
+          "allow_restricted": true
+        },
+        {
+          "op": "delete",
+          "event_id": "wrong-user-delete",
+          "at": "2026-01-06T10:09:00Z",
+          "user_id": "bob",
+          "memory_id": "alice-standard"
+        },
+        {
+          "op": "query",
+          "event_id": "wrong-user-no-effect",
+          "at": "2026-01-06T10:10:00Z",
+          "as_of": "2026-01-06T10:10:00Z",
+          "user_id": "alice",
+          "text": "walking note"
+        },
+        {
+          "op": "delete",
+          "event_id": "hard-delete",
+          "at": "2026-01-06T10:11:00Z",
+          "user_id": "alice",
+          "memory_id": "alice-standard"
+        },
+        {
+          "op": "query",
+          "event_id": "default-after-delete",
+          "at": "2026-01-06T10:12:00Z",
+          "as_of": "2026-01-06T10:12:00Z",
+          "user_id": "alice",
+          "text": "walking note"
+        },
+        {
+          "op": "expire",
+          "event_id": "cleanup-after-delete",
+          "at": "2026-01-06T10:13:00Z"
+        },
+        {
+          "op": "query",
+          "event_id": "delete-remains-final",
+          "at": "2026-01-06T10:14:00Z",
+          "as_of": "2026-01-06T10:14:00Z",
+          "user_id": "alice",
+          "text": "walking note"
+        }
+      ]
+    }
+  ]
+}

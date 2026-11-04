@@ -1,0 +1,2442 @@
+{
+  "version": "synthetic-control-replay-v1",
+  "kind": "synthetic_software_mechanism_acceptance",
+  "boundary": "synthetic controlled software acceptance only; no model, natural-language extraction, free-response quality, real-user or clinical outcome evaluated",
+  "clinical_or_user_benefit_result": false,
+  "natural_language_extraction_evaluated": false,
+  "model_or_network_calls": 0,
+  "real_participants": 0,
+  "independent_user_sample_size": null,
+  "fixtures_sha256": "703bd6a6ca24b17989d342244ad7c11d0fe751d3eca3004a6dac8da641857656",
+  "expected_ledger_sha256": "35e72415f99b7323028daa441bc2ea133bb925e1b5952f8e88850fa2c9f46ee1",
+  "implementation_sha256": "8a4ab6c1a8818b25d629640d77316ea3947bf7f9e35f1e7e70210e8984129607",
+  "comparison_controls": "same explicit synthetic events, lexical retrieval, context budget and access/time/deletion rules",
+  "interpretation": "Both arms passing shows control compliance, not superiority of managed memory.",
+  "scope_limits": [
+    "sequential replay, not a new concurrency stress test",
+    "typed control events are supplied, not extracted from natural dialogue",
+    "current application state at each event; retrospective time-travel retrieval not evaluated",
+    "no free-text answer generation or clinical guidance evaluated"
+  ],
+  "conditions": {
+    "raw_history_rag": {
+      "queries": 23,
+      "passed_queries": 23,
+      "operation_checks": 32,
+      "failed_operations": 0,
+      "prohibited_exposure_queries": 0,
+      "by_task": {
+        "goals": {
+          "queries": 5,
+          "passed_queries": 5,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "homework": {
+          "queries": 3,
+          "passed_queries": 3,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "state": {
+          "queries": 2,
+          "passed_queries": 2,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "corrections": {
+          "queries": 3,
+          "passed_queries": 3,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "expiry": {
+          "queries": 4,
+          "passed_queries": 4,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "deletion_isolation": {
+          "queries": 6,
+          "passed_queries": 6,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        }
+      }
+    },
+    "managed_memory_rag": {
+      "queries": 23,
+      "passed_queries": 23,
+      "operation_checks": 32,
+      "failed_operations": 0,
+      "prohibited_exposure_queries": 0,
+      "by_task": {
+        "goals": {
+          "queries": 5,
+          "passed_queries": 5,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "homework": {
+          "queries": 3,
+          "passed_queries": 3,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "state": {
+          "queries": 2,
+          "passed_queries": 2,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "corrections": {
+          "queries": 3,
+          "passed_queries": 3,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "expiry": {
+          "queries": 4,
+          "passed_queries": 4,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        },
+        "deletion_isolation": {
+          "queries": 6,
+          "passed_queries": 6,
+          "first_failures": {
+            "storage": 0,
+            "lifecycle_access": 0,
+            "retrieval": 0,
+            "context_budget": 0,
+            "context_inclusion": 0
+          }
+        }
+      }
+    }
+  },
+  "queries": [
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "raw_history_rag",
+      "check_id": "unconfirmed-hidden",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-old": "candidate"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "raw_history_rag",
+      "check_id": "initial-goal",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-old": "active"
+      },
+      "eligible_ids": [
+        "goal-old"
+      ],
+      "retrieved_ids": [
+        "goal-old"
+      ],
+      "included_ids": [
+        "goal-old"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "goal-old": [
+          "turn-goal-old"
+        ]
+      },
+      "prompt_sha256": "ac06b6c628a7cdbc63aa6ceb0c5b480ee1f3f5fa2bc6e7c7ecb3dcd60cc6c195",
+      "prompt_chars": 752,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "raw_history_rag",
+      "check_id": "pending-change",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-new": "candidate",
+        "goal-old": "active"
+      },
+      "eligible_ids": [
+        "goal-old"
+      ],
+      "retrieved_ids": [
+        "goal-old"
+      ],
+      "included_ids": [
+        "goal-old"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "goal-old": [
+          "turn-goal-old"
+        ]
+      },
+      "prompt_sha256": "ac06b6c628a7cdbc63aa6ceb0c5b480ee1f3f5fa2bc6e7c7ecb3dcd60cc6c195",
+      "prompt_chars": 752,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "raw_history_rag",
+      "check_id": "current-goal",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-new": "active",
+        "goal-old": "superseded"
+      },
+      "eligible_ids": [
+        "goal-new"
+      ],
+      "retrieved_ids": [
+        "goal-new"
+      ],
+      "included_ids": [
+        "goal-new"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "goal-new": [
+          "turn-goal-new"
+        ]
+      },
+      "prompt_sha256": "c523f67203ffba52a925491f72d5b6d5aae963b6867848d88fb81cb264896ac7",
+      "prompt_chars": 754,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "raw_history_rag",
+      "check_id": "budgeted-goal",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-new": "active",
+        "goal-old": "superseded"
+      },
+      "eligible_ids": [
+        "goal-new"
+      ],
+      "retrieved_ids": [
+        "goal-new"
+      ],
+      "included_ids": [],
+      "dropped_ids": [
+        "goal-new"
+      ],
+      "source_turn_ids": {
+        "goal-new": [
+          "turn-goal-new"
+        ]
+      },
+      "prompt_sha256": "36f4e79840af9f6a835cfed54a5b41c77701706b72e615d505d85f0309d8fb1d",
+      "prompt_chars": 458,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "managed_memory_rag",
+      "check_id": "unconfirmed-hidden",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-old": "candidate"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "managed_memory_rag",
+      "check_id": "initial-goal",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-old": "active"
+      },
+      "eligible_ids": [
+        "goal-old"
+      ],
+      "retrieved_ids": [
+        "goal-old"
+      ],
+      "included_ids": [
+        "goal-old"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "goal-old": [
+          "turn-goal-old"
+        ]
+      },
+      "prompt_sha256": "ac06b6c628a7cdbc63aa6ceb0c5b480ee1f3f5fa2bc6e7c7ecb3dcd60cc6c195",
+      "prompt_chars": 752,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "managed_memory_rag",
+      "check_id": "pending-change",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-new": "candidate",
+        "goal-old": "active"
+      },
+      "eligible_ids": [
+        "goal-old"
+      ],
+      "retrieved_ids": [
+        "goal-old"
+      ],
+      "included_ids": [
+        "goal-old"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "goal-old": [
+          "turn-goal-old"
+        ]
+      },
+      "prompt_sha256": "ac06b6c628a7cdbc63aa6ceb0c5b480ee1f3f5fa2bc6e7c7ecb3dcd60cc6c195",
+      "prompt_chars": 752,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "managed_memory_rag",
+      "check_id": "current-goal",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-new": "active",
+        "goal-old": "superseded"
+      },
+      "eligible_ids": [
+        "goal-new"
+      ],
+      "retrieved_ids": [
+        "goal-new"
+      ],
+      "included_ids": [
+        "goal-new"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "goal-new": [
+          "turn-goal-new"
+        ]
+      },
+      "prompt_sha256": "c523f67203ffba52a925491f72d5b6d5aae963b6867848d88fb81cb264896ac7",
+      "prompt_chars": 754,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "managed_memory_rag",
+      "check_id": "budgeted-goal",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "goal-new": "active",
+        "goal-old": "superseded"
+      },
+      "eligible_ids": [
+        "goal-new"
+      ],
+      "retrieved_ids": [
+        "goal-new"
+      ],
+      "included_ids": [],
+      "dropped_ids": [
+        "goal-new"
+      ],
+      "source_turn_ids": {
+        "goal-new": [
+          "turn-goal-new"
+        ]
+      },
+      "prompt_sha256": "36f4e79840af9f6a835cfed54a5b41c77701706b72e615d505d85f0309d8fb1d",
+      "prompt_chars": 458,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "raw_history_rag",
+      "check_id": "no-outcome-invented",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "walk-assignment": "active"
+      },
+      "eligible_ids": [
+        "walk-assignment"
+      ],
+      "retrieved_ids": [
+        "walk-assignment"
+      ],
+      "included_ids": [
+        "walk-assignment"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "walk-assignment": [
+          "turn-walk-assignment"
+        ]
+      },
+      "prompt_sha256": "cf2533d0d21cbc318b33ca4d6752b5edadb107a6a6bee495834fd99f1b87da9e",
+      "prompt_chars": 763,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "raw_history_rag",
+      "check_id": "unconfirmed-outcome",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "walk-assignment": "active",
+        "walk-partial": "candidate"
+      },
+      "eligible_ids": [
+        "walk-assignment"
+      ],
+      "retrieved_ids": [
+        "walk-assignment"
+      ],
+      "included_ids": [
+        "walk-assignment"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "walk-assignment": [
+          "turn-walk-assignment"
+        ]
+      },
+      "prompt_sha256": "cf2533d0d21cbc318b33ca4d6752b5edadb107a6a6bee495834fd99f1b87da9e",
+      "prompt_chars": 763,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "raw_history_rag",
+      "check_id": "explicit-partial",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "walk-assignment": "active",
+        "walk-partial": "active"
+      },
+      "eligible_ids": [
+        "walk-assignment",
+        "walk-partial"
+      ],
+      "retrieved_ids": [
+        "walk-assignment",
+        "walk-partial"
+      ],
+      "included_ids": [
+        "walk-assignment",
+        "walk-partial"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "walk-assignment": [
+          "turn-walk-assignment"
+        ],
+        "walk-partial": [
+          "turn-walk-partial"
+        ]
+      },
+      "prompt_sha256": "93cfb44e27c131e356440dda528bfd82168b3d1c17fe816c5e9ed2e891e7e8cc",
+      "prompt_chars": 1009,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "managed_memory_rag",
+      "check_id": "no-outcome-invented",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "walk-assignment": "active"
+      },
+      "eligible_ids": [
+        "walk-assignment"
+      ],
+      "retrieved_ids": [
+        "walk-assignment"
+      ],
+      "included_ids": [
+        "walk-assignment"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "walk-assignment": [
+          "turn-walk-assignment"
+        ]
+      },
+      "prompt_sha256": "cf2533d0d21cbc318b33ca4d6752b5edadb107a6a6bee495834fd99f1b87da9e",
+      "prompt_chars": 763,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "managed_memory_rag",
+      "check_id": "unconfirmed-outcome",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "walk-assignment": "active",
+        "walk-partial": "candidate"
+      },
+      "eligible_ids": [
+        "walk-assignment"
+      ],
+      "retrieved_ids": [
+        "walk-assignment"
+      ],
+      "included_ids": [
+        "walk-assignment"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "walk-assignment": [
+          "turn-walk-assignment"
+        ]
+      },
+      "prompt_sha256": "cf2533d0d21cbc318b33ca4d6752b5edadb107a6a6bee495834fd99f1b87da9e",
+      "prompt_chars": 763,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "managed_memory_rag",
+      "check_id": "explicit-partial",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "walk-assignment": "active",
+        "walk-partial": "active"
+      },
+      "eligible_ids": [
+        "walk-assignment",
+        "walk-partial"
+      ],
+      "retrieved_ids": [
+        "walk-assignment",
+        "walk-partial"
+      ],
+      "included_ids": [
+        "walk-assignment",
+        "walk-partial"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "walk-assignment": [
+          "turn-walk-assignment"
+        ],
+        "walk-partial": [
+          "turn-walk-partial"
+        ]
+      },
+      "prompt_sha256": "93cfb44e27c131e356440dda528bfd82168b3d1c17fe816c5e9ed2e891e7e8cc",
+      "prompt_chars": 1009,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "raw_history_rag",
+      "check_id": "earlier-state",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "worry-high": "active"
+      },
+      "eligible_ids": [
+        "worry-high"
+      ],
+      "retrieved_ids": [
+        "worry-high"
+      ],
+      "included_ids": [
+        "worry-high"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "worry-high": [
+          "turn-worry-high"
+        ]
+      },
+      "prompt_sha256": "79eb245fbaca90bc0ae7b0815e1c2fb9b2645b063c0035028eeb005ae2bc90f6",
+      "prompt_chars": 778,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "raw_history_rag",
+      "check_id": "latest-state",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "worry-high": "superseded",
+        "worry-low": "active"
+      },
+      "eligible_ids": [
+        "worry-low"
+      ],
+      "retrieved_ids": [
+        "worry-low"
+      ],
+      "included_ids": [
+        "worry-low"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "worry-low": [
+          "turn-worry-low"
+        ]
+      },
+      "prompt_sha256": "224e36ee3948f82afd9127a7f20b5c21adff14499229c57efb9fbf43870f82db",
+      "prompt_chars": 778,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "managed_memory_rag",
+      "check_id": "earlier-state",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "worry-high": "active"
+      },
+      "eligible_ids": [
+        "worry-high"
+      ],
+      "retrieved_ids": [
+        "worry-high"
+      ],
+      "included_ids": [
+        "worry-high"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "worry-high": [
+          "turn-worry-high"
+        ]
+      },
+      "prompt_sha256": "79eb245fbaca90bc0ae7b0815e1c2fb9b2645b063c0035028eeb005ae2bc90f6",
+      "prompt_chars": 778,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "managed_memory_rag",
+      "check_id": "latest-state",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "worry-high": "superseded",
+        "worry-low": "active"
+      },
+      "eligible_ids": [
+        "worry-low"
+      ],
+      "retrieved_ids": [
+        "worry-low"
+      ],
+      "included_ids": [
+        "worry-low"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "worry-low": [
+          "turn-worry-low"
+        ]
+      },
+      "prompt_sha256": "224e36ee3948f82afd9127a7f20b5c21adff14499229c57efb9fbf43870f82db",
+      "prompt_chars": 778,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "raw_history_rag",
+      "check_id": "pending-correction",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "appointment-new": "candidate",
+        "appointment-old": "active"
+      },
+      "eligible_ids": [
+        "appointment-old"
+      ],
+      "retrieved_ids": [
+        "appointment-old"
+      ],
+      "included_ids": [
+        "appointment-old"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "appointment-old": [
+          "turn-appointment-old"
+        ]
+      },
+      "prompt_sha256": "d6a4dcd60bf663d14adf4e5e53ef4100bfbd854623a0a7408caff349912f3a98",
+      "prompt_chars": 765,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "raw_history_rag",
+      "check_id": "confirmed-correction",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "appointment-new": "active",
+        "appointment-old": "superseded"
+      },
+      "eligible_ids": [
+        "appointment-new"
+      ],
+      "retrieved_ids": [
+        "appointment-new"
+      ],
+      "included_ids": [
+        "appointment-new"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "appointment-new": [
+          "turn-appointment-new"
+        ]
+      },
+      "prompt_sha256": "8e3a119536b6fe581493c61950cc4feeb9d37c06322a9c3e08eba166e615efb4",
+      "prompt_chars": 771,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "raw_history_rag",
+      "check_id": "stale-target-rejected",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "appointment-new": "active",
+        "appointment-old": "superseded",
+        "appointment-stale": "candidate"
+      },
+      "eligible_ids": [
+        "appointment-new"
+      ],
+      "retrieved_ids": [
+        "appointment-new"
+      ],
+      "included_ids": [
+        "appointment-new"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "appointment-new": [
+          "turn-appointment-new"
+        ]
+      },
+      "prompt_sha256": "8e3a119536b6fe581493c61950cc4feeb9d37c06322a9c3e08eba166e615efb4",
+      "prompt_chars": 771,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "managed_memory_rag",
+      "check_id": "pending-correction",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "appointment-new": "candidate",
+        "appointment-old": "active"
+      },
+      "eligible_ids": [
+        "appointment-old"
+      ],
+      "retrieved_ids": [
+        "appointment-old"
+      ],
+      "included_ids": [
+        "appointment-old"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "appointment-old": [
+          "turn-appointment-old"
+        ]
+      },
+      "prompt_sha256": "d6a4dcd60bf663d14adf4e5e53ef4100bfbd854623a0a7408caff349912f3a98",
+      "prompt_chars": 765,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "managed_memory_rag",
+      "check_id": "confirmed-correction",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "appointment-new": "active",
+        "appointment-old": "superseded"
+      },
+      "eligible_ids": [
+        "appointment-new"
+      ],
+      "retrieved_ids": [
+        "appointment-new"
+      ],
+      "included_ids": [
+        "appointment-new"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "appointment-new": [
+          "turn-appointment-new"
+        ]
+      },
+      "prompt_sha256": "8e3a119536b6fe581493c61950cc4feeb9d37c06322a9c3e08eba166e615efb4",
+      "prompt_chars": 771,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "managed_memory_rag",
+      "check_id": "stale-target-rejected",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "appointment-new": "active",
+        "appointment-old": "superseded",
+        "appointment-stale": "candidate"
+      },
+      "eligible_ids": [
+        "appointment-new"
+      ],
+      "retrieved_ids": [
+        "appointment-new"
+      ],
+      "included_ids": [
+        "appointment-new"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "appointment-new": [
+          "turn-appointment-new"
+        ]
+      },
+      "prompt_sha256": "8e3a119536b6fe581493c61950cc4feeb9d37c06322a9c3e08eba166e615efb4",
+      "prompt_chars": 771,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "raw_history_rag",
+      "check_id": "before-expiry",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "temporary-goal": "active"
+      },
+      "eligible_ids": [
+        "temporary-goal"
+      ],
+      "retrieved_ids": [
+        "temporary-goal"
+      ],
+      "included_ids": [
+        "temporary-goal"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "temporary-goal": [
+          "turn-temporary-goal"
+        ]
+      },
+      "prompt_sha256": "9b610b0a7329764a4bc30510004b29c41492c9b5745bee6fa7a8c778f9532842",
+      "prompt_chars": 761,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "raw_history_rag",
+      "check_id": "exact-expiry-boundary",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "temporary-goal": "active"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "raw_history_rag",
+      "check_id": "after-expiry",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "temporary-goal": "expired"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "raw_history_rag",
+      "check_id": "deleted-not-resurrected",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {},
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "managed_memory_rag",
+      "check_id": "before-expiry",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "temporary-goal": "active"
+      },
+      "eligible_ids": [
+        "temporary-goal"
+      ],
+      "retrieved_ids": [
+        "temporary-goal"
+      ],
+      "included_ids": [
+        "temporary-goal"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "temporary-goal": [
+          "turn-temporary-goal"
+        ]
+      },
+      "prompt_sha256": "9b610b0a7329764a4bc30510004b29c41492c9b5745bee6fa7a8c778f9532842",
+      "prompt_chars": 761,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "managed_memory_rag",
+      "check_id": "exact-expiry-boundary",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "temporary-goal": "active"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "managed_memory_rag",
+      "check_id": "after-expiry",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "temporary-goal": "expired"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "managed_memory_rag",
+      "check_id": "deleted-not-resurrected",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {},
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "check_id": "default-sensitive-filter",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "alice-standard": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "alice-standard"
+      ],
+      "retrieved_ids": [
+        "alice-standard"
+      ],
+      "included_ids": [
+        "alice-standard"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "alice-standard": [
+          "turn-alice-standard"
+        ]
+      },
+      "prompt_sha256": "ba1cb623412c54c1337056358a17951314a931438da9a90e1487ebe31800aa02",
+      "prompt_chars": 758,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "check_id": "other-user-own-record",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "alice-standard": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "bob-standard"
+      ],
+      "retrieved_ids": [
+        "bob-standard"
+      ],
+      "included_ids": [
+        "bob-standard"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "bob-standard": [
+          "turn-bob-standard"
+        ]
+      },
+      "prompt_sha256": "1942b5183b94634330f6107fd33f759f82448519f42477a7fec8ec256fc19000",
+      "prompt_chars": 755,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "check_id": "explicit-sensitive-access",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "alice-standard": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "alice-restricted",
+        "alice-standard"
+      ],
+      "retrieved_ids": [
+        "alice-restricted",
+        "alice-standard"
+      ],
+      "included_ids": [
+        "alice-restricted",
+        "alice-standard"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "alice-restricted": [
+          "turn-alice-restricted"
+        ],
+        "alice-standard": [
+          "turn-alice-standard"
+        ]
+      },
+      "prompt_sha256": "d45a0123b77a59c5a1ac2a277310d4f9bd3461371be8f632864deadff323cb14",
+      "prompt_chars": 971,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "check_id": "wrong-user-no-effect",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "alice-standard": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "alice-standard"
+      ],
+      "retrieved_ids": [
+        "alice-standard"
+      ],
+      "included_ids": [
+        "alice-standard"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "alice-standard": [
+          "turn-alice-standard"
+        ]
+      },
+      "prompt_sha256": "ba1cb623412c54c1337056358a17951314a931438da9a90e1487ebe31800aa02",
+      "prompt_chars": 758,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "check_id": "default-after-delete",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "check_id": "delete-remains-final",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "check_id": "default-sensitive-filter",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "alice-standard": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "alice-standard"
+      ],
+      "retrieved_ids": [
+        "alice-standard"
+      ],
+      "included_ids": [
+        "alice-standard"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "alice-standard": [
+          "turn-alice-standard"
+        ]
+      },
+      "prompt_sha256": "ba1cb623412c54c1337056358a17951314a931438da9a90e1487ebe31800aa02",
+      "prompt_chars": 758,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "check_id": "other-user-own-record",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "alice-standard": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "bob-standard"
+      ],
+      "retrieved_ids": [
+        "bob-standard"
+      ],
+      "included_ids": [
+        "bob-standard"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "bob-standard": [
+          "turn-bob-standard"
+        ]
+      },
+      "prompt_sha256": "1942b5183b94634330f6107fd33f759f82448519f42477a7fec8ec256fc19000",
+      "prompt_chars": 755,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "check_id": "explicit-sensitive-access",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "alice-standard": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "alice-restricted",
+        "alice-standard"
+      ],
+      "retrieved_ids": [
+        "alice-restricted",
+        "alice-standard"
+      ],
+      "included_ids": [
+        "alice-restricted",
+        "alice-standard"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "alice-standard": [
+          "turn-alice-standard"
+        ],
+        "alice-restricted": [
+          "turn-alice-restricted"
+        ]
+      },
+      "prompt_sha256": "d45a0123b77a59c5a1ac2a277310d4f9bd3461371be8f632864deadff323cb14",
+      "prompt_chars": 971,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "check_id": "wrong-user-no-effect",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "alice-standard": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [
+        "alice-standard"
+      ],
+      "retrieved_ids": [
+        "alice-standard"
+      ],
+      "included_ids": [
+        "alice-standard"
+      ],
+      "dropped_ids": [],
+      "source_turn_ids": {
+        "alice-standard": [
+          "turn-alice-standard"
+        ]
+      },
+      "prompt_sha256": "ba1cb623412c54c1337056358a17951314a931438da9a90e1487ebe31800aa02",
+      "prompt_chars": 758,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "check_id": "default-after-delete",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "check_id": "delete-remains-final",
+      "stages": {
+        "storage": true,
+        "lifecycle_access": true,
+        "retrieval": true,
+        "context_budget": true,
+        "context_inclusion": true
+      },
+      "passed": true,
+      "first_failure_stage": null,
+      "storage_statuses": {
+        "alice-restricted": "active",
+        "bob-standard": "active"
+      },
+      "eligible_ids": [],
+      "retrieved_ids": [],
+      "included_ids": [],
+      "dropped_ids": [],
+      "source_turn_ids": {},
+      "prompt_sha256": "f4ad7b2d5f7c6d2df24e15ea8ddebe6858f13775b5305f5b5576331a72a63e6c",
+      "prompt_chars": 489,
+      "trace_matches_prompt": true,
+      "prohibited_ids_exposed": [],
+      "forbidden_marker_exposures": 0
+    }
+  ],
+  "operations": [
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "raw_history_rag",
+      "event_id": "observe-old",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-goal-old",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "raw_history_rag",
+      "event_id": "observe-new",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-goal-new",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-old",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-goal-old",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-new",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "goals",
+      "task": "goals",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-goal-new",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "raw_history_rag",
+      "event_id": "observe-assignment",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-walk-assignment",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "raw_history_rag",
+      "event_id": "observe-partial",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-walk-partial",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-assignment",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-walk-assignment",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-partial",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "homework",
+      "task": "homework",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-walk-partial",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "raw_history_rag",
+      "event_id": "observe-high",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-worry-high",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "raw_history_rag",
+      "event_id": "observe-low",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-worry-low",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-high",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-worry-high",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-low",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "state",
+      "task": "state",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-worry-low",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "raw_history_rag",
+      "event_id": "observe-friday",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-appointment-old",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "raw_history_rag",
+      "event_id": "observe-thursday",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-appointment-new",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "raw_history_rag",
+      "event_id": "observe-stale",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-appointment-stale",
+      "passed": true,
+      "expected_error_type": "ValueError",
+      "actual_error_type": "ValueError"
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-friday",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-appointment-old",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-thursday",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-appointment-new",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-stale",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "corrections",
+      "task": "corrections",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-appointment-stale",
+      "passed": true,
+      "expected_error_type": "ValueError",
+      "actual_error_type": "ValueError"
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "raw_history_rag",
+      "event_id": "observe-temporary",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-temporary-goal",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "raw_history_rag",
+      "event_id": "run-expiry",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "raw_history_rag",
+      "event_id": "delete-expired",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "raw_history_rag",
+      "event_id": "cleanup-after-delete",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-temporary",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-temporary-goal",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "managed_memory_rag",
+      "event_id": "run-expiry",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "managed_memory_rag",
+      "event_id": "delete-expired",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "expiry",
+      "task": "expiry",
+      "arm": "managed_memory_rag",
+      "event_id": "cleanup-after-delete",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "event_id": "observe-public",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-alice-standard",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "event_id": "observe-private",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-alice-restricted",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "event_id": "observe-bob",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "event_id": "confirm-bob-standard",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "event_id": "wrong-user-delete",
+      "passed": true,
+      "expected_error_type": "KeyError",
+      "actual_error_type": "KeyError"
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "event_id": "hard-delete",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "raw_history_rag",
+      "event_id": "cleanup-after-delete",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-public",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-alice-standard",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-private",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-alice-restricted",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "event_id": "observe-bob",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "event_id": "confirm-bob-standard",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "event_id": "wrong-user-delete",
+      "passed": true,
+      "expected_error_type": "KeyError",
+      "actual_error_type": "KeyError"
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "event_id": "hard-delete",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    },
+    {
+      "case_id": "deletion_isolation",
+      "task": "deletion_isolation",
+      "arm": "managed_memory_rag",
+      "event_id": "cleanup-after-delete",
+      "passed": true,
+      "expected_error_type": null,
+      "actual_error_type": null
+    }
+  ],
+  "acceptance_passed": true
+}
