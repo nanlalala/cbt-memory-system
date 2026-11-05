@@ -550,6 +550,35 @@ def _zip_publish(path, members):
         Path(temporary).unlink(missing_ok=True)
 
 
+def replay_lock_members(run, protocol):
+    """Copy empty lock files required by the read-only replay entry points.
+
+    Copying bytes does not transfer a live flock or modify/unlink its inode.
+    Restored files supply new local lock inodes in the copied directories.
+    """
+    suite = Path(protocol["original_suite"])
+    paths = {"run/.execution.lock": _regular(Path(run) / ".execution.lock"),
+             "source_suite/.execution.lock": _regular(suite / ".execution.lock")}
+    restore = {"source_suite/.execution.lock": str((suite / ".execution.lock").resolve())}
+    for descriptor in protocol["reference_files"]:
+        relative = descriptor["relative_path"]
+        rel = PurePosixPath(relative)
+        if (rel.is_absolute() or len(rel.parts) != 3 or rel.parts[0] != "shards" or
+            rel.name != "references.jsonl" or ".." in rel.parts or "\\" in relative):
+            raise ValueError("Expected an explicitly frozen Persona shard reference path")
+        lock_relative = str(rel.parent / ".execution.lock")
+        member = "source_suite/" + lock_relative
+        paths[member] = _relative(suite, lock_relative)
+        restore[member] = str(paths[member].resolve())
+    members = {}
+    for name, path in paths.items():
+        value = path.read_bytes()
+        if value != b"":
+            raise ValueError("Only actual empty execution-lock bytes may enter replay export")
+        members[name] = value
+    return members, restore
+
+
 def _export_run_locked(run, out, original_suite, bootstrap_samples):
     state, summary, scores = _load_and_score(run, original_suite, bootstrap_samples)
     protocol = state["protocol"]
@@ -595,6 +624,9 @@ def _export_run_locked(run, out, original_suite, bootstrap_samples):
             raise ValueError("Frozen source dependency differs")
         controlled[prefix + relative] = data
         restore_paths[prefix + relative] = str((base / relative).resolve())
+    locks, lock_restore_paths = replay_lock_members(run, protocol)
+    controlled.update(locks)
+    restore_paths.update(lock_restore_paths)
     encode = lambda value: (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
     safe = {"summary.json": encode(summary), "per_question_safe.jsonl": "".join(
         json.dumps(row, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n" for row in public_rows(scores)).encode()}
@@ -628,6 +660,8 @@ def _export_run_locked(run, out, original_suite, bootstrap_samples):
     for members, private in ((controlled, True), (safe, False)):
         members["AUDIT_DECLARATION.json"] = encode({**declaration, "contains_benchmark_derived_text": private,
             **({"frozen_source_restore_paths": restore_paths,
+                "restored_empty_execution_lock_members": sorted(locks),
+                "execution_lock_restore_boundary": "Empty copied files provide fresh local lock inodes; no live process lock is copied and original locks are never modified or unlinked.",
                 "recompute_instruction": "In genuine hosted Colab, restore source files to their frozen original paths, restore run/ to a fresh directory, use the pinned clean executable checkout and run persona_management_scoring.py score --run-dir <restored-run>. No provider call or Secret is needed."} if private else {})})
         members["SHA256SUMS.json"] = encode({name: sha_bytes(data) for name, data in sorted(members.items())})
     if state["input_sha256"] != {name: sha_bytes(_relative(run, name).read_bytes()) for name in state["input_sha256"]}:

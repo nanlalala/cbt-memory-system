@@ -1,8 +1,10 @@
 """Tiny fictional two-arm fixtures; no corpus, model, API, credentials or guard bypass."""
 from copy import deepcopy
+from contextlib import ExitStack
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 import sys
 import tempfile
 import unittest
@@ -227,6 +229,67 @@ class PersonaManagementScoringTests(unittest.TestCase):
         self.assertEqual(scoring.verify_quote_control_gate(gate,ids,data[5])['case_count'],3)
         gate['case_rows'][0]['prompt_sha256']='different'
         with self.assertRaises(ValueError):scoring.verify_quote_control_gate(gate,ids,data[5])
+
+    def test_restored_archive_empty_locks_allow_provider_free_real_lock_and_scoring_replay(self):
+        # Use the actual runner's rb shared-lock path, not a fake lock or a
+        # monkeypatched Colab guard. All contents remain explicit tiny fixtures.
+        from persona_management_runner import lock, retain_original_locks
+        data=fixture()
+        expected_summary,expected_rows=score(data)
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);original_run=root/'original-run';suite=root/'original-suite'
+            original_run.mkdir();suite.mkdir()
+            (original_run/'.execution.lock').write_bytes(b'')
+            (suite/'.execution.lock').write_bytes(b'')
+            descriptors=[];source_members={};restore={}
+            for index,subset in enumerate((data[2][:1],data[2][1:2],data[2][2:],[])):
+                relative=f'shards/persona-{index:02d}/references.jsonl'
+                path=suite/relative;path.parent.mkdir(parents=True)
+                body=''.join(json.dumps(ref)+'\n' for ref in subset).encode();path.write_bytes(body)
+                (path.parent/'.execution.lock').write_bytes(b'')
+                descriptors.append({'relative_path':relative,'sha256':scoring.sha_bytes(body),
+                                    'case_ids':[ref['case_id'] for ref in subset]})
+                source_members['source_suite/'+relative]=body
+                restore['source_suite/'+relative]=str(path)
+            data[0].update(original_suite=str(suite),reference_files=descriptors)
+            locks,lock_restore=scoring.replay_lock_members(original_run,data[0])
+            self.assertEqual(len(locks),6)
+            self.assertTrue(all(body==b'' for body in locks.values()))
+            restore.update(lock_restore)
+            members={**source_members,**locks}
+            for name,value in (('protocol.json',data[0]),('cases.json',data[1]),
+                               ('generation.json',data[3]),('cost.json',data[4]),('prepared.json',data[5])):
+                members['run/'+name]=json.dumps(value).encode()
+            archive_path=root/'controlled.zip';scoring._zip_publish(archive_path,members)
+            shutil.rmtree(original_run);shutil.rmtree(suite)
+            restored_run=root/'restored-run';restored_run.mkdir()
+            with zipfile.ZipFile(archive_path) as archive:
+                for name in archive.namelist():
+                    target=restored_run/name.removeprefix('run/') if name.startswith('run/') else Path(restore[name])
+                    target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(archive.read(name))
+            self.assertFalse(original_run.exists())
+            # The suite and all four shard locks were absent after original deletion;
+            # the copied locks now make the actual read-only entry API usable.
+            restored_protocol=json.loads((restored_run/'protocol.json').read_text())
+            last_lock=(suite/descriptors[-1]['relative_path']).parent/'.execution.lock'
+            last_lock.unlink()
+            with self.assertRaises(FileNotFoundError),ExitStack() as stack:
+                stack.enter_context(lock(restored_run));retain_original_locks(restored_protocol,stack)
+            last_lock.write_bytes(b'')
+            with ExitStack() as stack:
+                stack.enter_context(lock(restored_run));retain_original_locks(restored_protocol,stack)
+                refs=scoring._load_references(restored_protocol,None)
+                summary,rows=scoring.score_loaded_run(restored_protocol,
+                    json.loads((restored_run/'cases.json').read_text()),refs,
+                    json.loads((restored_run/'generation.json').read_text()),
+                    json.loads((restored_run/'cost.json').read_text()),
+                    prepared_rows=json.loads((restored_run/'prepared.json').read_text()),
+                    bootstrap_samples=200,fixture=True)
+            self.assertEqual(summary['conditions'],expected_summary['conditions'])
+            self.assertEqual(summary['primary_paired_comparison'],expected_summary['primary_paired_comparison'])
+            self.assertEqual(rows,expected_rows)
+            (suite/'.execution.lock').write_bytes(b'NONEMPTY_FIXTURE_NOT_EXPORTED')
+            with self.assertRaises(ValueError):scoring.replay_lock_members(restored_run,restored_protocol)
 
 
 if __name__ == '__main__':unittest.main()
