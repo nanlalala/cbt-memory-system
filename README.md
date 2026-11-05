@@ -134,6 +134,7 @@ the public QA results do not establish natural update or deletion handling.
 | Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation | Strengthened v2 synthetic replay: both arms pass 26/26 queries and 56/56 operations, including relevance/body mutation checks; no user-benefit claim |
 | User workflow | Four visits: set a goal, review homework, revise, consolidate/delete; completion, errors, time and review effort | Versioned collection/analysis tools and nonclinical feasibility protocol; zero participants |
 | CBT process | Independent review of source fidelity, goals, homework review, guided discovery, action, progress and boundaries | Blank professional-review packets prepared for 32 archived knowledge-RAG replies; zero independent human ratings |
+| Source-candidate CBT follow-ups | Actual chronological extraction, manager/store updates, retrieval and answers on 36 fictional development tasks | 108 answer rows; same-model draft criteria met on 18 short-term / 20 raw / 21 managed rows; extraction issues affect 24 managed prefixes; no stable CBT-benefit finding |
 | Symptoms and functioning | Prospective outcomes and follow-up under a separately approved matched-comparator clinical study | No clinical participants or outcomes |
 
 The executable [objective comparison](evaluation/objective-memory/README.md)
@@ -160,6 +161,22 @@ These are exploratory public-task findings. MAB multi-hop accuracy remains
 independent evidence annotations: all 2,062 arm rows scored incorrect officially retain
 `answer_incorrect_stage_unresolved`. Source-path observations and software replay
 do not establish CBT semantic extraction, user benefit or clinical effectiveness.
+
+The separate [CBT follow-up development run](docs/cbt-process-followup-results-20261105.md)
+now includes actual answers and source-stage observations. Its 36 fictional cases
+are three parameter variants of 12 tasks, not independent people. Five raw/managed
+pairs share inputs; nine pairs remain unresolved. Among the 27 resolved pairs,
+managed has two higher and one lower draft grade, with 24 ties. These same-model
+assessments do not establish stable management benefit, professional CBT quality,
+participant burden or clinical outcomes. All attempts and preprocessing costs
+are retained; API success does not imply valid semantic extraction.
+
+The [separate v4 retrieval repair](docs/objective-v4-repair-results-20261105.md)
+completed 206 new changed-input calls and explicitly reused 2,194 unchanged old
+logical responses. Its reconstructed MAB scores are 483/800 managed and 419/800
+raw; the earlier full-run table above remains v3.1. The repair gained three
+managed answers; raw gained two and lost two. Multi-hop remains 98/400. This
+development reconstruction is not a new independent or contemporaneous full run.
 
 Run the [objective comparison in hosted Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/main/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb).
 The [notebook](evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)

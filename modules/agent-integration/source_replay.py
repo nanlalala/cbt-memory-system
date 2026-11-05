@@ -11,6 +11,7 @@ from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -157,7 +158,6 @@ class SourceReplay:
                 if not isinstance(payload, dict):
                     raise ValueError("candidate payload must be an object")
                 item["structured_payload"] = dict(payload)
-                item["memory_id"] = "candidate-" + stable([self.user_id, sid, index, item])[:32]
                 item["observed_at"] = source["date"]
                 item["valid_from"] = source["date"]
                 item["valid_to"] = source.get("valid_to")
@@ -165,12 +165,12 @@ class SourceReplay:
                 if item["memory_type"] == "cognitive_pattern":
                     item["structured_payload"]["evidence_count"] = 1
                 for field, payload_field in (("target_source_id", "proposed_update_target_source_id"), ("assignment_source_id", "assignment_source_id")):
-                    if field in candidate:
-                        target = candidate[field]
-                        target_source = self.raw_sources.get(target)
-                        if target_source is None or target_source["role"] != "user" or target_source["source_order"] >= source["source_order"]:
-                            raise ValueError("candidate link target must be a prior eligible user source")
+                    target = self._normalise_source_link(candidate, item["structured_payload"], source,
+                                                         field=field, payload_field=payload_field)
+                    if target is not None:
                         item["structured_payload"][payload_field] = target
+                        if field != payload_field:
+                            item["structured_payload"].pop(field, None)
                         link_source_ids.add(target)
                         item.setdefault("related_memory_ids", [])
                         if self.quote_id(target) not in item["related_memory_ids"]:
@@ -186,6 +186,10 @@ class SourceReplay:
                     if target is None:
                         raise ValueError("assignment outcome requires a source-bound assignment target")
                     item["structured_payload"]["assignment_memory_id"] = self.quote_id(target)
+                # Placement aliases cannot manufacture different memory IDs:
+                # derive identity only after every accepted link is validated
+                # and represented in its canonical payload field.
+                item["memory_id"] = "candidate-" + stable([self.user_id, sid, index, item])[:32]
                 cleaned.append(item)
             records = parse_extraction_output(json.dumps({"candidates": cleaned}, ensure_ascii=False),
                 user_id=self.user_id, session_id="visit-" + str(source["visit"]),
@@ -194,12 +198,18 @@ class SourceReplay:
             dependencies = set(context_ids) | {sid} | link_source_ids
             if not dependencies <= set(self.raw_sources):
                 raise ValueError("semantic context references unavailable sources")
+            staged_dependencies = {}
             with self.store.transaction(immediate=True):
                 for record in records:
                     if record.memory_type not in {"cognitive_pattern", "user_correction"}:
                         record = replace(record, origin="system_observation")
-                    writes.append(self.manager.ingest(record, actor="fictional_source_replay"))
-                    self.record_dependencies[record.memory_id] = dependencies.copy()
+                    write = self.manager.ingest(record, actor="fictional_source_replay")
+                    writes.append(write)
+                    if write.action != "duplicate_rejected":
+                        staged_dependencies[record.memory_id] = dependencies.copy()
+            # In-memory provenance must commit with its SQL records. A later
+            # candidate failure rolls back the transaction without phantom IDs.
+            self.record_dependencies.update(staged_dependencies)
             self.extraction_cache[sid] = raw
             self.extraction_cache_dependencies[sid] = dependencies.copy()
             self.semantic_statuses[sid] = "valid_empty" if not records else "valid_candidates"
@@ -207,6 +217,42 @@ class SourceReplay:
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError):
             self.semantic_statuses[sid] = "extraction_invalid"
             return []
+
+    def _normalise_source_link(self, candidate, payload, source, *, field, payload_field):
+        """Accept documented field placements without weakening source checks.
+
+        Each present placement must independently identify the same earlier,
+        currently admitted user observation. A null, conflicting or invalid
+        placement is not rescued by a valid value in another location. This is
+        structural compatibility, not validation of the model's interpretation.
+        """
+        present = []
+        if field in candidate:
+            present.append(candidate[field])
+        for name in dict.fromkeys((field, payload_field)):
+            if name in payload:
+                present.append(payload[name])
+        if not present:
+            return None
+        for target in present:
+            if not isinstance(target, str) or not target.strip():
+                raise ValueError("candidate link target must be an explicit source ID")
+            target_source = self.raw_sources.get(target)
+            source_scope = re.fullmatch(r'([ABC])-S\d{2}', source['source_id'])
+            target_scope = re.fullmatch(r'([ABC])-S\d{2}', target)
+            if (target_source is None or target in self.deleted_source_ids
+                    or target_source["role"] != "user"
+                    or target_source["storage_policy"] != "allowed"
+                    or target_source["source_order"] >= source["source_order"]
+                    or moment(target_source["date"]) > moment(source["date"])
+                    or (target_source.get("valid_to")
+                        and moment(target_source["valid_to"]) <= moment(source["date"]))
+                    or (source_scope and target_scope and source_scope[1] != target_scope[1])
+                    or self.store.get(self.user_id, self.quote_id(target)) is None):
+                raise ValueError("candidate link target must be a prior eligible user source")
+        if any(target != present[0] for target in present[1:]):
+            raise ValueError("candidate link target placements conflict")
+        return present[0]
 
     def apply_control(self, control):
         required = {"event_id", "action", "target_source_ids", "as_of", "source_order", "before_task_id"}

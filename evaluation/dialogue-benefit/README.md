@@ -14,6 +14,16 @@ retrieval/context and answer generation on the fictional follow-up materials.
 It has its own frozen run and finite cost journal; it does not activate the human
 study or establish a model effect simply by passing software checks.
 
+The [first actual run](../../docs/cbt-process-followup-results-20261105.md)
+completed all 36 fictional cases and 108 answer rows. Same-model draft grades
+were met on 20 raw and 21 managed rows, with nine unresolved pairs and five
+shared-input pairs. Twelve of 39 source extractions were structurally rejected
+because a correction target occupied an unrecognized nested field. This is a
+verified write-stage defect, not evidence of downstream answer-error causality.
+The separate v2 link contract repairs accepted field placement while retaining
+source checks and unconfirmed status. Old v1 answers and scores remain frozen;
+new v2 answers require a new executable/protocol/run directory.
+
 ## What is measured
 
 One person stays in one randomized memory condition across four visits. The

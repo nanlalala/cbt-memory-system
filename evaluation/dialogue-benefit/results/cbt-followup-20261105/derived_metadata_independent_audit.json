@@ -1,0 +1,92 @@
+{
+  "audit_scope": "derived metadata only; original journal not reopened outside Colab; not a provider billing audit",
+  "source_sha256": {
+    "public_aggregate.json": "3d3eb81832104dfb944137854eafe06e7f3e5e2940429208fedff269d5003e44",
+    "public_score_metadata.jsonl": "c6583d8e3cda28ac6258376ba530ab89faffb36adfaadfc229aadd5f53d7d46d",
+    "report_summary.json": "33ab0d1871ae70ee2715958bcdf387b29aa65b11572b1ceac5e2f6fe653a3104"
+  },
+  "complete_cases": 36,
+  "complete_arm_rows": 108,
+  "all_provider_status_success": true,
+  "all_answer_envelopes_valid": true,
+  "recomputed_grade_counts": {
+    "short_term": {
+      "met": 18,
+      "partial": 2,
+      "violated": 5,
+      "unresolved": 11
+    },
+    "raw_history_rag": {
+      "met": 20,
+      "partial": 7,
+      "violated": 0,
+      "unresolved": 9
+    },
+    "managed_memory_rag": {
+      "met": 21,
+      "partial": 6,
+      "violated": 0,
+      "unresolved": 9
+    }
+  },
+  "numeric_costs_reconcile": true,
+  "unique_canonical_answers": 93,
+  "successful_call_purposes": {
+    "extraction": 39,
+    "response": 93,
+    "judge": 68
+  },
+  "reported_tokens": {
+    "prompt_tokens": 164949,
+    "completion_tokens": 38479,
+    "total_tokens": 203428
+  },
+  "shared_raw_managed_cases": [
+    "A:T02",
+    "A:T06",
+    "B:T06",
+    "C:T02",
+    "C:T06"
+  ],
+  "changed_raw_managed_grades": [
+    {
+      "case_id": "B:T01",
+      "task_id": "T01",
+      "raw": "met",
+      "managed": "partial",
+      "managed_extraction_available": true
+    },
+    {
+      "case_id": "C:T01",
+      "task_id": "T01",
+      "raw": "partial",
+      "managed": "met",
+      "managed_extraction_available": true
+    },
+    {
+      "case_id": "C:T07",
+      "task_id": "T07",
+      "raw": "partial",
+      "managed": "met",
+      "managed_extraction_available": false
+    }
+  ],
+  "privacy_withheld_logical_rows": 27,
+  "validated_model_unresolved_rows": [
+    {
+      "case_id": "A:T01",
+      "arm": "short_term"
+    },
+    {
+      "case_id": "A:T03",
+      "arm": "short_term"
+    }
+  ],
+  "managed_prefixes_all_extractions_valid": 12,
+  "managed_prefixes_with_extraction_unavailability_or_invalidity": 24,
+  "extraction_boundary": "Prefix flags are not independent failed-call counts; earlier source-event validation issues may propagate. Other valid semantic candidates can remain.",
+  "clinical_claim": false,
+  "human_participants": 0,
+  "independent_human_cbt_ratings": 0,
+  "inference": "Same-model-assisted draft checks on three researcher-authored parameter variants. Net one more met grade is not demonstrated stable CBT benefit."
+}

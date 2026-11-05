@@ -24,7 +24,7 @@ from threading import Lock
 import time
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = "fictional-followup-pipeline-development-v1"
+VERSION = "fictional-followup-pipeline-development-v2-link-contract"
 ARMS = ("short_term", "raw_history_rag", "managed_memory_rag")
 MODEL = "deepseek-v4.1-flash"
 ALIAS = "deepseek-v4-1-flash-260910"
