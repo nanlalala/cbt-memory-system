@@ -119,15 +119,18 @@ cbt-memory-system/
 
 ## Experimental design
 
-The next evaluation compares **short-term history, raw-history RAG and managed
-memory RAG**. The main contrast is managed memory versus raw-history retrieval;
+The completed [full objective comparison](evaluation/objective-memory/results/full-20261105/README.md)
+compares **short-term history, raw-history RAG and managed memory RAG**. The main
+contrast is managed memory versus raw-history retrieval;
 giving an agent more history alone does not demonstrate the value of management.
-Both receive the same source history, user updates, deletion/access controls,
-response model and context budget. Knowledge and safety conditions stay fixed.
+Within each public dataset, the two RAG arms share the original source history,
+response model, access eligibility and character budget. Knowledge and safety
+conditions stay fixed. Lifecycle events are checked separately in software replay;
+the public QA results do not establish natural update or deletion handling.
 
 | Evidence | What will be reported | Current boundary |
 | --- | --- | --- |
-| Public tasks with released answers | Fixed official answer rules on MemoryAgentBench fact conflicts and PersonaMem-v1 choices | Adapters and deterministic scorer implemented; hosted execution tracked separately |
+| Public tasks with released answers | Fixed official answer rules on MemoryAgentBench fact conflicts and PersonaMem-v1 choices | Full hosted run: 1,389 questions / 4,167 arm rows; MAB version view 480/800 versus raw 419/800; Persona RAG arms share identical inputs |
 | Memory control through the full pipeline | Goals, homework, state, corrections, expiry, deletion and isolation | Strengthened v2 synthetic replay: both arms pass 26/26 queries and 56/56 operations, including relevance/body mutation checks; no user-benefit claim |
 | User workflow | Four visits: set a goal, review homework, revise, consolidate/delete; completion, errors, time and review effort | Versioned collection/analysis tools and nonclinical feasibility protocol; zero participants |
 | CBT process | Independent review of source fidelity, goals, homework review, guided discovery, action, progress and boundaries | Blank professional-review packets prepared for 32 archived knowledge-RAG replies; zero independent human ratings |
@@ -143,11 +146,20 @@ The earlier quotation-control RAG arms have identical inputs and are a control
 baseline, not semantic-memory evidence. The separate v3.1 path adds a source-only
 latest-version view for synthetic MAB facts, with the same closed-world prompt
 and graph retrieval shared by raw and managed conditions. PersonaMem uses shared
-lossless source spans; its two RAG arms remain quote controls. The full driver
-targets all 800 MAB and 589 PersonaMem questions, but no full-scale model result
-is available yet. Public QA causal error attribution still requires independent
-evidence annotations; byte-verified source-path observations and software replay
-remain separate.
+lossless source spans; its two RAG arms remain quote controls. The full hosted
+run finished all 800 MAB and 589 PersonaMem questions under frozen executable
+`1511706b3a4b0ac71416998b5b4d752a13c4e313`.
+
+| Dataset | Short-term | Raw-history RAG | Managed-memory RAG | Interpretation |
+| --- | ---: | ---: | ---: | --- |
+| MAB conflicts | 10/800 (1.25%) | 419/800 (52.38%) | 480/800 (60.00%) | Within-v3 version-view gain +7.625 percentage points; 68 wins, 725 ties, 7 losses; one conservative family, no estimable family-level interval |
+| PersonaMem-v1 32k | 364/589 (61.80%) | 416/589 (70.63%) | 416/589 (70.63%) | 20 connected groups; RAG arms share all 589 inputs/responses, so their zero difference cannot establish management efficacy |
+
+These are exploratory public-task findings. MAB multi-hop accuracy remains
+96/400 (24%) in the managed arm. Public QA causal error attribution still requires
+independent evidence annotations: all 2,062 arm rows scored incorrect officially retain
+`answer_incorrect_stage_unresolved`. Source-path observations and software replay
+do not establish CBT semantic extraction, user benefit or clinical effectiveness.
 
 Run the [objective comparison in hosted Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/main/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb).
 The [notebook](evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
@@ -158,16 +170,19 @@ uses a new run root and the review-fixed executable. The
 source-version diagnostics, paid-response recovery, opt-out and UI draft fixes.
 Old frozen results remain available under their original code and protocols.
 
-When cloud browser control is unavailable, the separate
+The separate
 [authorized Run-All Colab entry](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/main/evaluation/objective-memory/Objective_Memory_Authorized_RunAll_Colab.ipynb)
-runs the existing bounded experiment after the account owner chooses Run all.
+ran this bounded experiment after access was authorized.
 It restores the exact original exposure protocol/metadata and waits for generation
-before final scoring. The [recovery note](docs/cloud-execution-recovery.md)
-records the repaired bootstrap, installed cloud CLI and remaining authentication
-and ephemeral-checkpoint limits. This entry has no executed result yet.
+before final scoring. The completed run used 3,550 actual canonical calls,
+8,777,083 reported tokens and no recorded API failures or missing usage fields.
+Costs exclude the earlier pilots; no money total is inferred without verified
+prices. The [recovery note](docs/cloud-execution-recovery.md) preserves the earlier
+connection diagnosis; the final controlled archive and derived output were
+transferred cloud-to-cloud with checksums, without using the user's computer.
 
 The [current evidence checkpoint](docs/evidence-status-20261105.md) retains the
-negative objective pilots and the missing full-run results. The
+negative objective pilots alongside the completed full-run findings. The
 [dialogue-benefit tools](evaluation/dialogue-benefit/README.md) implement a separate
 [four-visit nonclinical protocol](docs/research-validation-protocol.md), with
 source-bound independent scoring, participant denominators and revocable private

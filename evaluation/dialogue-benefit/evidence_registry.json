@@ -1,18 +1,22 @@
 {
   "schema": "capstone-evidence-status-v1",
-  "checkpoint": "research-workflow-after-pr23",
-  "implementation_base_commit": "63911d66003f3446f7d720b183d7cc3e2df0c584",
+  "checkpoint": "full-objective-run-complete-20261105",
+  "implementation_base_commit": "b4f702d9fb66f0343164b79b4a185fcb784e6820",
   "objective_executable_commit": "1511706b3a4b0ac71416998b5b4d752a13c4e313",
-  "execution_location": "independent Codex cloud Linux for software and archive review; genuine hosted Colab for previous model calls and full-data inventory",
+  "execution_location": "genuine hosted Colab for all full-input/model/source-based-scoring work; independent Codex cloud Linux for software and derived-only reporting",
   "user_computer_used": false,
-  "new_model_calls_after_previous_pilots": 0,
+  "new_model_calls_after_previous_pilots": 3550,
   "completed_previous_objective_pilots": {
     "quote_control": {
       "eligible_questions_in_pilot": 16,
       "logical_arm_rows": 48,
       "actual_provider_calls": 32,
       "reported_tokens": 57908,
-      "official_credited_answers": {"short_term": 0, "raw_history_rag": 2, "managed_memory_rag": 2},
+      "official_credited_answers": {
+        "short_term": 0,
+        "raw_history_rag": 2,
+        "managed_memory_rag": 2
+      },
       "independent_families": 1,
       "raw_managed_inputs_identical": true,
       "credited_answer_caveat": "Both credited RAG replies list candidate entities in UNKNOWN/refusal text; official substring credit is not evidence of reliable conflict resolution.",
@@ -24,7 +28,11 @@
       "extraction_calls": 18,
       "qa_calls": 11,
       "reported_pipeline_tokens": 103537,
-      "official_credited_answers": {"short_term": 0, "raw_history_rag": 1, "managed_memory_rag": 0},
+      "official_credited_answers": {
+        "short_term": 0,
+        "raw_history_rag": 1,
+        "managed_memory_rag": 0
+      },
       "independent_families": 1,
       "empty_extraction_responses": 16,
       "raw_managed_inputs_identical": false,
@@ -44,10 +52,89 @@
     "memoryagentbench_conservative_families": 1,
     "personamem_questions": 589,
     "personamem_connected_groups": 20,
-    "status": "not_executed",
-    "provider_calls": 0,
-    "blocker": "Hosted Colab browser-control transport unavailable; independent Codex cloud has no authorized CBT_EVAL_API_KEY. No local fallback or environment-guard spoofing.",
-    "managed_representation_boundary": "Synthetic MAB source-order fact-version view; PersonaMem raw/managed quotation controls remain identical. Not validated CBT semantic goal/homework extraction."
+    "status": "complete",
+    "provider_calls": 3550,
+    "managed_representation_boundary": "Synthetic MAB source-order fact-version view; PersonaMem raw/managed quotation controls remain identical. Not validated CBT semantic goal/homework extraction.",
+    "completed_logical_arm_rows": 4167,
+    "completion_counts": {
+      "success": 4167
+    },
+    "api_failures_recorded": 0,
+    "unresolved_provider_attempts": 0,
+    "successful_calls_missing_token_usage": 0,
+    "suite_plan_sha256": "940a2b3d8fa02aa683f7855f94931ff1d9710c7835b598c70fc201582ae8d568",
+    "public_results": "evaluation/objective-memory/results/full-20261105/README.md",
+    "official_credited_answers": {
+      "memoryagentbench_conflict": {
+        "short_term": 10,
+        "raw_history_rag": 419,
+        "managed_memory_rag": 480
+      },
+      "personamem_v1": {
+        "short_term": 364,
+        "raw_history_rag": 416,
+        "managed_memory_rag": 416
+      }
+    },
+    "strict_format_diagnostic_credited_answers": {
+      "memoryagentbench_conflict": {
+        "short_term": 10,
+        "raw_history_rag": 418,
+        "managed_memory_rag": 478
+      },
+      "personamem_v1": {
+        "short_term": 363,
+        "raw_history_rag": 416,
+        "managed_memory_rag": 416
+      }
+    },
+    "mab_managed_minus_raw": {
+      "accuracy_delta": 0.07625,
+      "wins": 68,
+      "ties": 725,
+      "losses": 7,
+      "identical_input_shared_response_cases": 22,
+      "independent_family_interval": null,
+      "interval_status": "not_estimable_fewer_than_two_groups"
+    },
+    "personamem_managed_minus_raw": {
+      "accuracy_delta": 0.0,
+      "wins": 0,
+      "ties": 589,
+      "losses": 0,
+      "identical_input_shared_response_cases": 589,
+      "interpretation": "Control by construction, not efficacy or statistical equivalence evidence."
+    },
+    "mab_development_exposed_questions": 17,
+    "mab_question_heldout_shared_histories": 783,
+    "reported_tokens": {
+      "prompt_tokens": 8768813,
+      "completion_tokens": 8270,
+      "total_tokens": 8777083
+    },
+    "median_successful_api_latency_seconds": 1.4829645699996945,
+    "sum_successful_api_latency_seconds": 5448.138305626007,
+    "latency_boundary": "Provider API latency only; not parallel wall time or full preparation/retrieval time.",
+    "reported_provider_models": {
+      "deepseek-v4-1-flash-260910": 3550
+    },
+    "provider_model_boundary": "Returned name matched the frozen allowlist; underlying weights were not independently attested.",
+    "monetary_cost": null,
+    "monetary_cost_status": "No verified frozen provider price schedule; no inferred money bill.",
+    "content_error_arm_rows": 2062,
+    "content_error_stage_attribution": "answer_incorrect_stage_unresolved",
+    "natural_check_burden": "not_measured",
+    "repeated_question_burden": "not_measured",
+    "clinical_claim": false,
+    "cbt_dialogue_benefit_established": false,
+    "audit_zip_bytes": 70083349,
+    "audit_zip_sha256": "608c76386b70312540397e14951b3fd5f47f5f783d8230b79f246d35b37ebde0",
+    "derived_zip_bytes": 3565003,
+    "derived_zip_sha256": "21fc3f1879c3033946d78348b1fea5dc9c634e804d4c3f7af67064fc27189ff2",
+    "resolved_previous_blocker": "Cloud control and notebook Secret access recovered; the bounded hosted run completed without local fallback or environment spoofing.",
+    "content_error_causal_boundary": "No independently annotated evidence establishes a causal failure stage.",
+    "recorded_provider_attempt_intents": 3550,
+    "content_error_definition": "Official score zero on a valid response; this is not independent semantic adjudication."
   },
   "independent_cbt_review": {
     "archived_actual_responses_prepared": 32,
@@ -74,5 +161,6 @@
     "functioning_observations": 0,
     "benefit_established": false,
     "status": "separate approved matched-comparator clinical study required"
-  }
+  },
+  "previous_implementation_checkpoint": "63911d66003f3446f7d720b183d7cc3e2df0c584"
 }
