@@ -7,6 +7,34 @@ LLM judge as the primary outcome, and it does not measure CBT treatment benefit.
 The main question is whether managed memory adds value over retrieval from the
 **same original history**, rather than whether more history helps a reader.
 
+## Completed full run: 2026-11-05
+
+The [full results and all per-question score metadata](results/full-20261105/README.md)
+retain 1,389 questions and all 4,167 terminal arm rows. Full inputs, generation and
+source-based scoring ran in genuine hosted Colab under executable
+`1511706b3a4b0ac71416998b5b4d752a13c4e313` and suite plan
+`940a2b3d8fa02aa683f7855f94931ff1d9710c7835b598c70fc201582ae8d568`.
+
+MAB official accuracy is short-term 10/800, raw 419/800 and managed 480/800:
+the primary managed-minus-raw contrast is **+7.625 percentage points** (68 wins,
+725 ties, 7 losses). This tests a deterministic source-order version view within
+one conservative fact-consolidation family; no independent-family interval is
+estimable. Managed multi-hop accuracy remains only 96/400 (24%).
+
+PersonaMem official accuracy is 364/589, 416/589 and 416/589 respectively. Its
+two RAG arms share all 589 inputs and canonical responses. Their zero difference
+is a quotation control by construction, not management efficacy or statistical
+equivalence. There are 20 connected groups, not 589 independent people.
+
+The run records 3,550 actual successful canonical calls, 8,777,083 reported
+tokens, zero API failures and no missing usage fields. It preserves old runs and
+the 61-call negative/insufficient pilots separately. Strict-format diagnostics
+and source-path observations are retained; all 2,062 officially incorrect rows keep
+causal stage unresolved. No human CBT ratings, participant benefit, natural-check
+burden or clinical outcomes have been established. The
+[post-run reporting scripts](reporting/README.md) reproduce the controlled
+derived report and its public metadata projection without more model calls.
+
 [Open the objective comparison in Colab](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/main/evaluation/objective-memory/Objective_Memory_Comparison_Colab.ipynb)
 or inspect the [notebook](Objective_Memory_Comparison_Colab.ipynb). It checks out
 the immutable executable revision recorded in its metadata and code cell.
@@ -39,10 +67,12 @@ by construction**, not empirical proof of no effect, statistical equivalence or
 better memory management. Changing a heading just to manufacture a difference
 would not answer the research question.
 
-In this version both RAG arms receive the same quotations and use the same
-retriever, so their prompts are identical. This is a control baseline for the
-pipeline and the value of older history; it cannot estimate a semantic-memory
-management benefit.
+In the original quotation-control version both RAG arms receive the same
+quotations and use the same retriever, so their prompts are identical. That
+version is a control baseline for the pipeline and older history. The completed
+v3 comparison applies a deterministic source-order version view to MAB before
+shared retrieval; PersonaMem retains the original quotation-control contrast.
+Neither representation evaluates natural-language CBT goal/homework extraction.
 
 The shared budget is measured in characters; actual provider prompt/completion
 tokens are reported separately. This is not an exact tokenizer-matched budget.
