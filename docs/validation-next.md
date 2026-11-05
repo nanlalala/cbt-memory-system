@@ -274,19 +274,22 @@ Report availability separately from correctness and freeze failure-to-score rule
 Preserve identities, attempt logs, source/manifest hashes and raw artifacts.
 Real-user content never follows the public benchmark export path.
 
-The new adapters, raw-history contrast, event replay and participant study are
-**not completed experiments**. Do not launch more model judging as a substitute
-for these gates. Existing frozen runs can be retained and audited without being
-presented as this protocol's final outcome.
+The public raw-history contrast and fictional source-candidate comparison have
+now been executed in hosted Colab. The [full public run](../evaluation/objective-memory/results/full-20261105/README.md),
+[bounded v4 repair](../evaluation/objective-memory/results/v4-repair-20261105/README.md)
+and [CBT process development report](cbt-process-followup-results-20261105.md)
+retain separate protocols, attempts and limitations. Independent natural-CBT
+source annotation, the participant study and clinical outcomes remain incomplete.
+More model judging cannot replace those gates.
 
-## Result table: fill only after execution
+## Executed results and remaining evidence gaps
 
 | Endpoint / task | Independent groups / eligible cases | Raw-history RAG | Managed memory | Paired difference and interval | Failures / total cost | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| MemoryAgentBench `fact_sh` / `fact_mh` (separate rows) | — | — | — | — | — | Not run |
-| PersonaMem-v1 (overall and question type) | — | — | — | — | — | Not run |
-| Goals / homework / state (separate rows) | — | — | — | — | — | Gold coverage not established |
-| Corrections / expiry / deletion-isolation (separate rows) | — | — | — | — | — | End-to-end comparison not run |
+| MemoryAgentBench conflicts | 800 questions; one conservative family; task-specific rows in linked reports | 419/800 | 483/800 in bounded v4 reconstruction | +8 pp; family-level interval not estimable | Repair: 206 new calls / 463,447 tokens / 0 provider failures; original full-run costs separate | 206 changed-input answers newly generated; 2,194 unchanged logical rows reused; not a full contemporaneous rerun |
+| PersonaMem-v1 | 589 questions / 20 connected history groups | 416/589 | 416/589 | All 589 raw/managed prompts and canonical replies shared | Costs retained in original full-run report | Executed quotation control; no management-effect evidence |
+| Fictional CBT goals / homework / state | 36 exposed development cases; 3 variants of 12 task types; 0 people | 20 met / 36; 9 unresolved | 21 met / 36; 9 unresolved | 2 higher, 1 lower, 24 same, 9 unresolved; same-model draft grades | 200 calls / 203,428 tokens / 0 provider failures; 12 invalid unique extraction outputs | No stable CBT benefit; task-specific results and structural rejection evidence in linked report |
+| Corrections / expiry / deletion-isolation | Source replay and separate software controls | Original runs retained | Original runs retained | Structural observations do not establish answer-error causality | Invalid extraction remains counted in costs | Privacy-reference tasks unresolved; no expiry event in the 36-task model batch; independent semantic assessment pending |
 | Participant completion / time / correction burden | — | — | — | — | — | Not run |
 
 A useful outcome may be similar factual accuracy with fewer stale facts or easier

@@ -1,0 +1,140 @@
+{
+  "report_version": "fictional-followup-report-v1",
+  "fixture_only": false,
+  "planned_cases": 36,
+  "planned_arm_rows": 108,
+  "protocol_sha256": "b59ee0082d150faa61536a7a20042a441048b5e6b279c6199f85c12426c24815",
+  "executable_commit": "efd75116f985749a96a6070cb80c4b38d5c94dba",
+  "model_assisted_counts": {
+    "short_term": {
+      "met": 18,
+      "partial": 2,
+      "violated": 5,
+      "unresolved": 11
+    },
+    "raw_history_rag": {
+      "met": 20,
+      "partial": 7,
+      "violated": 0,
+      "unresolved": 9
+    },
+    "managed_memory_rag": {
+      "met": 21,
+      "partial": 6,
+      "violated": 0,
+      "unresolved": 9
+    }
+  },
+  "primary_model_assisted_diagnostic": {
+    "both_model_assessed_pairs": 27,
+    "managed_met_raw_not_met": 2,
+    "raw_met_managed_not_met": 1,
+    "same_draft_grade_pairs": 24,
+    "identical_input_shared_response_cases": 5,
+    "pairs_with_unresolved_assessment": 9
+  },
+  "cost": {
+    "recorded_provider_attempts": 200,
+    "successful_canonical_calls": 200,
+    "failed_attempts": 0,
+    "unresolved_attempts": 0,
+    "reported_tokens": {
+      "prompt_tokens": 164949,
+      "completion_tokens": 38479,
+      "total_tokens": 203428
+    },
+    "successful_calls_missing_usage_fields": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    },
+    "failed_attempts_missing_usage_fields": {
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0
+    },
+    "failed_attempts_without_usage": 0,
+    "reported_model_counts": {
+      "deepseek-v4-1-flash-260910": 200
+    },
+    "monetary_cost": null,
+    "per_purpose": {
+      "extraction": {
+        "attempts": 39,
+        "successful_calls": 39,
+        "failed_attempts": 0,
+        "reported_tokens": {
+          "prompt_tokens": 35270,
+          "completion_tokens": 10027,
+          "total_tokens": 45297
+        },
+        "successful_calls_missing_usage_fields": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "failed_attempts_missing_usage_fields": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "known_api_latency_seconds_sum": 113.58044566199806,
+        "successful_api_latency_seconds_median": 2.7450604749992635
+      },
+      "response": {
+        "attempts": 93,
+        "successful_calls": 93,
+        "failed_attempts": 0,
+        "reported_tokens": {
+          "prompt_tokens": 61063,
+          "completion_tokens": 14330,
+          "total_tokens": 75393
+        },
+        "successful_calls_missing_usage_fields": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "failed_attempts_missing_usage_fields": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "known_api_latency_seconds_sum": 265.99743052499434,
+        "successful_api_latency_seconds_median": 2.8119154890000573
+      },
+      "judge": {
+        "attempts": 68,
+        "successful_calls": 68,
+        "failed_attempts": 0,
+        "reported_tokens": {
+          "prompt_tokens": 68616,
+          "completion_tokens": 14122,
+          "total_tokens": 82738
+        },
+        "successful_calls_missing_usage_fields": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "failed_attempts_missing_usage_fields": {
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "total_tokens": 0
+        },
+        "known_api_latency_seconds_sum": 190.80205110600127,
+        "successful_api_latency_seconds_median": 2.749428509000154
+      }
+    },
+    "successful_api_latency_seconds_median": 2.762734812999952,
+    "known_api_latency_seconds_sum": 570.3799272929937,
+    "boundary": "canonical actual attempts; missing failure usage unknown; API time is not end-to-end or parallel wall time; no verified currency price"
+  },
+  "human_participants": 0,
+  "independent_human_cbt_ratings": 0,
+  "clinical_outcomes": 0,
+  "clinical_claim": false,
+  "semantic_task_accuracy_independently_established": false,
+  "boundary": "fully exposed fictional development material; same-model-assisted draft criteria; no independently established user benefit",
+  "model_calls_by_report_builder": 0
+}

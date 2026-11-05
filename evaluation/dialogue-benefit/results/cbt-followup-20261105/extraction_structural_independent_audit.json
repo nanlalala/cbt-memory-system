@@ -1,0 +1,246 @@
+{
+  "schema_version": "cbt-extraction-structural-metadata-audit-v1",
+  "audited_at_utc": "2026-11-05T06:59:38.872803+00:00",
+  "scope": "Independent recomputation of exported structural metadata and inspection of identity-matched frozen public adapter code. Original source text, model text, gold and extraction payloads were not reopened outside Colab.",
+  "source_diagnostic_sha256": "ace19582b40c1a8a86b8b64fcb7749df908dcef59eb9b02813951e3f9bfd1f5b",
+  "source_replay_code_sha256": "81881f14c25b5f3f5335e062e1b5135fa78f4c0342f3beb4e1971002c1a17248",
+  "execution_commit": "efd75116f985749a96a6070cb80c4b38d5c94dba",
+  "protocol_sha256": "b59ee0082d150faa61536a7a20042a441048b5e6b279c6199f85c12426c24815",
+  "unique_source_events": 39,
+  "recomputed_validation_status_counts": {
+    "valid_candidates": 27,
+    "extraction_invalid": 12
+  },
+  "all_invalid_events_fail_at_same_location": true,
+  "failure_class": "extraction_contract_field_placement_mismatch",
+  "frozen_contract": "Top-level candidate.target_source_id is validated and mapped to structured_payload.proposed_update_target_source_id. user_correction requires that canonical target before the adapter derives corrected_content.",
+  "observed_placement": "All 12 offending user_correction candidates place target_source_id under structured_payload; top-level target_source_id and canonical proposed_update_target_source_id are absent. Exported flags show valid prior user targets, exact current-source supporting quotes and current-source-only citations.",
+  "invalid_source_events": [
+    {
+      "source_id": "A-S06",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "A-S06"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "A-S07",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "A-S07"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "A-S08",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "A-S08"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "A-S10",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "A-S10"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "A-S12",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "A-S12"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "B-S06",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "B-S06"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "B-S08",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "B-S08"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "B-S12",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "B-S12"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "C-S06",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "C-S06"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "C-S08",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "C-S08"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "C-S09",
+      "candidate_index": 2,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "C-S09"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    },
+    {
+      "source_id": "C-S12",
+      "candidate_index": 0,
+      "memory_type": "user_correction",
+      "error_location": {
+        "exception_type": "ValueError",
+        "file": "modules/agent-integration/source_replay.py",
+        "function": "_ingest_semantic",
+        "line": 181,
+        "source_id": "C-S12"
+      },
+      "target_source_id_in_structured_payload": true,
+      "payload_target_is_prior_eligible_user_source": true,
+      "top_level_target_source_id_present": false,
+      "canonical_payload_proposed_update_target_source_id_present": false,
+      "quotes_current_source_exactly": true,
+      "cites_only_current_source": true
+    }
+  ],
+  "matched_final_prefix_replay_snapshots": 3,
+  "managed_prefixes_all_extractions_valid": 12,
+  "managed_prefixes_with_unavailability_or_invalidity": 24,
+  "prefix_boundary": "24 affected prefixes are not 24 independent failed calls. Valid candidates may remain.",
+  "answer_error_causal_attribution": "unresolved; structural ingestion failure does not establish the cause of any answer-grade difference",
+  "semantic_entailment_or_clinical_validity_established": false,
+  "new_provider_calls": 0,
+  "human_participants": 0,
+  "independent_human_cbt_ratings": 0,
+  "clinical_claim": false
+}
