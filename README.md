@@ -158,6 +158,14 @@ uses a new run root and the review-fixed executable. The
 source-version diagnostics, paid-response recovery, opt-out and UI draft fixes.
 Old frozen results remain available under their original code and protocols.
 
+When cloud browser control is unavailable, the separate
+[authorized Run-All Colab entry](https://colab.research.google.com/github/nanlalala/cbt-memory-system/blob/main/evaluation/objective-memory/Objective_Memory_Authorized_RunAll_Colab.ipynb)
+runs the existing bounded experiment after the account owner chooses Run all.
+It restores the exact original exposure protocol/metadata and waits for generation
+before final scoring. The [recovery note](docs/cloud-execution-recovery.md)
+records the repaired bootstrap, installed cloud CLI and remaining authentication
+and ephemeral-checkpoint limits. This entry has no executed result yet.
+
 The [current evidence checkpoint](docs/evidence-status-20261105.md) retains the
 negative objective pilots and the missing full-run results. The
 [dialogue-benefit tools](evaluation/dialogue-benefit/README.md) implement a separate
