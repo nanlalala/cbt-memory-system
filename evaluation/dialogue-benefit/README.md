@@ -8,6 +8,12 @@ establish clinical effectiveness. The
 [machine-readable registry](evidence_registry.json) preserve the actual findings:
 no participant observations, independent CBT ratings or clinical outcomes yet.
 
+The separate [source-candidate pipeline development comparison](PIPELINE_DEVELOPMENT.md)
+now implements chronological extraction, real manager/store updates, shared
+retrieval/context and answer generation on the fictional follow-up materials.
+It has its own frozen run and finite cost journal; it does not activate the human
+study or establish a model effect simply by passing software checks.
+
 ## What is measured
 
 One person stays in one randomized memory condition across four visits. The
@@ -21,9 +27,12 @@ The [three-variant task draft](task_materials_draft.json) and
 and 48 source turns. Exact text, dates, roles, visible-history boundaries and
 scoring references are verifiable; independent human validation is still zero.
 This combined scoring ledger contains gold and forbidden/deleted reference text:
-**never send it to a model**. A production source-only generation adapter, full
-stage-trace connection and independently annotated check opportunities remain
-unimplemented launch requirements. The collector is not that adapter.
+**never send it to a model**. The development compiler separates eligible source
+snapshots from assessor references, and the development adapter traces actual
+source-candidate operations. Production arm-fidelity integration and independently
+annotated check opportunities remain human-study launch requirements. The
+collector itself is not a generation adapter. The original material-version header
+retains its creation-time status; it is not relabelled as validated gold.
 
 Two co-primary operational outcomes are independently source-adjudicated task
 success out of 12 and failure-sensitive restricted task time. Missing/rescued
