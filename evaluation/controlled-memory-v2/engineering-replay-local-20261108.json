@@ -1,0 +1,214 @@
+{
+  "api_calls": 0,
+  "assertion_count": 17,
+  "effectiveness_claim": false,
+  "execution_host_claim": "software_only_no_colab_guard_bypass",
+  "input_counts": {
+    "answer_unknown": 2,
+    "correction_and_deletion": 3,
+    "multi_axis_and_worker": 4,
+    "no_save_pause": 3
+  },
+  "live_model": false,
+  "live_model_or_network_used": false,
+  "mock_provider_calls": 4,
+  "persistence_boundary": "file_and_independent_control_anchor_depend_on_the_approved_storage_location",
+  "protocol": {
+    "automatic_retries": false,
+    "background_worker": false,
+    "driver_sha256": "31f44ac19a397418b24f62efef7f82f45b38b5e9f81c624e82323a4e041b850d",
+    "fixture_source_times": [
+      "2026-11-03T09:00:00Z",
+      "2026-11-04T09:00:00Z",
+      "2026-11-05T09:00:00Z",
+      "2026-11-06T09:00:00Z",
+      "2026-11-06T10:00:00Z"
+    ],
+    "kind": "fictional_software_contract_replay_not_effectiveness_experiment",
+    "maximum_inputs": {
+      "answer_unknown": 2,
+      "correction_and_deletion": 4,
+      "multi_axis_and_worker": 4,
+      "no_save_pause": 3
+    },
+    "maximum_mock_provider_attempts_per_scenario": 8,
+    "maximum_mock_provider_attempts_total": 32,
+    "real_api_calls_permitted": 0,
+    "run_id": "engineering-20261108-v2",
+    "scenario_names": [
+      "multi_axis_and_worker",
+      "correction_and_deletion",
+      "no_save_pause",
+      "answer_unknown"
+    ],
+    "scenario_protocol_hashes": {
+      "answer_unknown": "05e717db2384971f9cc8d71e8dcc47d09a0ea1b5e4b4809dd2b6d3c08c51c9d7",
+      "correction_and_deletion": "550cffac365d6c4d1e6bb2a1382f64ead9d17129439f2d9c7599a8b78d70f7ab",
+      "multi_axis_and_worker": "550cffac365d6c4d1e6bb2a1382f64ead9d17129439f2d9c7599a8b78d70f7ab",
+      "no_save_pause": "05e717db2384971f9cc8d71e8dcc47d09a0ea1b5e4b4809dd2b6d3c08c51c9d7"
+    },
+    "synthetic_clock": true,
+    "version": "controlled-memory-scripted-v2.0",
+    "worker_batch_limit": 4,
+    "worker_queue_limit": 12
+  },
+  "protocol_hash": "0683ca5f1f3d45907dc479423b108840c8ecb5f28aa3a2a5eb9fa80b886a7338",
+  "scenarios": [
+    {
+      "assertions": [
+        {
+          "assertion": "acceptance_progress_pause_and_unknown_coexist",
+          "observed": {
+            "acceptance": "agreed",
+            "outcome": "unknown",
+            "participation": "paused",
+            "reported_count": 1,
+            "target_count": 2
+          },
+          "passed": true
+        },
+        {
+          "assertion": "task_identity_survives_progress_and_pause",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "actual_bounded_worker_and_manager_saved_source_only_candidates",
+          "observed": {
+            "candidate_count": 3,
+            "worker_outcomes": [
+              {
+                "candidate_count": 1,
+                "job_id": "job-eabac34262204b5d94ef06a5d5e210ff",
+                "semantic_status": "source_only_no_model",
+                "status": "completed"
+              },
+              {
+                "candidate_count": 1,
+                "job_id": "job-98ac4364567547e5abe6000ed3561d16",
+                "semantic_status": "source_only_no_model",
+                "status": "completed"
+              },
+              {
+                "candidate_count": 1,
+                "job_id": "job-26ca39d042424c1e8a7ac0a99752ace9",
+                "semantic_status": "source_only_no_model",
+                "status": "completed"
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "assertion": "canonical_schema_two_candidates_remain_unconfirmed",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "retrieval_follows_current_multi_axis_projection",
+          "observed": {
+            "answer_status": "offline_software_demo",
+            "history_source_count": 6
+          },
+          "passed": true
+        }
+      ],
+      "protocol_hash": "550cffac365d6c4d1e6bb2a1382f64ead9d17129439f2d9c7599a8b78d70f7ab",
+      "scenario": "multi_axis_and_worker"
+    },
+    {
+      "assertions": [
+        {
+          "assertion": "correction_keeps_task_identity_and_replaces_current_target",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "content_deletion_blocks_current_and_clears_payload",
+          "observed": {
+            "replica_cleanup": "not_claimed_external_copies_not_controlled",
+            "status": "blocked"
+          },
+          "passed": true
+        },
+        {
+          "assertion": "deleted_two_does_not_restore_old_three",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "ordinary_source_view_no_longer_contains_deleted_targets",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "reopen_obeys_the_same_persistent_deletion_barrier",
+          "observed": null,
+          "passed": true
+        }
+      ],
+      "protocol_hash": "550cffac365d6c4d1e6bb2a1382f64ead9d17129439f2d9c7599a8b78d70f7ab",
+      "scenario": "correction_and_deletion"
+    },
+    {
+      "assertions": [
+        {
+          "assertion": "no_save_pause_applies_only_to_current_turn",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "private_input_not_retained_in_database_snapshot_or_hash",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "private_input_not_reused_in_next_outbound_or_extraction_background",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "unsaved_current_change_does_not_reactivate_old_current_value",
+          "observed": null,
+          "passed": true
+        }
+      ],
+      "mock_provider_calls": 3,
+      "protocol_hash": "05e717db2384971f9cc8d71e8dcc47d09a0ea1b5e4b4809dd2b6d3c08c51c9d7",
+      "scenario": "no_save_pause"
+    },
+    {
+      "assertions": [
+        {
+          "assertion": "mock_answer_failure_does_not_rollback_source_or_current_control",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "same_input_retry_does_not_repeat_model_source_or_state_update",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "unknown_attempt_and_unknown_usage_are_distinct_from_zero_cost",
+          "observed": {
+            "attempt_status": "attempt_unknown",
+            "usage": null
+          },
+          "passed": true
+        }
+      ],
+      "mock_provider_calls": 1,
+      "protocol_hash": "05e717db2384971f9cc8d71e8dcc47d09a0ea1b5e4b4809dd2b6d3c08c51c9d7",
+      "scenario": "answer_unknown"
+    }
+  ],
+  "status": "passed",
+  "execution": {
+    "executable_git_sha": "4e5a55b987c141880dd4ac4fb67ab498aec2d95f",
+    "environment": "independent_cloud_linux",
+    "python": "3.12.14",
+    "model_network_calls": 0,
+    "colab_guard_bypassed": false
+  }
+}

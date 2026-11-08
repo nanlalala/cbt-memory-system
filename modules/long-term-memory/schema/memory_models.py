@@ -84,6 +84,9 @@ class SourceEvidence:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SourceEvidence":
+        from memory_contract import validate_source_evidence_data
+
+        validate_source_evidence_data(data)
         evidence = cls(
             session_id=str(data.get("session_id", "")).strip(),
             turn_ids=[str(item).strip() for item in data.get("turn_ids", [])],
@@ -122,6 +125,13 @@ class MemoryRecord:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MemoryRecord":
+        # Both JSON and Python ingress execute the same non-coercing contract.
+        # Import lazily because the versioned constructor reuses this v1 class.
+        from memory_contract import construct_memory, validate_memory_data
+
+        if type(data) is dict and data.get("schema_version") == "2.0":
+            return construct_memory(data, allow_legacy=False)
+        validate_memory_data(data, allow_legacy=True)
         required = {
             "schema_version",
             "memory_id",
@@ -174,6 +184,9 @@ class MemoryRecord:
         return record
 
     def validate(self) -> None:
+        from memory_contract import validate_memory_data
+
+        validate_memory_data(self.to_dict(), allow_legacy=True)
         if self.schema_version != "1.0":
             raise ValueError("schema_version must be 1.0")
         if not self.memory_id or not self.user_id:

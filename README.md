@@ -14,6 +14,38 @@ Goals, homework and changing self-reports are the intended use cases. The curren
 implementation provides stronger evidence for reliable memory control than for
 user benefit. Better CBT dialogue and treatment outcomes remain unestablished.
 
+## Controlled memory v2
+
+The new [controlled implementation](docs/cbt-memory-implementation-contract-v2.md)
+adds source-first commits, separate retention/use/transmission permissions,
+append-only multi-axis homework state, persistent bounded work and withdrawal
+barriers. Semantic extraction remains an unconfirmed candidate; a matching quote
+alone does not authorize a current fact. Historical and mutable content retain
+the requested two roots with F1–F4 and V1–V5 subcategories.
+
+Use the separate [controlled Colab notebook](app/Controlled_Memory_V2_Colab.ipynb).
+It requires explicit approved cloud storage and stable user/run IDs, starts with
+model calls disabled, and preserves the older notebooks and experiment identities.
+[Run the fictional engineering replay](app/README.md#controlled-memory-v2)
+for observable state transitions without any model or network call. Its assertions
+are software evidence, not a memory-benefit or CBT-outcome result.
+
+```mermaid
+flowchart TD
+    I["Current input"] --> G["Risk and purpose permissions"]
+    G -->|"Save permitted"| S["Atomic source and bounded job"]
+    G -->|"Current use only"| E["Ephemeral acknowledgement"]
+    S --> P["Sourced task projection"]
+    S --> W["Finite candidate worker"]
+    W --> R["Unconfirmed semantic index"]
+    P --> C["Minimal lawful evidence"]
+    R --> C
+    E --> C
+    C --> A["Send admission and publish recheck"]
+    D["Withdrawal and pause ledger"] --> G
+    D --> A
+```
+
 ## Overall architecture
 
 ```mermaid

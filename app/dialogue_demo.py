@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib
 import hashlib
 import json
+import uuid
 import sys
 from html import escape
 from pathlib import Path
@@ -319,9 +320,29 @@ def _require_colab() -> None:
         importlib.import_module("google.colab")
     except ImportError as exc:
         raise RuntimeError("Open this demonstration in Google Colab; no local server is provided") from exc
+    # Installing the module alone is not sufficient for the controlled entry.
+    # Reuse the actual hosted-runtime guard before opening a file or a provider.
+    app_path = str(ROOT / "app")
+    if app_path not in sys.path:
+        sys.path.insert(0, app_path)
+    importlib.import_module("colab_provider").require_colab()
 
 
-def _new_session() -> Any:
+def _new_session(*, database: str | Path | None = None, approved_root: str | Path | None = None,
+                 user_id: str | None = None, run_id: str | None = None, provider: Any = None,
+                 **configuration: Any) -> Any:
+    """Open the controlled product only with an explicit approved file location.
+
+    The legacy ``DialogueSession`` remains available through an explicitly
+    supplied session for archived software/review contracts. There is no
+    implicit in-memory or temporary-file fallback in this default factory.
+    """
+    if (database is None or approved_root is None or not str(database).strip() or not str(approved_root).strip()
+            or not isinstance(user_id, str) or not user_id.strip()
+            or not isinstance(run_id, str) or not run_id.strip()):
+        raise ValueError("Explicit approved cloud database, approved_root, user_id and run_id are required")
+    if not Path(database).is_absolute() or not Path(approved_root).is_absolute() or str(database) == ":memory:":
+        raise ValueError("The controlled prototype requires an explicit absolute cloud file path and root")
     for relative in (
         "modules/agent-integration", "modules/long-term-memory/schema",
         "modules/long-term-memory/storage", "modules/long-term-memory/lifecycle",
@@ -330,25 +351,271 @@ def _new_session() -> Any:
         path = str(ROOT / relative)
         if path not in sys.path:
             sys.path.insert(0, path)
-    return importlib.import_module("dialogue_service").DialogueSession(memory_mode="conversational")
+    controlled = importlib.import_module("controlled_dialogue").ControlledDialogueSession
+    return controlled.open(database, approved_root=approved_root, user_id=user_id, run_id=run_id,
+                           provider=provider, **configuration)
 
 
-def launch_notebook_demo(session: Any = None) -> Any:
+def render_operation_receipts(reply: dict[str, Any] | None, *, organizing_result: Any = None) -> str:
+    """Render independent outcomes; unknown or failed work is never success."""
+    if not isinstance(reply, dict):
+        return "<p>尚无本轮操作回执。</p>"
+    source = reply.get("source_commit")
+    source = source if isinstance(source, dict) else {}
+    source_status = source.get("source_status", "unknown")
+    answer_status = reply.get("answer_status", "unknown")
+    organizing_status = source.get("processing_status", reply.get("organizing_status", "unknown"))
+    if source.get("job_id") and isinstance(organizing_result, (list, tuple)):
+        matching = [item for item in organizing_result if isinstance(item, dict) and item.get("job_id") == source["job_id"]]
+        if matching:
+            organizing_status = matching[-1].get("status", "unknown")
+    source_labels = {
+        "committed": "来源已提交", "not_saved": "本轮来源未保存",
+        "failed": "来源提交失败", "unknown": "来源提交结果未知",
+    }
+    answer_labels = {
+        "succeeded": "回答已完成", "succeeded_cached": "使用已记录回答",
+        "offline_software_demo": "离线流程演示，未调用模型",
+        "budget_not_sent": "预算不足，未外发", "attempt_unknown": "外发结果未知，不自动重投",
+        "failed_or_unknown": "回答失败或结果未知", "stale_discarded": "来源已失效，旧回答已丢弃",
+        "stale_not_sent": "来源或许可变化，未外发", "local_control": "本地控制已处理",
+        "local_preference_control": "已处理本轮范围偏好，未外发",
+        "external_response_not_permitted": "回答用途未获准，未外发",
+        "local_safety": "本地安全分流，未外发", "not_repeated": "重复输入未重投",
+    }
+    organizing_labels = {
+        "queued": "已排队，尚未取得完成回执", "claimed": "整理中，尚未取得完成回执",
+        "sending": "整理请求已接管，等待结果", "completed": "整理批次完成，候选仍未确认",
+        "failed": "整理失败，未代表回答失败", "attempt_unknown": "整理外发结果未知，不自动重投",
+        "not_queued": "未排队", "not_queued_permission": "用途许可未允许整理，未排队",
+        "unprocessed_queue_limit": "队列上限，来源保留但尚未整理",
+        "unprocessed": "尚未整理", "stale": "来源已失效，整理产物不再使用",
+        "safety_paused": "安全暂停，未运行普通整理",
+    }
+    rows = [
+        ("来源提交", source_labels.get(source_status, "来源结果未识别")),
+        ("回答", answer_labels.get(answer_status, "回答结果未知")),
+        ("记忆整理", organizing_labels.get(organizing_status, "整理结果未知")),
+    ]
+    if organizing_result is not None:
+        results = organizing_result if isinstance(organizing_result, (list, tuple)) else []
+        statuses = [item.get("status", "unknown") for item in results if isinstance(item, dict)]
+        summary = ("；".join(organizing_labels.get(status, "结果未知") for status in statuses)
+                   if statuses else "本次没有可运行的队列任务")
+        rows.append(("有限整理回执", summary))
+    usage = reply.get("usage")
+    usage_text = "未知，未填为0"
+    if isinstance(usage, dict):
+        counters = {key: usage[key] for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                    if type(usage.get(key)) is int and usage[key] >= 0}
+        if counters:
+            usage_text = "，".join(f"{key}={value}" for key, value in counters.items()) + "；未报告项仍未知"
+    rows.append(("实际token用量", usage_text))
+    if source.get("source_id"):
+        rows.append(("来源编号", source["source_id"]))
+    return "<h4>本轮实际回执</h4>" + "".join(f"<p><strong>{_text(label)}：</strong>{_text(value)}</p>" for label, value in rows)
+
+
+def render_task_states_html(states: Any) -> str:
+    """Keep acceptance, progress, participation, outcome and due review apart."""
+    if not isinstance(states, list) or not states:
+        return "<p>暂无可用的来源化任务状态。</p>"
+    cards = []
+    for state in states:
+        if not isinstance(state, dict):
+            continue
+        progress = state.get("progress")
+        progress = progress if isinstance(progress, dict) else {}
+        def value(item):
+            return "未知" if item is None or item == "unknown" else _text(item)
+        rows = [("接受", state.get("acceptance")), ("参与", state.get("participation")),
+                ("已报告次数", progress.get("reported_count")), ("目标次数", progress.get("target_count")),
+                ("最终反馈", state.get("outcome")), ("待复盘", state.get("due_review"))]
+        text = f"<strong>任务 {_text(state.get('task_instance_id', '未知'))}</strong>"
+        text += f"<small> 周期：{_text(state.get('period_id', '未知'))}；版本：{_text(state.get('state_version', '未知'))}</small>"
+        if state.get("task_instance_id") and state.get("period_id"):
+            text += _paragraph(f"内容对象编号：task:{state['task_instance_id']}:{state['period_id']}")
+        text += "".join(f"<p>{_text(label)}：{value(item)}</p>" for label, item in rows)
+        if state.get("blocked") is True:
+            text += "<p><strong>该对象已阻断，不回退旧版本。</strong></p>"
+        cards.append('<div style="padding:8px;border:1px solid #e2e8f0;margin:8px 0">' + text + '</div>')
+    return "".join(cards)
+
+
+def _launch_controlled_demo(session: Any, widgets: Any, display: Any) -> Any:
+    """Minimal controlled UI; transient private text lives only in its widget."""
+    snapshot = session.snapshot()
+    validate_snapshot(snapshot)
+    title = widgets.HTML("<h3>CBT Memory System · 受控记忆原型</h3>")
+    location = widgets.HTML("<p>使用显式配置的云端文件型SQLite与控制账本；跨运行时保留取决于获准保存位置。"
+                            "模型开启且获准外发时，每次发送可能触发回答与有限后台整理，均计入冻结上限。"
+                            "仅用于虚构资料的工程验证，尚未证明对话收益或临床效果。</p>")
+    acknowledge = widgets.Checkbox(value=False, description="我只输入虚构演示资料", indent=False)
+    mode = widgets.HTML()
+    chat = widgets.HTML()
+    transient = widgets.HTML()
+    receipts = widgets.HTML("<p>发送后将分别显示来源、回答与整理回执。</p>")
+    tasks = widgets.HTML()
+    inventory = widgets.HTML()
+    status = widgets.HTML("<p>请先勾选虚构资料声明。</p>")
+    message = widgets.Textarea(value="", placeholder="例如：我愿意本周做两次想法记录。", description="消息",
+                               layout=widgets.Layout(width="100%", height="90px"))
+    send = widgets.Button(description="发送消息", button_style="primary", disabled=True)
+    organize = widgets.Button(description="查看并运行有限整理", disabled=True)
+    refresh_button = widgets.Button(description="刷新状态", disabled=True)
+    next_session = widgets.Button(description="开始下一次会话", disabled=True)
+    defaults = getattr(session, "default_permissions", {})
+    permission_widgets = {key: widgets.Checkbox(value=defaults.get(key) is True, description=label, indent=False)
+                          for key, label in (("save", "保存本轮来源"), ("long_term_use", "允许长期使用"),
+                                             ("response_external", "允许回答外发"), ("extraction_external", "允许整理外发"))}
+    purposes = widgets.Accordion(children=[widgets.VBox(list(permission_widgets.values()))])
+    purposes.set_title(0, "本轮用途设置 · 保存和外发分别控制")
+    purposes.selected_index = None
+    scope = widgets.Textarea(value="source", description="撤回范围", layout=widgets.Layout(height="35px"))
+    target = widgets.Textarea(value="", description="对象编号", layout=widgets.Layout(height="35px"))
+    start = widgets.Textarea(value="", description="跨度起点", layout=widgets.Layout(height="35px"))
+    end = widgets.Textarea(value="", description="跨度终点", layout=widgets.Layout(height="35px"))
+    withdraw = widgets.Button(description="执行本地撤回", button_style="danger", disabled=True)
+    management = widgets.Accordion(children=[widgets.VBox([
+        widgets.HTML("<p>范围可选source、span、object、representation、stop_use。source/span删除所指来源内容；"
+                     "object阻断内容对象及旧版本；representation只删除表示，不等于忘掉内容；stop_use停止使用所指来源。"
+                     "跨度为零起点、终点不含，只有span填写。请先核对范围与编号，再点击执行。</p>"),
+        inventory, scope, target, start, end, withdraw,
+    ])])
+    management.set_title(0, "查看分类与本地撤回 · 可选")
+    management.selected_index = None
+    state = {"busy": False, "safety_paused": False, "pending_input": None}
+
+    def enabled():
+        allowed = bool(acknowledge.value) and not state["busy"]
+        for button in (send, organize, refresh_button, next_session, withdraw):
+            button.disabled = not allowed
+        send.disabled = not allowed or state["safety_paused"]
+        organize.disabled = not allowed or state["safety_paused"]
+        message.disabled = not allowed or state["safety_paused"]
+        for field in permission_widgets.values():
+            field.disabled = not allowed or state["safety_paused"]
+        acknowledge.disabled = state["busy"]
+
+    def clear_transient():
+        transient.value = ""
+
+    def refresh():
+        data = session.snapshot()
+        validate_snapshot(data)
+        state["safety_paused"] = data.get("safety_paused") is True
+        mode.value = _paragraph("本地安全暂停；普通回答与整理已停止，本地撤回仍可执行。" if state["safety_paused"] else
+                                "受控原型；已提交来源、回答结果与整理结果分别记录。")
+        chat.value = render_chat_html(data)
+        tasks.value = render_task_states_html(data.get("task_states"))
+        cards = []
+        for record in data["records"]:
+            category = record.get("category") or "待分类"
+            label = {"fixed_historical": "固定经历", "mutable_state": "可变状态"}.get(record.get("memory_class"), "待分类")
+            cards.append(f"<p><strong>{_text(label)} / {_text(category)}</strong></p>" + render_record_html(record, conversational=True))
+        inventory.value = "".join(cards) or "<p>暂无已整理记录。来源提交不等于语义整理已完成。</p>"
+        enabled()
+
+    def perform(action):
+        if not acknowledge.value or state["busy"]:
+            return
+        clear_transient()
+        state["busy"] = True; enabled()
+        try:
+            action()
+        except Exception as exc:
+            status.value = _paragraph(f"操作未完成（{type(exc).__name__}）。请查看独立回执；不能据此推断已保存或已回答。")
+        finally:
+            state["busy"] = False
+            refresh()
+
+    def send_clicked(_):
+        if not message.value.strip():
+            status.value = "<p>请先输入虚构消息。</p>"
+            return
+        text = message.value
+        def action():
+            permissions = {key: field.value is True for key, field in permission_widgets.items()}
+            signature = hashlib.sha256(json.dumps([text, permissions], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+            pending = state['pending_input']
+            if pending is None or pending['signature'] != signature:
+                pending = {'input_id': 'ui-input-' + uuid.uuid4().hex, 'signature': signature}
+                state['pending_input'] = pending
+            reply = session.send_message(text, input_id=pending['input_id'], permissions=permissions)
+            if not isinstance(reply, dict):
+                receipts.value = render_operation_receipts(None)
+                status.value = "<p>未收到可核对回执，不报告成功。</p>"
+                return
+            state['pending_input'] = None
+            receipts.value = render_operation_receipts(reply)
+            source = reply.get("source_commit") or {}
+            if reply.get("response_retained") is False or source.get("source_status") != "committed":
+                # This is presentation only. Never copy reply/text into a UI
+                # history, SessionState, a subsequent request, or notebook cell.
+                transient.value = ("<h4>仅本轮显示 下次操作清除</h4>" + _paragraph(text)
+                                   + _paragraph(reply.get("text", "")))
+            message.value = ""
+            status.value = "<p>已取得本轮回执。来源、回答与整理请分别查看。</p>"
+        perform(action)
+
+    def organize_clicked(_):
+        def action():
+            result = session.run_pending()
+            receipts.value = render_operation_receipts(session.snapshot().get("last_reply"), organizing_result=result)
+            status.value = "<p>有限整理已返回回执；失败、未知或未整理项不会标为成功。</p>"
+        perform(action)
+
+    def withdraw_clicked(_):
+        def action():
+            chosen = scope.value.strip()
+            if chosen not in {"source", "span", "object", "representation", "stop_use"} or not target.value.strip():
+                raise ValueError("explicit withdrawal scope and target are required")
+            args = {"start": int(start.value), "end": int(end.value)} if chosen == "span" else {}
+            result = session.delete_content(chosen, target.value.strip(), **args)
+            if not isinstance(result, dict) or result.get("logical_blocked") is not True:
+                status.value = "<p>未取得逻辑阻断回执，不报告删除成功。</p>"
+                return
+            status.value = _paragraph(f"本地控制回执：{result.get('control_status', '未知')}；"
+                                     f"范围：{result.get('scope', chosen)}；逻辑阻断已提交。"
+                                     "副本清理仅按实际回执，不宣称删除外部服务副本。")
+            target.value = ""; start.value = ""; end.value = ""
+        perform(action)
+
+    send.on_click(send_clicked)
+    organize.on_click(organize_clicked)
+    withdraw.on_click(withdraw_clicked)
+    refresh_button.on_click(lambda _: perform(lambda: None))
+    next_session.on_click(lambda _: perform(session.new_session))
+    acknowledge.observe(lambda _: enabled(), names="value")
+    root = widgets.VBox([title, location, acknowledge, mode, chat, transient, message, purposes,
+                         widgets.HBox([send, next_session, refresh_button, organize]), status, receipts,
+                         widgets.HTML("<h4>来源支持的任务多轴状态</h4>"), tasks, management],
+                        layout=widgets.Layout(width="100%", max_width="960px"))
+    refresh(); display(root)
+    return root
+
+
+def launch_notebook_demo(session: Any = None, *, database: str | Path | None = None,
+                         approved_root: str | Path | None = None, user_id: str | None = None,
+                         run_id: str | None = None, provider: Any = None, **configuration: Any) -> Any:
     """Display Colab-only controls and return their root widget.
 
-    A caller may pass a Colab-configured ``DialogueSession(provider=...)``.  No
-    provider is created or invoked while rendering the UI.  Every model call
-    requires a separate send/extract click after the fictional-data checkbox.
-    The product default stores source-bound observations automatically. Saving
-    does not call confirmation. Review mode remains available for controlled
-    comparisons and advanced item management.
+    Without an injected session, the controlled product requires an explicit
+    approved database/root/user/run. Model calls remain controlled by the
+    separately configured provider and per-input purpose permissions; a send
+    can also schedule one finite organization batch. Legacy injected sessions
+    and UI stubs retain their prior review view. Merely rendering calls no model.
     """
     _require_colab()
     widgets = importlib.import_module("ipywidgets")
     display = importlib.import_module("IPython.display").display
-    session = _new_session() if session is None else session
-    validate_snapshot(session.snapshot())
-    initial_view = build_view(session.snapshot())
+    session = (_new_session(database=database, approved_root=approved_root, user_id=user_id,
+                            run_id=run_id, provider=provider, **configuration) if session is None else session)
+    initial_snapshot = session.snapshot()
+    validate_snapshot(initial_snapshot)
+    if str(initial_snapshot.get("prototype_version", "")).startswith("controlled-memory-v2"):
+        return _launch_controlled_demo(session, widgets, display)
+    initial_view = build_view(initial_snapshot)
     conversational = initial_view["memory_mode"] == "conversational"
 
     title = widgets.HTML("<h3>CBT Memory System · 记忆对话演示</h3>")
