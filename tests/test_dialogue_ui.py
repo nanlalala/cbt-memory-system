@@ -146,16 +146,22 @@ class NotebookDialogueUITests(unittest.TestCase):
         with patch.object(ui, "_require_colab"), patch.object(ui.importlib, "import_module", side_effect=lambda name: modules[name]):
             return ui.launch_notebook_demo(session)
 
-    def test_product_session_defaults_to_conversational_without_changing_legacy_api(self) -> None:
+    def test_product_session_requires_explicit_approved_file_without_memory_fallback(self) -> None:
         created = []
 
-        def create(**kwargs):
-            created.append(kwargs)
+        def create(database, **kwargs):
+            created.append((database, kwargs))
             return "fake-session"
 
-        with patch.object(ui.importlib, "import_module", return_value=SimpleNamespace(DialogueSession=create)):
-            self.assertEqual(ui._new_session(), "fake-session")
-        self.assertEqual(created, [{"memory_mode": "conversational"}])
+        with self.assertRaisesRegex(ValueError, "Explicit approved cloud"):
+            ui._new_session()
+        with patch.object(ui.importlib, "import_module", return_value=SimpleNamespace(
+                ControlledDialogueSession=SimpleNamespace(open=create))):
+            self.assertEqual(ui._new_session(database="/content/approved/demo.sqlite",
+                                            approved_root="/content/approved", user_id="fictional", run_id="run-v2"),
+                             "fake-session")
+        self.assertEqual(created, [("/content/approved/demo.sqlite", {
+            "approved_root": "/content/approved", "user_id": "fictional", "run_id": "run-v2", "provider": None})])
 
     def test_capped_notebook_provider_uses_conversational_mode_without_enabling_paid_calls(self) -> None:
         spec = importlib.util.spec_from_file_location("conversational_notebook_builder", ROOT / "tools/build_structured_notebook.py")

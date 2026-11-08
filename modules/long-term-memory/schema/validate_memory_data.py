@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 from typing import Any
 
-from memory_models import MemoryRecord, MemoryType
+from memory_models import MemoryType
+from memory_contract import construct_memory, decode_json_document
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,18 +16,18 @@ DEFAULT_TEST_SET = ROOT.parents[1] / "evaluation" / "memory-retrieval" / "memory
 
 
 def load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
+    return decode_json_document(path.read_text(encoding="utf-8"))
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [decode_json_document(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def validate_examples(path: Path) -> int:
     records = load_json(path)
     if not isinstance(records, list) or not records:
         raise ValueError("example file must contain a non-empty JSON array")
-    parsed = [MemoryRecord.from_dict(item) for item in records]
+    parsed = [construct_memory(item) for item in records]
     ids = [item.memory_id for item in parsed]
     if len(ids) != len(set(ids)):
         raise ValueError("example memory_id values must be unique")

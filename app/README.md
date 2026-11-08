@@ -1,6 +1,45 @@
 # Memory demonstrations
 
-## Dialogue and memory controls in Colab
+## Controlled memory v2
+
+Open [Controlled Memory v2 Colab](Controlled_Memory_V2_Colab.ipynb) in an actual
+hosted Google Colab runtime. Model calls start disabled. Configure the approved
+absolute cloud directory, SQLite file, stable user ID and new run ID explicitly;
+there is no in-memory fallback. Four per-input purposes distinguish saving,
+long-term use, answer transmission and organization transmission. Enabling a
+provider does not itself grant either transmission permission.
+
+The new UI separately displays source-commit, answer and organization receipts,
+plus acceptance, progress, participation, outcome and due-review. A no-save
+message is displayed only for the current operation and cleared from the private
+widget at the next operation; it is not copied into session state or extraction
+background. Normal processing stays paused across connections after the bounded
+demonstration risk rule triggers; explicit local withdrawal remains available.
+This rule is not a production clinical risk assessment.
+
+For a finite engineering replay in your own approved cloud environment, create
+an approved cloud directory, then provide a fresh file and explicit run ID:
+
+```bash
+python app/controlled_memory_demo.py --scripted \
+  --database /YOUR/APPROVED/CLOUD/ROOT/fresh.sqlite \
+  --approved-root /YOUR/APPROVED/CLOUD/ROOT \
+  --run-id YOUR_NEW_RUN_ID
+```
+
+This uses fictional fixtures, the real store/manager/projector/retrieval path,
+and explicitly marked local response mocks. Real API calls are zero. An old run
+is refused rather than overwritten. Read the resulting assertions and frozen
+protocol identities as software verification only. Approved storage must retain
+the newest control anchor independently of old DB backups; the runtime's process
+lifetime alone does not provide cross-runtime persistence.
+
+See the [implementation contract](../docs/cbt-memory-implementation-contract-v2.md)
+for limits, recovery, deletion scope and prospective fair evaluation. New v2
+model comparisons, professional reviews and participant outcomes have not run.
+
+## Retained legacy dialogue and memory controls
+
 
 Open [Structured Memory Colab](Structured_Memory_Colab.ipynb) in Colab. The
 notebook runs the dialogue demonstration with automatic historical observations
@@ -103,7 +142,9 @@ The notebook imports the UI from the checkout:
 import sys
 sys.path.insert(0, "/content/cbt-memory-system/app")
 from dialogue_demo import launch_notebook_demo
-demo = launch_notebook_demo()
+# New default: explicit approved cloud storage, configured in previous cells.
+demo = launch_notebook_demo(database=DATABASE_FILE, approved_root=APPROVED_STORAGE_ROOT,
+                            user_id=USER_ID, run_id=RUN_ID)
 ```
 
 `launch_notebook_demo(session=...)` also accepts a `DialogueSession` with a

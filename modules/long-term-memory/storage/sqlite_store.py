@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -11,11 +12,26 @@ from typing import Any, Iterator
 from memory_models import MemoryRecord
 
 
+class MemoryStorageConflict(ValueError):
+    """An orchestration version or storage control boundary was violated."""
+
+
+class StorageMaintenanceError(MemoryStorageConflict):
+    """Writes are disabled while a coordinator verifies the control ledger."""
+
+
+class StorageControlFailure(StorageMaintenanceError):
+    """The independent control anchor could not be made durable."""
+
+
 class SQLiteMemoryStore:
     """Small reference store with strict user filtering on every read."""
 
     def __init__(self, database: str | Path = ":memory:") -> None:
         self.database = str(database)
+        self._control_fault = False
+        self._before_commit = None
+        self._before_read = None
         self.connection = sqlite3.connect(self.database, timeout=10.0)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
@@ -26,7 +42,8 @@ class SQLiteMemoryStore:
         self.connection.close()
 
     @contextmanager
-    def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
+    def transaction(self, *, immediate: bool = False,
+                    _maintenance: bool = False) -> Iterator[sqlite3.Connection]:
         """Open a transaction, nesting safely inside an existing manager operation.
 
         ``immediate=True`` acquires SQLite's write reservation before predicate
@@ -34,21 +51,104 @@ class SQLiteMemoryStore:
         empty.
         """
 
+        if not _maintenance:
+            self._require_writable()
         if self.connection.in_transaction:
             yield self.connection
             return
         try:
             self.connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
+            if not _maintenance:
+                # Recheck after lock admission; a coordinator may have entered
+                # maintenance between the precheck and BEGIN.
+                self._require_writable()
+            changes_before = self.connection.total_changes
             yield self.connection
+            if self._control_fault:
+                raise StorageControlFailure("control-anchor failure requires maintenance")
+            if self._before_commit is not None and self.connection.total_changes != changes_before:
+                self._before_commit()
             self.connection.commit()
-        except Exception:
+        except BaseException as exc:
             self.connection.rollback()
+            if isinstance(exc, StorageControlFailure):
+                # This is a failure fence, not a successful deletion receipt.
+                # Persist it after rolling back the failed control transaction.
+                self.connection.execute("BEGIN IMMEDIATE")
+                self.connection.execute("UPDATE dm_meta SET value=1 WHERE key='maintenance'")
+                self.connection.commit()
+            raise
+
+    def _require_writable(self) -> None:
+        if self._control_fault:
+            raise StorageControlFailure("control-anchor failure requires maintenance")
+        exists = self.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dm_meta'"
+        ).fetchone()
+        if exists:
+            row = self.connection.execute(
+                "SELECT value FROM dm_meta WHERE key='maintenance'"
+            ).fetchone()
+            if row and row[0]:
+                raise StorageMaintenanceError("maintenance window blocks all memory writes")
+        registered = self.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dm_storage_identity'"
+        ).fetchone()
+        if registered and self.connection.execute(
+            "SELECT 1 FROM dm_storage_identity WHERE singleton=1"
+        ).fetchone() and self._before_commit is None:
+            raise MemoryStorageConflict(
+                "registered v2 storage requires its verified durable commit hook before writing"
+            )
+
+    def _require_readable(self) -> None:
+        registered = self.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dm_storage_identity'"
+        ).fetchone()
+        if registered and self.connection.execute(
+            "SELECT 1 FROM dm_storage_identity WHERE singleton=1"
+        ).fetchone():
+            if self._before_read is None:
+                raise MemoryStorageConflict(
+                    "registered v2 storage requires current durable control verification before reading"
+                )
+            self._before_read()
+
+    @contextmanager
+    def savepoint(self) -> Iterator[sqlite3.Connection]:
+        """Roll back one explicitly independent group, including when nested.
+
+        ``transaction`` deliberately shares its parent's atomic unit. Callers
+        retaining independent successful groups must opt into this boundary.
+        Names are generated internally rather than interpolated from input.
+        """
+        if not self.connection.in_transaction:
+            with self.transaction(immediate=True):
+                with self.savepoint() as connection:
+                    yield connection
+            return
+        self._require_writable()
+        name = "memory_" + uuid.uuid4().hex
+        self.connection.execute(f"SAVEPOINT {name}")
+        try:
+            self._require_writable()
+            yield self.connection
+            self.connection.execute(f"RELEASE SAVEPOINT {name}")
+        except BaseException:
+            self.connection.execute(f"ROLLBACK TO SAVEPOINT {name}")
+            self.connection.execute(f"RELEASE SAVEPOINT {name}")
             raise
 
     def _create_schema(self) -> None:
+        existing = {row[0] for row in self.connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('memories','audit_events')"
+        )}
+        if existing == {"memories", "audit_events"}:
+            # Reopening an existing store is read-only initialization, including
+            # while maintenance blocks old manager connections.
+            return
         with self.transaction() as connection:
-            connection.executescript(
-                """
+            schema = """
                 CREATE TABLE IF NOT EXISTS memories (
                     memory_id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -75,7 +175,9 @@ class SQLiteMemoryStore:
                 CREATE INDEX IF NOT EXISTS idx_audit_user_memory
                     ON audit_events(user_id, memory_id, event_id);
                 """
-            )
+            for statement in schema.split(";"):
+                if statement.strip():
+                    connection.execute(statement)
 
     def put(self, record: MemoryRecord) -> None:
         self.atomic_write(records=[record])
@@ -114,6 +216,7 @@ class SQLiteMemoryStore:
         )
 
     def get(self, user_id: str, memory_id: str) -> MemoryRecord | None:
+        self._require_readable()
         row = self.connection.execute(
             "SELECT record_json FROM memories WHERE user_id = ? AND memory_id = ?",
             (user_id, memory_id),
@@ -127,6 +230,7 @@ class SQLiteMemoryStore:
         lifecycle_statuses: set[str] | None = None,
         memory_types: set[str] | None = None,
     ) -> list[MemoryRecord]:
+        self._require_readable()
         rows = self.connection.execute(
             "SELECT record_json FROM memories WHERE user_id = ? ORDER BY updated_at, memory_id",
             (user_id,),
@@ -139,6 +243,7 @@ class SQLiteMemoryStore:
         return records
 
     def list_user_ids(self) -> list[str]:
+        self._require_readable()
         rows = self.connection.execute(
             "SELECT DISTINCT user_id FROM memories ORDER BY user_id"
         ).fetchall()
@@ -213,6 +318,7 @@ class SQLiteMemoryStore:
         return deleted_count
 
     def audit_for_user(self, user_id: str) -> list[dict]:
+        self._require_readable()
         rows = self.connection.execute(
             "SELECT * FROM audit_events WHERE user_id = ? ORDER BY event_id", (user_id,)
         ).fetchall()
