@@ -61,3 +61,40 @@ tests ran in cloud Linux: 963 passed and one optional reference-validator check
 was skipped in the default environment; that check passes in the separate
 reference environment. These remain engineering checks, with zero real model/API
 calls and no efficacy conclusion.
+
+## Adversarial review repair, 9 November 2026
+
+The previous 17-stage records above are retained. Review of `c757b0d` identified
+15 code/API defects and one acceptance blind spot; the bounded repair is recorded
+[finding by finding](../../docs/review-c757-remediation-20261109.md).
+The revised executable is `2d48a7917e17aa8e02fa13f419ebe35961e11d0f`.
+The Colab entry pins that executable; the later entry/documentation commit changes
+no runtime Python files or frozen model experiment.
+
+The [fresh clean published-code replay](engineering-replay-review-20261109.json)
+ran **five scenarios / 22 assertions / six local mock-provider calls / zero real
+API/model calls**. The additional historical-source scenario checks relevant
+and irrelevant retrieval, top-k, zero hits and exact final outbound
+body/value/source/offset/role/time. Zero-retrieval, ignore-query, ignore-top-k and
+unchanged-ID/body-corruption mutation tests now fail their corresponding checks.
+These are software assertions on fictional material, not independent users or
+clinical endpoints.
+
+The isolated-cloud full suite passed **1,046/1,046** tests with the optional
+reference JSON Schema validator enabled, zero skips, in 51.100 seconds. Compile,
+old scripted demo and both pinned historical verifiers passed. An initial
+1,042-test run found a genuine concurrent checkpoint-read race; it was fixed
+without loosening ledger equality, then tested with deterministic interrupted
+commit windows. Reads do not advance storage revision or rewrite checkpoints.
+The [validation record](../../docs/review-c757-validation-20261109.json) retains
+hashes of the initial failure and final logs. GitHub CI may skip the optional
+reference-validator test in its default dependency environment; that status must
+be reported separately rather than silently added to the pass count.
+
+The repair also invalidates old cached answer bodies with unknown object
+version dependencies during authenticated migration, preserving receipts,
+attempt counts and usage. `dependency_unknown` is not permission to resend an
+old possibly charged call; a late result may record usage but cannot publish a
+body. Use a new run identity after code/protocol changes and retain the latest
+independent control ledger. Actual hosted-Colab UI, real-model efficacy,
+professional CBT review and participant/clinical outcomes remain unverified.
