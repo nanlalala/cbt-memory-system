@@ -10,6 +10,7 @@ from collections import Counter
 from copy import deepcopy
 from dataclasses import dataclass
 import hashlib
+import io
 import json
 import math
 from pathlib import Path
@@ -87,12 +88,25 @@ class KnowledgeSelection:
         return self.status == "retrieved" and bool(self.items)
 
 
+@dataclass(frozen=True, slots=True)
+class _SourceSnapshot:
+    """One immutable version used both for source identity and page parsing."""
+    source_id: str
+    path: Path
+    data: bytes
+    sha256: str
+
+
 class KnowledgeAdapter:
     """Use a prebuilt Retriever without relaxing its existing source checks.
 
     ``fixture_only`` is solely for project-authored, fixture-scoped corpora. It
     never turns the seven disabled old sources on, nor establishes real K1.
-    Source files are checked on every retrieval before any excerpt is returned.
+    Source bytes and corpus chunks are snapshotted before ranking. Source paths
+    are rechecked after ranking and packet construction; the packet is built
+    from the original version, not from a later path read. This is an immutable
+    read snapshot, not a filesystem-wide lock or a promise that external writers
+    cannot update a path after the completed retrieval.
     """
 
     def __init__(self, retriever: Any = None, *, registry: SourceRegistry | None = None,
@@ -147,7 +161,7 @@ class KnowledgeAdapter:
             raise SourcePolicyError("source file must remain under the selected corpus root")
         return path
 
-    def _validate_corpus(self) -> tuple[list[dict], str, dict[str, int]]:
+    def _validate_corpus(self) -> tuple[list[dict], str, dict[str, int], tuple[_SourceSnapshot, ...]]:
         retriever = self.retriever
         if retriever is None:
             raise SourcePolicyError("no reviewed corpus retriever is configured")
@@ -166,11 +180,17 @@ class KnowledgeAdapter:
         corpus = manifest["corpus_fingerprint"]
         if getattr(retriever, "corpus_fingerprint", None) != corpus:
             raise SourcePolicyError("retriever corpus identity differs from manifest")
-        counts = {}
+        counts, snapshots = {}, []
         for source_id in sorted({chunk["source_id"] for chunk in chunks}):
             source = config.require_selected(source_id, self.registry)
             path = self._source_path(source)
-            self.registry.verify_source_file(source_id, path)
+            # Read once. Hashing one path read and parsing a second path read
+            # would let a concurrent replacement change the actual PDF version.
+            data = path.read_bytes()
+            digest = hashlib.sha256(data).hexdigest()
+            if digest != source['content_sha256']:
+                raise SourcePolicyError('source file differs from pinned bytes')
+            snapshots.append(_SourceSnapshot(source_id, path, data, digest))
             fixture_source = source["role"] == "test_only" or source["coverage"] == "fixture_only"
             if fixture_source and not self.fixture_only:
                 raise SourcePolicyError("test fixtures require an explicit nonempirical channel")
@@ -183,11 +203,10 @@ class KnowledgeAdapter:
                 counts[source_id] = source["page_count"]
             else:
                 from pypdf import PdfReader
-                with path.open("rb") as stream:
-                    if not stream.read(8).startswith(b"%PDF-"):
-                        raise SourcePolicyError("pinned knowledge source is not a PDF")
+                if not data[:8].startswith(b"%PDF-"):
+                    raise SourcePolicyError("pinned knowledge source is not a PDF")
                 try:
-                    count = len(PdfReader(str(path)).pages)
+                    count = len(PdfReader(io.BytesIO(data)).pages)
                 except Exception as exc:
                     raise SourcePolicyError("pinned PDF structure could not be verified") from exc
                 if count < 1 or (source.get("page_count") is not None and source["page_count"] != count):
@@ -200,7 +219,17 @@ class KnowledgeAdapter:
             match = _PAGE_CITATION.search(chunk["citation"]) or _ZH_PAGE_CITATION.search(chunk["citation"])
             if match is None or (int(match[1]), int(match[2] or match[1])) != (chunk["page_start"], chunk["page_end"]):
                 raise SourcePolicyError("citation page range disagrees with chunk metadata")
-        return deepcopy(chunks), corpus, counts
+        return deepcopy(chunks), corpus, counts, tuple(snapshots)
+
+    def _verify_source_snapshots(self, snapshots: tuple[_SourceSnapshot, ...]) -> None:
+        """Check live source admission without replacing the frozen read data."""
+        for snapshot in snapshots:
+            source = self.registry.require_enabled(snapshot.source_id)
+            path = self._source_path(source)
+            if path != snapshot.path or source['content_sha256'] != snapshot.sha256:
+                raise SourcePolicyError('source version changed during retrieval')
+            if hashlib.sha256(path.read_bytes()).hexdigest() != snapshot.sha256:
+                raise SourcePolicyError('source bytes changed during retrieval')
 
     def retrieve(self, query: str, *, task_kind: str = "general", external: bool = True) -> KnowledgeSelection:
         if type(external) is not bool:
@@ -213,7 +242,7 @@ class KnowledgeAdapter:
         if not any(source["retrieval_enabled"] for source in self.registry.sources):
             return self._selection("unavailable", "no_approved_pinned_sources")
         try:
-            chunks, corpus, _ = self._validate_corpus()
+            chunks, corpus, _, snapshots = self._validate_corpus()
             indices, latency = self.retriever.rank(routed_query, self.retrieval_mode,
                                                    k=max(10, self.top_k * 4))
             if type(indices) is not list or any(type(index) is not int or not 0 <= index < len(chunks) for index in indices):
@@ -225,6 +254,7 @@ class KnowledgeAdapter:
             self.retriever.validate_corpus()
             if self.retriever.chunks != chunks:
                 raise SourcePolicyError("corpus changed while retrieval was running")
+            self._verify_source_snapshots(snapshots)
             items = []
             for index in indices:
                 chunk = chunks[index]
@@ -244,6 +274,10 @@ class KnowledgeAdapter:
                               "evidence_status": "fixture_not_real_k1" if self.fixture_only else card["evidence_kind"]})
                 if len(items) == self.top_k:
                     break
+            # Evidence cards use only the copied, hash-bound chunks. Recheck
+            # live paths once the complete packet is ready, so callbacks or
+            # updates during card construction cannot escape the same request.
+            self._verify_source_snapshots(snapshots)
             if not items:
                 return self._selection("no_hit", "no_chunk_passed_relevance_gate", latency_ms=float(latency), corpus=corpus)
             return self._selection("retrieved", "reviewed_relevant_chunks", items=items,

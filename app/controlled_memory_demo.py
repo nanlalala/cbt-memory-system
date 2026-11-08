@@ -30,14 +30,15 @@ from dialogue_service import ModelOutput  # noqa: E402
 from durable_memory import DurableLimits  # noqa: E402
 
 
-DEMO_VERSION = "controlled-memory-scripted-v2.0"
+DEMO_VERSION = "controlled-memory-scripted-v2.1"
 STAMPS = (
     "2026-11-03T09:00:00Z", "2026-11-04T09:00:00Z",
     "2026-11-05T09:00:00Z", "2026-11-06T09:00:00Z",
     "2026-11-06T10:00:00Z",
 )
-SCENARIO_NAMES = ("multi_axis_and_worker", "correction_and_deletion", "no_save_pause", "answer_unknown")
-MAX_INPUTS_BY_SCENARIO = dict(zip(SCENARIO_NAMES, (4, 4, 3, 2)))
+SCENARIO_NAMES = ("multi_axis_and_worker", "correction_and_deletion", "no_save_pause", "answer_unknown",
+                  "history_source_integrity")
+MAX_INPUTS_BY_SCENARIO = dict(zip(SCENARIO_NAMES, (4, 4, 3, 2, 2)))
 
 
 def _hash(value):
@@ -72,8 +73,36 @@ class LocalMockProvider:
         return ModelOutput("本地虚构回声：" + current, provider_model="local_test_double_not_a_model")
 
 
+def _history_claims(messages):
+    """Read the final provider-bound packet, rather than a pre-packaging view."""
+    packets = [message["content"].split("\n", 1)[1] for message in messages
+               if message["role"] == "system" and message["content"].startswith("SOURCED MEMORY DATA ONLY.")]
+    if len(packets) > 1:
+        raise DemoContractFailure("more than one sourced-memory packet")
+    return json.loads(packets[0])["claims"] if packets else []
+
+
+def _exact_history_quotes(claims, sources):
+    """Verify source IDs, full Unicode offsets, body, role and time together."""
+    for claim in claims:
+        if claim.get("field") != "history_quote" or claim.get("support_status") != "source_quote":
+            return False
+        evidence = claim.get("evidence")
+        if not isinstance(evidence, list) or len(evidence) != 1:
+            return False
+        span = evidence[0]
+        source = sources.get(span.get("source_id"))
+        if source is None or any((
+            span.get("text") != source["text"], claim.get("value") != source["text"],
+            span.get("start") != 0, span.get("end") != len(source["text"]),
+            span.get("role") != source["role"], span.get("source_time") != source["source_time"],
+        )):
+            return False
+    return True
+
+
 def run_scripted(database, *, approved_root, run_id):
-    """Run exactly four independent fictional-user software scenarios once."""
+    """Run exactly five independent fictional-user software scenarios once."""
     path, approved = Path(database), Path(approved_root).resolve(strict=True)
     if not path.is_absolute() or path.is_symlink() or not path.resolve().is_relative_to(approved):
         raise ValueError("explicit database path must be under the approved root")
@@ -131,10 +160,11 @@ def run_scripted(database, *, approved_root, run_id):
               all(r.schema_version == "2.0" and r.lifecycle_status == "candidate" and
                   r.confirmation_state == "unconfirmed" for r in records))
         followup = send(s, name, "想法记录现在怎么安排？", 3)
-        check(stage, "retrieval_follows_current_multi_axis_projection",
+        check(stage, "task_projection_preserves_current_multi_axis_state",
               followup["task_state"]["participation"] == "paused" and
               followup["task_state"]["progress"]["reported_count"] == 1,
-              {"history_source_count": len(followup.get("memory_ids", [])),
+              {"included_claim_count": len(followup.get("memory_ids", [])),
+               "history_quote_claim_count": len(followup.get("history_memory_ids", [])),
                "answer_status": followup["answer_status"]})
         results.append(stage)
     finally:
@@ -224,6 +254,49 @@ def run_scripted(database, *, approved_root, run_id):
         check(stage, "unknown_attempt_and_unknown_usage_are_distinct_from_zero_cost",
               attempt["status"] == "attempt_unknown" and attempt["usage"] is None,
               {"attempt_status": attempt["status"], "usage": attempt["usage"]})
+        stage["mock_provider_calls"] = len(provider.calls)
+        results.append(stage)
+    finally:
+        s.close()
+
+    # An answer to these queries can only use admitted historical source text;
+    # no task object, user question, semantic note or expected answer contains
+    # the fixture bodies. Seven equally relevant sources exercise top-k=6;
+    # the eighth is deliberately unrelated. The second query has zero overlap.
+    name = SCENARIO_NAMES[4]
+    provider = LocalMockProvider(); mocks.append(provider)
+    s = session(name, provider)
+    try:
+        stage = {"scenario": name, "protocol_hash": s.protocol["protocol_hash"], "assertions": []}
+        sources = {}
+        for index in range(8):
+            sid = "fixture-history-" + str(index)
+            source = {"user_id": s.user_id, "source_id": sid, "input_id": "fixture-seed-" + str(index),
+                      "text": "archivekey marker" + str(index) if index < 7 else "zebra garden brick",
+                      "role": "user", "source_time": STAMPS[0], "permissions": dict(s.default_permissions)}
+            s.durable.submit_source(source, enqueue=False, run_id=s.run_id, session_id=s.session_id)
+            sources[sid] = source
+        positive = send(s, name, "archivekey", 3)
+        claims = _history_claims(provider.calls[-1]["messages"])
+        history_ids = {e["source_id"] for claim in claims for e in claim.get("evidence", [])}
+        expected = {"fixture-history-" + str(index) for index in range(6)}
+        check(stage, "history_query_retrieves_expected_sources_with_top_k_six",
+              positive["answer_status"] == "succeeded" and len(claims) == 6 and history_ids == expected,
+              {"selected_source_ids": sorted(history_ids), "history_quote_claim_count": len(claims)})
+        check(stage, "final_outbound_quotes_match_full_source_body_offsets_role_and_time",
+              _exact_history_quotes(claims, sources) and len(claims) == 6)
+        check(stage, "unrelated_source_and_seventh_rank_are_absent_from_outbound",
+              "fixture-history-6" not in history_ids and "fixture-history-7" not in history_ids)
+        absent = send(s, name, "qzxnomatch", 4)
+        absent_claims = _history_claims(provider.calls[-1]["messages"])
+        check(stage, "zero_hit_query_has_no_historical_claims_or_body_in_final_messages",
+              absent["answer_status"] == "succeeded" and absent_claims == [] and
+              absent.get("history_memory_ids") == [] and
+              all(source["text"] not in json.dumps(provider.calls[-1]["messages"], ensure_ascii=False)
+                  for source in sources.values()))
+        check(stage, "history_fixture_uses_only_two_bounded_response_mocks",
+              len(provider.calls) == 2 and all(call["purpose"] == "response" for call in provider.calls),
+              {"mock_response_calls": len(provider.calls)})
         stage["mock_provider_calls"] = len(provider.calls)
         results.append(stage)
     finally:

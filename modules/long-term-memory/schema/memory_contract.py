@@ -42,8 +42,16 @@ def _load_schema(name: str) -> dict:
     return json.loads((ROOT / name).read_text(encoding="utf-8"))
 
 
-def _timestamp(value: str, path: str) -> datetime:
-    if not _DATE_TIME.fullmatch(value):
+def parse_rfc3339(value: str, *, path: str = "timestamp") -> datetime:
+    """Parse the same strict timestamp grammar used by the memory schema.
+
+    Ingress must call this before committing a source, queuing a job or admitting
+    an external attempt. Broader ``fromisoformat`` forms (a space separator or
+    omitted seconds) are rejected instead of being saved and failing later when
+    the worker constructs its schema-validated record. Unknown source times are
+    handled by their caller as ``None``; this parser never invents a date.
+    """
+    if type(value) is not str or not _DATE_TIME.fullmatch(value):
         raise ValueError(f"{path} must be an RFC3339 date-time with timezone")
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -52,6 +60,10 @@ def _timestamp(value: str, path: str) -> datetime:
     if parsed.tzinfo is None:
         raise ValueError(f"{path} must include a timezone")
     return parsed
+
+
+def _timestamp(value: str, path: str) -> datetime:
+    return parse_rfc3339(value, path=path)
 
 
 def _json_key(value: Any) -> str:
@@ -366,6 +378,11 @@ class MemoryRecordV2(MemoryRecord):
         self.validate()
 
     def validate(self) -> None:
+        # asdict() would silently turn an already-dict value into valid-looking
+        # JSON, although manager consumers require SourceEvidence attributes.
+        # Raw mappings belong at construct_memory(), which converts them once.
+        if not isinstance(self.source_evidence, SourceEvidence):
+            raise ValueError("source_evidence must be SourceEvidence; use construct_memory for JSON mappings")
         validate_memory_data(self.to_dict(), allow_legacy=False)
 
     @classmethod

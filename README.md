@@ -26,6 +26,11 @@ the requested two roots with F1–F4 and V1–V5 subcategories.
 Use the separate [controlled Colab notebook](app/Controlled_Memory_V2_Colab.ipynb).
 It requires explicit approved cloud storage and stable user/run IDs, starts with
 model calls disabled, and preserves the older notebooks and experiment identities.
+The [9 November review repairs](docs/review-c757-remediation-20261109.md)
+close the supplied deletion, task-polarity, replay-permission and evidence-boundary
+counterexamples. The v2.1 replay also checks historical retrieval and the exact
+final outbound evidence; it remains software verification only.
+
 [Run the fictional engineering replay](app/README.md#controlled-memory-v2)
 for observable state transitions without any model or network call. Its assertions
 are software evidence, not a memory-benefit or CBT-outcome result.

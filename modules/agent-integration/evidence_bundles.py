@@ -42,6 +42,29 @@ class EvidenceSpan:
         object.__setattr__(self, "end", end)
 
 
+def restore_source_quote(
+    source: Mapping[str, Any], *, pointer_text: str, span_id: str,
+) -> EvidenceSpan | None:
+    """Resolve an indexing pointer to the complete already-authorised source.
+
+    An exact extracted substring is only a locator: its boundary may omit an
+    outer negation, speaker attribution, condition or quantity. Until a separate
+    sufficient-span verifier exists, return the complete source, never that
+    substring. The request packer may drop this indivisible quotation if it
+    does not fit. This function grants no permission or current-state support;
+    the caller must obtain ``source`` from its current permitted source pool.
+    """
+    if not isinstance(source, Mapping):
+        raise ValueError("source quote requires an authorised source mapping")
+    text = source.get("text")
+    if type(text) is not str or not text:
+        raise ValueError("source quote requires original source text")
+    if type(pointer_text) is not str or not pointer_text or pointer_text not in text:
+        return None
+    return EvidenceSpan(source["source_id"], span_id, text, 0, len(text),
+                        source.get("source_time"), source.get("role", "unknown"))
+
+
 @dataclass(frozen=True, slots=True)
 class EvidenceClaim:
     claim_id: str

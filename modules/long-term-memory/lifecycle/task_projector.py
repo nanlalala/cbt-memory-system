@@ -18,7 +18,7 @@ from datetime import datetime
 import re
 from typing import Any, Mapping, Sequence
 
-from task_input_rules import resolve_attempt_reference, resolve_event_date_reference
+from task_input_rules import resolve_attempt_reference, resolve_event_date_reference, cumulative_coverage_interval
 
 
 _IDENTIFIERS = ("event_id", "user_id", "goal_id", "task_instance_id", "period_id", "source_id")
@@ -143,13 +143,46 @@ def _negative_governs_predicate(prefix: str) -> bool:
         r"declin(?:e|ed|ing)|deny|denied|denies|against)\b", normalized, re.I))
 
 
+def _asks_task_question(text: str) -> bool:
+    """Recognise bounded interrogatives even when speech input omits '?'.
+
+    This is an assertion-admission rule, not an answer or a polarity inverter.
+    The supported unknown-outcome self-report is deliberately retained.
+    """
+    text = text.replace("不知道有没有用", "结果未知")
+    if re.search(r"[?？]|是否|是不是|能否|可否|要不要|有没有|请问", text):
+        return True
+    if re.search(r"吗(?:[。.!！\s]*$)|(?:了|过)(?:没|没有)(?:[。.!！\s]*$)", text):
+        return True
+    if re.search(r"(行|好|对|能|可|要|做|停|该|会|应|同意|愿意|取消|暂停)(?:不|没)\1", text):
+        return True
+    # Subject/auxiliary inversion is not the declarative 'I have paused'.
+    return bool(re.search(r"(?:^|[。.!！,，;；\n])\s*(?:have|has|had|did|do|does|am|is|are|was|were|"
+                          r"can|could|should|would|will|may|might|must)\s+\S",
+                          text, re.I))
+
+
 def _choice_predicate_supported(source: str, start: int, end: int, value: str) -> bool:
     left, right = _scoped_clause_bounds(source, start, end)
-    clause, prefix = source[left:right], source[left:start]
-    if _AMBIGUOUS.search(clause):
+    clause, prefix, suffix = source[left:right], source[left:start], source[end:right]
+    if _AMBIGUOUS.search(clause) or _asks_task_question(clause):
+        return False
+    # A post-verbal inability complement does not assert that the action
+    # happened: '暂停不了' and '取消不掉' are not a pause/cancellation.
+    if re.match(r"\s*(?:不(?:了|掉|成|得|起|动|下去|下来)|不得)", suffix):
+        return False
+    # The value's own lexical negation (e.g. 没有帮助 / not helpful) is inside
+    # [start,end]. Only an *outer* governing negative invalidates that value.
+    if value in {"unhelpful", "mixed", "unknown", "not_done"} and _negative_governs_predicate(prefix):
         return False
     if value in {"paused", "cancelled", "declined"}:
         if _negative_governs_predicate(prefix):
+            return False
+        # Refusing *not to do* the activity is not refusing the activity.
+        # Do not infer agreement either; preserve the original quotation.
+        if value == "declined" and re.match(
+                r"\s*(?:(?:不|没|没有|未)\s*(?:做|去|进行|继续|完成|参加|接受|尝试)|"
+                r"(?:not|never)\b|(?:to\s+)?(?:not|never)\b)", suffix, re.I):
             return False
         # Declining a cancellation/pause is not declining the task itself.
         # Keep the opposite state unknown rather than infer active/agreed.
@@ -455,11 +488,7 @@ def validate_task_event(event: Mapping[str, Any], *, sources: Mapping[str, Any],
             raise ValueError("invalid occurred day interval")
     if _QUOTED_REPORT.search(source["text"]):
         raise ValueError("quoted or attributed speech is not a current self-report")
-    # This already supported unknown-outcome assertion contains an embedded
-    # interrogative word, but does not ask the assistant to establish a fact.
-    question_text = source["text"].replace("不知道有没有用", "结果未知")
-    if source["role"] == "user" and (re.search(r"[?？]|是否|是不是|能否|可否|要不要|有没有|请问", question_text)
-            or re.search(r"吗(?:[。.!！\s]*$)", question_text)):
+    if source["role"] == "user" and _asks_task_question(source["text"]):
         raise ValueError("a user question is not a current task-state assertion")
     temporal_text = source["text"]
     # An explicitly bound deadline is a different time axis from occurrence.
@@ -768,10 +797,12 @@ def project_task(events: Sequence[Mapping[str, Any]], *, user_id: str, task_inst
                     return other_kind in {"proposed", "agreed", "declined"}
                 return other_kind == {"participation": "participation_changed", "outcome": "outcome_report"}.get(field)
             target_time = _moment(target.get("projection_field_times", {}).get(field, target["reported_at"]), "target field time")
+            target_coverage = tuple(reversed(cumulative_coverage_interval(target))) if field == 'count' and target['payload'].get('report_mode') == 'cumulative' else ()
             for other in effective.values():
                 if other is not target and relevant(other):
                     other_time = _moment(other.get("projection_field_times", {}).get(field, other["reported_at"]), "other field time")
-                    if other_time > target_time:
+                    other_coverage = tuple(reversed(cumulative_coverage_interval(other))) if target_coverage else ()
+                    if (other_coverage, other_time) > (target_coverage, target_time):
                         raise ValueError("correction targets a superseded current field; clarification required")
         target["payload"].update(deepcopy(payload["changes"]))
         target["projection_support_source_id"] = event["source_id"]
@@ -863,12 +894,16 @@ def project_task(events: Sequence[Mapping[str, Any]], *, user_id: str, task_inst
     count_support |= attempt_conflict_support
     support_ids["known_attempt_count"] = sorted(count_support)
     if cumulative:
-        cumulative.sort(key=lambda e: (_moment(e.get("projection_field_times", {}).get("count", e["reported_at"]), "count report"), e["event_id"]))
+        # Reporting time controls source visibility, not the physical period
+        # described by an aggregate. A Friday report about Wednesday cannot
+        # replace Thursday's already known total. A day interval is retained
+        # as an interval rather than inventing a within-day snapshot time.
+        cumulative.sort(key=lambda e: (*reversed(cumulative_coverage_interval(e)),
+            _moment(e.get("projection_field_times", {}).get("count", e["reported_at"]), "count report"), e["event_id"]))
         latest = cumulative[-1]
         base = latest["payload"]["count"]
         cutoff = _moment(latest["payload"].get("covers_through", latest["occurred_at"]), "coverage time")
-        cutoff_low = _moment(latest["occurred_at"], "coverage start") if latest.get("occurred_precision") == "day" else cutoff
-        cutoff_high = _moment(latest["occurred_before"], "coverage end") if latest.get("occurred_precision") == "day" else cutoff
+        cutoff_low, cutoff_high = cumulative_coverage_interval(latest)
         covered = later = 0
         ambiguous_attempts = []
         count_support = {effective_support(latest, "count")} | attempt_conflict_support
@@ -901,11 +936,18 @@ def project_task(events: Sequence[Mapping[str, Any]], *, user_id: str, task_inst
         if covered > base:
             conflict = True
             count_support |= covered_support
-        # Unexplained decreasing totals conflict; explicit append-only
-        # correction has already replaced the earlier effective total.
-        if len(cumulative) > 1 and base < cumulative[-2]["payload"]["count"] and "projection_corrected_at" not in latest:
-            conflict = True
-            count_support.add(effective_support(cumulative[-2], "count"))
+        # Earlier *coverage*, not earlier receipt, determines a decrease.
+        # Unordered overlapping coverage with different totals is unresolved.
+        # An explicit correction has already replaced its target projection.
+        for prior in cumulative[:-1]:
+            prior_low, prior_high = cumulative_coverage_interval(prior)
+            before = (prior_high <= cutoff_low and
+                      (prior_low < prior_high or prior_high < cutoff_low))
+            incompatible = ((before and prior["payload"]["count"] > base)
+                            or (not before and prior["payload"]["count"] != base))
+            if incompatible and "projection_corrected_at" not in latest:
+                conflict = True
+                count_support.add(effective_support(prior, "count"))
         count = base + later
         progress["reported_total"] = base
         support_ids["reported_total"] = [effective_support(latest, "count")]

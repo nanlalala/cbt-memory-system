@@ -24,12 +24,12 @@ class ControlledMemoryDemoTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads(result.stdout)
             self.assertEqual(report["status"], "passed")
-            self.assertEqual(len(report["scenarios"]), 4)
-            self.assertGreaterEqual(report["assertion_count"], 17)
+            self.assertEqual(len(report["scenarios"]), 5)
+            self.assertGreaterEqual(report["assertion_count"], 22)
             self.assertTrue(all(item["passed"] for scenario in report["scenarios"]
                                 for item in scenario["assertions"]))
             self.assertEqual(report["api_calls"], 0)
-            self.assertEqual(report["mock_provider_calls"], 4)
+            self.assertEqual(report["mock_provider_calls"], 6)
             self.assertIs(report["live_model"], False)
             self.assertIs(report["effectiveness_claim"], False)
             encoded = json.dumps(report["protocol"], ensure_ascii=False, sort_keys=True,

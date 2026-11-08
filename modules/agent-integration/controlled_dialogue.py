@@ -20,7 +20,8 @@ from zoneinfo import ZoneInfo
 
 from dialogue_service import DialogueSession, ModelOutput, RISK_PATTERN, URGENT_RESPONSE
 from durable_memory import DurableMemoryStore, DurableLimits, DurableConflict, AttemptUnknown, BudgetExhausted
-from evidence_bundles import EvidenceSpan, EvidenceClaim, EvidenceBundle, build_outbound_messages, OutboundBudgetError
+from evidence_bundles import (EvidenceSpan, EvidenceClaim, EvidenceBundle, build_outbound_messages,
+                              OutboundBudgetError, restore_source_quote)
 from extraction_contract import ConversationTurn, build_extraction_request, parse_extraction_output
 from memory_contract import construct_memory
 from memory_manager import MemoryManager
@@ -33,7 +34,7 @@ from task_projector import project_task, validate_task_event, verify_claim_bindi
 from task_input_rules import parse_current_correction, resolve_attempt_reference, resolve_event_date_reference
 from knowledge_adapter_v2 import KnowledgeAdapter
 
-VERSION = 'controlled-memory-v2.0'
+VERSION = 'controlled-memory-v2.1'
 DEFAULT_PERMISSIONS = {k: True for k in ('save', 'long_term_use', 'response_external', 'extraction_external')}
 SYSTEM = ('You are a nonclinical research prototype for fictional CBT reflection. '
           'Use current sourced task fields only when rule_verified. Historical quotations are dated '
@@ -380,7 +381,8 @@ class ControlledDialogueSession(DialogueSession):
                             'goal_id': 'goal-' + _hash([self.user_id, label])[:20], 'object_label': label,
                             'events': [], 'proposals': {}, 'context_objects': {}}}
 
-    def _events_for_input(self, text, source, task, *, occurred_at=None, attempt_id=None):
+    def _events_for_input(self, text, source, task, *, occurred_at=None, attempt_id=None,
+                          bound_choice=None):
         if task is None:
             return []
         payload = task['payload']; label = payload['object_label']; stamp = source['source_time']
@@ -390,8 +392,9 @@ class ControlledDialogueSession(DialogueSession):
                   'period_id': payload['period_id'], 'source_id': source['source_id'], 'occurred_at': occurred_at or stamp,
                   'reported_at': stamp, 'origin': 'explicit_user_statement', 'session_id': self.session_id}
         result = []
-        choice = bound_task_choice(text, list(payload.get('proposals', {}).values()), user_id=self.user_id,
-            session_id=self.session_id, reply_to_turn_id=self._meta('last_assistant_turn_id'), as_of=stamp)
+        # Only the top-level witness considered every live proposal. Explicit
+        # task selectors cannot turn an ambiguous yes into a unique choice.
+        choice = bound_choice
         if choice and choice['task_instance_id'] == payload['task_instance_id']:
             proposal = payload['proposals'][choice['proposal_id']]
             event = {**common, 'event_id': f"event:{source['input_id']}:agreed", 'event_type': 'agreed',
@@ -445,7 +448,7 @@ class ControlledDialogueSession(DialogueSession):
                     timezone_name=self.timezone_name)
                 attempt = resolve_attempt_reference(text, source_time=stamp,
                     task_instance_id=payload['task_instance_id'], period_id=payload['period_id'],
-                    timezone_name=self.timezone_name) if mode == 'attempt' else None
+                    timezone_name=self.timezone_name, existing_events=payload['events']) if mode == 'attempt' else None
                 temporal = {k: reference[k] for k in ('occurred_at', 'occurred_before', 'occurred_precision',
                             'event_date', 'event_timezone')} if reference else None
                 extra = {'report_mode': mode, 'count': count}
@@ -527,7 +530,8 @@ class ControlledDialogueSession(DialogueSession):
             raise ValueError('explicit object and positive quantity required')
         if self.default_permissions['save'] is not True or self.default_permissions['long_term_use'] is not True:
             raise PermissionError('a retained proposal requires explicit storage/use permission')
-        stamp = as_of or _now()
+        stamp = _now() if as_of is None else as_of
+        moment(stamp)  # Reject malformed timestamps before source/proposal writes.
         task = self._task_for_input('我想试' + str(target_count) + '次' + object_label, stamp, period_id=period_id)
         if task is None:
             raise ValueError('unsupported or ambiguous product task')
@@ -648,15 +652,15 @@ class ControlledDialogueSession(DialogueSession):
         for ranked in semantic_hits:
             record = ranked.record
             for sid in record.source_evidence.turn_ids:
-                s = sources[sid]; quote = record.source_evidence.supporting_text
-                start = s['text'].find(quote)
-                if start < 0 or (sid, start, start + len(quote)) in seen_spans:
+                s = sources[sid]
+                identity = 'semantic:' + record.memory_id + ':' + sid
+                span = restore_source_quote(s, pointer_text=record.source_evidence.supporting_text,
+                                            span_id='semantic-source:' + record.memory_id + ':' + sid)
+                if span is None or (sid, span.start, span.end) in seen_spans:
                     continue
-                seen_spans.add((sid, start, start + len(quote)))
-                span = EvidenceSpan(sid, 'semantic-source:' + record.memory_id, quote, start,
-                                    start + len(quote), s['source_time'], s['role'])
-                bundles.append(EvidenceBundle('semantic:' + record.memory_id,
-                    (EvidenceClaim('semantic:' + record.memory_id, 'history_quote', quote, (span,),
+                seen_spans.add((sid, span.start, span.end))
+                bundles.append(EvidenceBundle(identity,
+                    (EvidenceClaim(identity, 'history_quote', span.text, (span,),
                      support_status='source_quote', priority=1),)))
         retrieval.trace['semantic_candidate_count'] = len(candidates)
         retrieval.trace['semantic_selected_source_ids'] = sorted({span.source_id for b in bundles
@@ -734,15 +738,8 @@ class ControlledDialogueSession(DialogueSession):
     def delete_content(self, scope, target_id, *, start=None, end=None):
         result = self.durable.revoke(self.user_id, scope, target_id, start=start, end=end)
         self._invalidate_local_cache()
-        # Copies in the legacy manager share source dependencies. Remove an
-        # invalidated record rather than leaving a readable management/UI copy.
-        for record in self.store.list_for_user(self.user_id):
-            if 'controlled_v2' not in record.tags and not record.memory_id.startswith('v2-memory-'):
-                continue
-            sources = [self.durable.get_source(self.user_id, sid, require_use=False)
-                       for sid in record.source_evidence.turn_ids]
-            if any(s is None for s in sources) or record.source_evidence.supporting_text not in '\n'.join(s['text'] for s in sources if s):
-                self.manager.delete(self.user_id, record.memory_id)
+        # The durable transaction owns all same-database body copies. There is
+        # no post-commit manager-cleanup window that can be interrupted.
         return result
 
     def _schedule_worker(self):
@@ -770,7 +767,8 @@ class ControlledDialogueSession(DialogueSession):
 
     def _retry_receipt(self, input_id):
         receipt = self.durable.get_input(self.user_id, input_id)
-        attempt = self.durable.get_attempt(self.user_id, 'response:' + input_id)
+        attempt = self.durable.get_attempt(self.user_id, 'response:' + input_id,
+                                          run_id=self.run_id, session_id=self.session_id)
         if receipt is None and attempt is None:
             return None
         if receipt is None:
@@ -782,9 +780,24 @@ class ControlledDialogueSession(DialogueSession):
             cached = attempt.get('response')
             if attempt['generation'] == self.durable.current_generation(self.user_id) and isinstance(cached, dict):
                 text = cached.get('text', text)
-        return {'text': text, 'input_id': input_id, 'replayed': True,
+        return {'text': text, 'input_id': input_id, 'session_id': self.session_id, 'replayed': True,
+                'original_session_id': receipt.get('session_id'), 'original_run_id': receipt.get('run_id'),
+                'answer_replay_status': 'body_available' if attempt and isinstance(attempt.get('response'), dict) else 'receipt_only',
                 'source_commit': receipt, 'answer_status': answer, 'organizing_status': receipt.get('processing_status'),
                 'memory_ids': [], 'knowledge_ids': [], 'usage': attempt.get('usage') if attempt else None}
+
+    def _validate_retry_input(self, input_id, text, permission, *, explicit_time=None):
+        """A cached operation cannot silently acquire different input fields.
+
+        UI retries omit as_of and inherit the original operation clock. An
+        explicitly supplied time or permission set must still match that input.
+        Withdrawn/unsaved bodies remain unavailable; their receipt is body-free.
+        """
+        receipt = self.durable.get_input(self.user_id, input_id)
+        original = self.durable.get_source(self.user_id, (receipt or {}).get('source_id', ''), require_use=False)
+        if original is not None and (original['text'] != text or original['permissions'] != permission
+                or (explicit_time is not None and original['source_time'] != explicit_time)):
+            raise DurableConflict('input_id already binds different source text, permissions or explicit time')
 
     def send_message(self, text, *, input_id=None, permissions=None, task_instance_id=None,
                      period_id=None, as_of=None, occurred_at=None, attempt_id=None, local_controls=()):
@@ -792,7 +805,10 @@ class ControlledDialogueSession(DialogueSession):
         iid = input_id or 'input-' + uuid.uuid4().hex
         if type(iid) is not str or not iid.strip():
             raise ValueError('input_id must be a nonempty string')
-        stamp = as_of or _now(); moment(stamp)
+        stamp = _now() if as_of is None else as_of
+        moment(stamp)
+        if occurred_at is not None:
+            moment(occurred_at)  # Validate before any receipt, source, job or external admission.
         self._invalidate_local_cache()
         self._safety_paused = self._safety_paused or self.durable.is_paused(self.user_id)
         permission = permissions_for_input(text, self.default_permissions if permissions is None else permissions)
@@ -844,10 +860,7 @@ class ControlledDialogueSession(DialogueSession):
             return deepcopy(reply)
         previous = self._retry_receipt(iid)
         if previous is not None:
-            receipt = self.durable.get_input(self.user_id, iid)
-            original = self.durable.get_source(self.user_id, (receipt or {}).get('source_id', ''), require_use=False)
-            if original is not None and original['text'] != text:
-                raise DurableConflict('input_id already binds different source text')
+            self._validate_retry_input(iid, text, permission, explicit_time=as_of)
             return previous
         source = {'user_id': self.user_id, 'source_id': 'source:' + iid, 'input_id': iid, 'text': text,
                   'role': 'user', 'source_time': stamp, 'permissions': permission}
@@ -866,7 +879,8 @@ class ControlledDialogueSession(DialogueSession):
             if reference:
                 period_id = reference['period_id']
         task = self._task_for_input(text, stamp, task_instance_id, period_id)
-        events = self._events_for_input(text, source, task, occurred_at=occurred_at, attempt_id=attempt_id)
+        events = self._events_for_input(text, source, task, occurred_at=occurred_at, attempt_id=attempt_id,
+                                       bound_choice=bound_choice)
         subject = task['payload']['task_instance_id'] if task else 'topic:general'
         refusal = refusal_for_input(text, subject_id=subject, as_of=stamp, timezone_name=self.timezone_name)
         if refusal:
@@ -878,6 +892,7 @@ class ControlledDialogueSession(DialogueSession):
             with self.store.transaction(immediate=True):
                 replayed = self._retry_receipt(iid)
                 if replayed is not None:
+                    self._validate_retry_input(iid, text, permission, explicit_time=as_of)
                     return replayed
                 source_commit = self.durable.submit_source(source, enqueue=refusal is None, run_id=self.run_id, session_id=self.session_id)
                 if task and source_commit['source_status'] == 'committed':
@@ -962,9 +977,16 @@ class ControlledDialogueSession(DialogueSession):
                               if sid != source['source_id'] or source_commit['source_status'] == 'committed']
                 current_ids = [source['source_id']] if source_commit['source_status'] == 'committed' else []
                 source_ids = sorted(set(source_ids + current_ids))
+                task_versions = {}
+                if task and task['status'] == 'available' and not (state or {}).get('not_retained') and any(
+                        bundle.task_instance_id == task['payload']['task_instance_id']
+                        and any(c.claim_id in included for c in bundle.claims) for bundle in bundles):
+                    # The immutable assembled view, not a fresh read after a
+                    # concurrent correction, defines the version being sent.
+                    task_versions[task['object_id']] = task['version']
                 admission = self.durable.begin_attempt(self.user_id, 'response:' + iid, 'response', source_ids,
                     current_source_ids=current_ids, current_input_id=iid, run_id=self.run_id, session_id=self.session_id,
-                    expected_generation=context_generation)
+                    expected_generation=context_generation, expected_object_versions=task_versions)
                 if admission.get('replayed'):
                     return self._retry_receipt(iid)
                 output = self._call_provider(messages, purpose='response')
