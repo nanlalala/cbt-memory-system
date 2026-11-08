@@ -605,6 +605,109 @@ class TaskProjectorTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaisesRegex(ValueError, "current self-report|historical qualifier"):
                 validate_task_event(event, sources=self.sources)
 
+    def test_predicate_negation_does_not_reverse_pause_cancel_or_decline(self):
+        rows = [
+            ("paused", "想法记录不要暂停。"), ("paused", "想法记录别暂停。"),
+            ("paused", "想法记录没有暂停。"), ("paused", "想法记录并未暂停。"),
+            ("paused", "想法记录从未暂停。"), ("paused", "想法记录不曾暂停。"),
+            ("cancelled", "想法记录不要取消。"), ("cancelled", "想法记录别取消。"),
+            ("cancelled", "想法记录没有取消。"), ("cancelled", "想法记录并未取消。"),
+            ("cancelled", "想法记录从未取消。"), ("cancelled", "想法记录不曾取消。"),
+            ("declined", "我没有拒绝想法记录。"), ("declined", "我不要拒绝想法记录。"),
+            ("declined", "我别拒绝想法记录。"), ("declined", "我并未拒绝想法记录。"),
+            ("declined", "我从未拒绝想法记录。"), ("declined", "我不曾拒绝想法记录。"),
+            ("paused", "I do not pause thought record."), ("paused", "I did not pause thought record."),
+            ("paused", "I don’t pause thought record."), ("paused", "I never paused thought record."),
+            ("paused", "I dont pause thought record."),
+            ("cancelled", "I do not cancel thought record."), ("cancelled", "I did not cancel thought record."),
+            ("cancelled", "I don’t cancel thought record."), ("cancelled", "I have not cancelled thought record."),
+            ("cancelled", "I dont cancel thought record."),
+            ("declined", "I do not refuse thought record."), ("declined", "I did not refuse thought record."),
+            ("declined", "I don’t refuse thought record."), ("declined", "I never refused thought record."),
+            ("declined", "I have not declined thought record."),
+            ("declined", "I dont refuse thought record."),
+        ]
+        for value, text in rows:
+            with self.subTest(value=value, text=text):
+                self.assertFalse(verify_claim_binding(text, 0, len(text), {"kind": "choice", "value": value}))
+                self.assertFalse(verify_claim_binding(text, 0, len(text), {"kind": "choice", "value": "active"}))
+                self.assertFalse(verify_claim_binding(text, 0, len(text), {"kind": "choice", "value": "agreed"}))
+
+    def test_true_negative_task_choices_and_unrelated_negative_clauses_still_work(self):
+        for value, text in [
+            ("declined", "我不同意做想法记录。"), ("declined", "我拒绝做想法记录。"),
+            ("declined", "I do not agree to thought record."),
+            ("declined", "I refused thought record."),
+            ("paused", "想法记录这周不做。"), ("paused", "想法记录暂时不做。"),
+            ("paused", "我暂停想法记录，今天没有散步。"),
+            ("cancelled", "我取消想法记录，今天不散步。"),
+        ]:
+            with self.subTest(value=value, text=text):
+                self.assertTrue(verify_claim_binding(text, 0, len(text), {"kind": "choice", "value": value}))
+
+    def test_negation_prefix_cannot_be_omitted_from_a_narrow_predicate_binding(self):
+        for value, text, word in [
+            ("paused", "想法记录不要暂停。", "暂停"),
+            ("cancelled", "想法记录不要取消。", "取消"),
+            ("declined", "我没有拒绝想法记录。", "拒绝"),
+        ]:
+            start = text.index(word)
+            with self.subTest(value=value):
+                self.assertFalse(verify_claim_binding(text, start, start + len(word), {"kind": "choice", "value": value}))
+
+    def test_other_object_positive_predicate_cannot_support_this_objects_negation(self):
+        for text, value, kind, payload in [
+            ("散步暂停，想法记录不要暂停。", "paused", "participation_changed", {"participation": "paused"}),
+            ("散步暂停而想法记录不要暂停。", "paused", "participation_changed", {"participation": "paused"}),
+            ("散步取消，想法记录不要取消。", "cancelled", "participation_changed", {"participation": "cancelled"}),
+            ("散步拒绝，想法记录没有拒绝。", "declined", "declined", {}),
+        ]:
+            event = self.event("opposite-predicate", kind, text, payload, append=False,
+                bindings=[binding(text, "object", LABEL), binding(text, "choice", value)])
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                validate_task_event(event, sources=self.sources)
+
+    def test_refusing_a_pause_or_cancellation_is_not_refusing_the_task(self):
+        for text in ["我拒绝暂停想法记录。", "我不同意取消想法记录。", "我不想暂停想法记录。",
+                     "I refuse to cancel thought record.", "I do not want to pause thought record."]:
+            with self.subTest(text=text):
+                for value in ["declined", "paused", "cancelled", "active", "agreed"]:
+                    self.assertFalse(verify_claim_binding(text, 0, len(text), {"kind": "choice", "value": value}))
+
+    def test_unicode_apostrophe_negation_does_not_create_opposite_acceptance_or_plan(self):
+        for text, value in [("I don’t agree to do thought record.", "agreed"),
+                            ("I don’t want to try thought record.", "proposed"),
+                            ("I haven’t agreed to do thought record.", "agreed"),
+                            ("I dont agree to do thought record.", "agreed"),
+                            ("I dont want to try thought record.", "proposed")]:
+            with self.subTest(text=text):
+                self.assertFalse(verify_claim_binding(text, 0, len(text), {"kind": "choice", "value": value}))
+
+    def test_user_questions_are_not_current_state_assertions(self):
+        for text, value, kind, payload in [
+            ("想法记录暂停了吗？", "paused", "participation_changed", {"participation": "paused"}),
+            ("想法记录取消了吗？", "cancelled", "participation_changed", {"participation": "cancelled"}),
+            ("想法记录暂停了吗", "paused", "participation_changed", {"participation": "paused"}),
+            ("想法记录是否暂停。", "paused", "participation_changed", {"participation": "paused"}),
+            ("想法记录是不是取消了。", "cancelled", "participation_changed", {"participation": "cancelled"}),
+            ("Did I refuse 想法记录?", "declined", "declined", {}),
+        ]:
+            event = self.event("question", kind, text, payload, append=False,
+                bindings=[binding(text, "object", LABEL), binding(text, "choice", value)])
+            with self.subTest(text=text), self.assertRaisesRegex(ValueError, "question"):
+                validate_task_event(event, sources=self.sources)
+
+    def test_explicit_unknown_outcome_self_report_can_replace_old_helpful_outcome(self):
+        for ident, text, value, stamp in [
+            ("helpful-before", "想法记录有帮助。", "helpful", T1),
+            ("unknown-now", "想法记录不知道有没有用。", "unknown", T2),
+        ]:
+            self.event(ident, "outcome_report", text, {"outcome": value}, time=stamp,
+                bindings=[binding(text, "object", LABEL), binding(text, "choice", value)])
+        result = self.project()
+        self.assertEqual(result["outcome"], "unknown")
+        self.assertIn("unknown-now", result["event_ids"])
+
 
 if __name__ == "__main__":
     unittest.main()

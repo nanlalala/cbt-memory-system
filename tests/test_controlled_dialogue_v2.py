@@ -61,6 +61,41 @@ class ControlledDialogueTests(unittest.TestCase):
         self.assertEqual(paused['outcome'], 'unknown')
         self.assertTrue(all(x.confirmation_state == 'unconfirmed' for x in s.store.list_for_user(s.user_id)))
 
+    def test_negated_predicates_never_become_opposite_durable_task_state(self):
+        for index, text in enumerate(['想法记录不要暂停。', '想法记录不要取消。', '我没有拒绝想法记录。']):
+            with self.subTest(text=text):
+                s = self.session(name='negated-' + str(index) + '.sqlite')
+                first = self.send(s, '我同意每周做两次想法记录。', 0)
+                state_before = first['task_state']
+                reply = self.send(s, text, 1)
+                self.assertEqual(reply['source_commit']['source_status'], 'committed')
+                self.assertEqual(reply['task_state']['acceptance'], 'agreed')
+                self.assertEqual(reply['task_state']['participation'], state_before['participation'])
+                persisted = s.task_states()[0]
+                self.assertEqual(persisted['acceptance'], 'agreed')
+                self.assertEqual(persisted['participation'], state_before['participation'])
+                later = self.send(s, '想法记录现在怎么安排？', 2)
+                self.assertEqual(later['task_state']['acceptance'], 'agreed')
+                self.assertEqual(later['task_state']['participation'], state_before['participation'])
+
+    def test_task_questions_do_not_update_the_state_they_are_asking_about(self):
+        s = self.session()
+        self.send(s, '我同意做两次想法记录。', 0)
+        for index, text in enumerate(['想法记录暂停了吗？', '想法记录取消了吗？', '我是否拒绝了想法记录？']):
+            reply = self.send(s, text, index + 1)
+            self.assertEqual(reply['source_commit']['source_status'], 'committed')
+            self.assertEqual(s.task_states()[0]['acceptance'], 'agreed')
+            self.assertEqual(s.task_states()[0]['participation'], 'unknown')
+
+    def test_negated_cancellation_does_not_infer_reactivation_of_existing_pause(self):
+        s = self.session()
+        self.send(s, '我同意做两次想法记录。', 0)
+        self.send(s, '想法记录暂停。', 1)
+        reply = self.send(s, '想法记录不要取消。', 2)
+        self.assertEqual(reply['source_commit']['source_status'], 'committed')
+        self.assertEqual(reply['task_state']['participation'], 'paused')
+        self.assertEqual(s.task_states()[0]['participation'], 'paused')
+
     def test_no_save_pause_is_current_only_and_cannot_return_through_next_context(self):
         provider = OfflineProvider(); s = self.session(provider=provider)
         self.send(s, '我同意每周做两次想法记录。', 0)

@@ -31,7 +31,7 @@ _EVENT_KEYS = frozenset({
     "claim_bindings", "session_id", "expected_version",
     "occurred_precision", "event_date", "occurred_before", "event_timezone",
 })
-_NEGATION = re.compile(r"没|没有|不|并非|未|别|无|\b(?:not|never|don't|didn't|won't|haven't|hasn't|cannot|can't|refuse|decline)\b", re.I)
+_NEGATION = re.compile(r"没|没有|不|并非|未|别|无|\b(?:not|never|don['’]?t|doesn['’]?t|didn['’]?t|won['’]?t|wouldn['’]?t|shouldn['’]?t|couldn['’]?t|haven['’]?t|hasn['’]?t|hadn['’]?t|cannot|can['’]?t|mustn['’]?t|refus(?:e|ed|ing)|declin(?:e|ed|ing))\b", re.I)
 _AMBIGUOUS = re.compile(r"也许|可能|如果|假如|假设|比如|例如|举例|要是|示例|假想|他说|她说|别人说|妈妈同意|母亲同意|父亲同意|朋友同意|未必|不是不|并非不|不是没|并非没|\b(?:maybe|might|perhaps|if|imagine|suppose|hypothetical|example|he said|she said|they said|he agreed|she agreed|they agreed|not unwilling)\b", re.I)
 _QUOTED_REPORT = re.compile(r'["“”「」『』]|(?:^|[\s:：])[\'‘].+[\'’]|(?:说|表示|告诉|写道|声称|\bsaid|\bsays|\btold|\bwrote)\s*[:：]', re.I)
 _HISTORICAL_QUALIFIER = re.compile(r"去年|前年|上个月|上月|上周|以前|之前|曾经|当时|那时候|\b(?:last year|last month|last week|previously|formerly|used to)\b", re.I)
@@ -42,7 +42,7 @@ _QUANTITY = re.compile(r"(?P<n>\d+|[零〇一二两三四五六七八九十百]+
 _CHOICES = {
     "proposed": re.compile(r"想试|想做|打算|计划|希望试|\b(?:plan|intend|would like|want to try|propose|try)\b", re.I),
     "agreed": re.compile(r"同意|答应|愿意|接受|可以试|确定要|\b(?:agree|agreed|accept|accepted|willing|i will|i'll)\b", re.I),
-    "declined": re.compile(r"不愿|不想|拒绝|不接受|不同意|没答应|\b(?:decline|refuse|do not agree|don't agree|don't want|do not want)\b", re.I),
+    "declined": re.compile(r"不愿|不想|拒绝|不接受|不同意|没答应|\b(?:declin(?:e|ed|ing)|refus(?:e|ed|ing)|do not agree|don['’]?t agree|don['’]?t want|do not want)\b", re.I),
     "paused": re.compile(r"暂停|先停|停一下|这周不做|暂时不做|\b(?:pause|paused|on hold|stop for now|take a break)\b", re.I),
     "active": re.compile(r"恢复|继续|重启|\b(?:resume|resumed|restart|continue)\b", re.I),
     "cancelled": re.compile(r"取消|不做这个了|\b(?:cancel|cancelled|canceled|drop this task)\b", re.I),
@@ -108,20 +108,65 @@ def _number(value: str) -> int:
     return total + digit
 
 
-def _clause(source: str, start: int, end: int) -> str:
-    """Include nearby negation even when a malicious span starts after it."""
+def _scoped_clause_bounds(source: str, start: int, end: int) -> tuple[int, int]:
+    """Keep a predicate with its local object, including its own negation."""
     boundaries = ",，。;；!?！？\n"
-    left = start
+    left, right = start, end
     while left and source[left - 1] not in boundaries:
         left -= 1
-    right = end
     while right < len(source) and source[right] not in boundaries:
         right += 1
-    prefix = source[left:start]
-    contrasts = list(re.finditer(r"但是|不过|而是|\b(?:but|instead)\b", prefix, re.I))
-    if contrasts:
-        left += contrasts[-1].end()
+    # Without punctuation, coordinated subjects still cannot donate a positive
+    # predicate to another object's negative predicate.
+    conjunctions = re.compile(r"但是|不过|而是|并且|同时|而|但|\b(?:but|instead|and|while|whereas)\b", re.I)
+    for match in conjunctions.finditer(source, left, right):
+        if match.end() <= start:
+            left = match.end()
+        elif match.start() >= end:
+            right = match.start()
+            break
+    return left, right
+
+
+def _clause(source: str, start: int, end: int) -> str:
+    left, right = _scoped_clause_bounds(source, start, end)
     return source[left:right]
+
+
+def _negative_governs_predicate(prefix: str) -> bool:
+    """Conservative predicate-prefix scope, not a whole-sentence 'not' test."""
+    normalized = prefix.replace("’", "'").replace("‘", "'")
+    return bool(re.search(
+        r"不要|别|没有|并未|从未|不曾|没|不|未|并非|不是|拒绝|反对|"
+        r"\b(?:not|never|no|don'?t|doesn'?t|didn'?t|haven'?t|hasn'?t|hadn'?t|won'?t|wouldn'?t|"
+        r"shouldn'?t|couldn'?t|can'?t|cannot|mustn'?t|without|refus(?:e|ed|ing)|"
+        r"declin(?:e|ed|ing)|deny|denied|denies|against)\b", normalized, re.I))
+
+
+def _choice_predicate_supported(source: str, start: int, end: int, value: str) -> bool:
+    left, right = _scoped_clause_bounds(source, start, end)
+    clause, prefix = source[left:right], source[left:start]
+    if _AMBIGUOUS.search(clause):
+        return False
+    if value in {"paused", "cancelled", "declined"}:
+        if _negative_governs_predicate(prefix):
+            return False
+        # Declining a cancellation/pause is not declining the task itself.
+        # Keep the opposite state unknown rather than infer active/agreed.
+        if value == "declined" and re.search(
+            r"暂停|取消|停止|恢复|继续|先停|停一下|\b(?:paus(?:e|ed|ing)|cancel(?:led|ed|ling)?|"
+            r"stop|resume|continue|restart)\b", source[end:right], re.I):
+            return False
+        # If a single unresolved clause contains a second, negated occurrence
+        # of this predicate, a positive occurrence for another subject cannot
+        # establish this object's state.  Explicit conjunctions are scoped above.
+        for other in _CHOICES[value].finditer(source, left, right):
+            if other.start() != start and _negative_governs_predicate(source[left:other.start()]):
+                return False
+        return True
+    if value in {"agreed", "proposed", "active", "helpful", "attempt", "cumulative"}:
+        return not _NEGATION.search(clause.replace("’", "'").replace("‘", "'"))
+    return True
 
 
 def verify_claim_binding(source_text: str, start: int, end: int, claim: Mapping[str, Any]) -> bool:
@@ -177,15 +222,8 @@ def verify_claim_binding(source_text: str, start: int, end: int, claim: Mapping[
         return False
     if _BARE_YES.fullmatch(text):
         return False
-    if not _CHOICES[value].search(text):
-        return False
-    if value in {"agreed", "proposed", "active", "helpful", "attempt", "cumulative"}:
-        return not _NEGATION.search(context)
-    if value == "paused":
-        return not re.search(r"没(?:有)?暂停|不(?:想|愿)?暂停|没说.*暂停|没有.*暂停|\b(?:not paused|don't pause|do not pause)\b", context, re.I)
-    if value == "cancelled":
-        return not re.search(r"没(?:有)?取消|不取消|\b(?:not cancelled|not canceled|don't cancel|do not cancel)\b", context, re.I)
-    return True
+    return any(_choice_predicate_supported(source_text, start + match.start(), start + match.end(), value)
+               for match in _CHOICES[value].finditer(text))
 
 
 def _source(sources: Mapping[str, Any], source_id: str, user_id: str) -> Mapping[str, Any]:
@@ -275,6 +313,8 @@ def _claim_for_object(source: Mapping[str, Any], binding: Mapping[str, Any], lab
         matches = list(_CHOICES[value].finditer(selected))
     for match in matches:
         start, end = binding["start"] + match.start(), binding["start"] + match.end()
+        if kind == "choice" and not _choice_predicate_supported(text, start, end, value):
+            continue
         clause = _clause(text, start, end)
         explicit_subject = label in clause
         correction_reference = ((re.search(r"而是|更正|改成|纠正|instead|correct", clause, re.I)
@@ -415,6 +455,12 @@ def validate_task_event(event: Mapping[str, Any], *, sources: Mapping[str, Any],
             raise ValueError("invalid occurred day interval")
     if _QUOTED_REPORT.search(source["text"]):
         raise ValueError("quoted or attributed speech is not a current self-report")
+    # This already supported unknown-outcome assertion contains an embedded
+    # interrogative word, but does not ask the assistant to establish a fact.
+    question_text = source["text"].replace("不知道有没有用", "结果未知")
+    if source["role"] == "user" and (re.search(r"[?？]|是否|是不是|能否|可否|要不要|有没有|请问", question_text)
+            or re.search(r"吗(?:[。.!！\s]*$)", question_text)):
+        raise ValueError("a user question is not a current task-state assertion")
     temporal_text = source["text"]
     # An explicitly bound deadline is a different time axis from occurrence.
     # Mask only its exact verified span in a deadline-labelled clause.
