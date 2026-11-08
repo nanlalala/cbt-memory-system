@@ -427,3 +427,13 @@ findings and unresolved error attribution.
 The synthetic contract tests validate grouping, freezing and status semantics.
 They use no participants, models, embeddings or paid API calls and are not
 evidence of improved CBT process, user burden or clinical outcomes.
+
+## Verification checkpoint
+
+The [cloud engineering replay](../evaluation/controlled-memory-v2/README.md)
+records four fictional scenarios and 17 passed stage assertions with zero real
+model/API calls. The release suite ran 953 tests (952 passed, one optional
+reference-library differential skipped); the separate reference environment
+passed all 21 schema tests with that check enabled. Compilation and both pinned
+historical artifact verifiers passed. These checks do not establish memory
+benefit, naturalness, reduced burden or CBT/clinical effectiveness.
