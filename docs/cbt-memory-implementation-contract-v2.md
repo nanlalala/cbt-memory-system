@@ -437,3 +437,16 @@ reference-library differential skipped); the separate reference environment
 passed all 21 schema tests with that check enabled. Compilation and both pinned
 historical artifact verifiers passed. These checks do not establish memory
 benefit, naturalness, reduced burden or CBT/clinical effectiveness.
+
+### Automated review follow-up before merge
+
+PR #32's later automated review identified predicate-negation errors. The fix
+uses the same local predicate rule in public validation and object binding,
+preserves genuine task refusal/pause, and does not infer agreement or activation
+from a negated opposite. User questions are retained as quotations rather than
+current assertions; the supported unknown-outcome self-report remains valid.
+Original replays and protocols remain unchanged. The notebook now pins corrected
+executable `9166f233e1ba0305ec1c558da77f9afade476e7d`. The follow-up full cloud
+suite ran 964 tests (963 passed, one optional reference-validator skip), and
+independent read-only review closed the reproduced issue. See the new replay
+linked in the engineering report; no real model or participant study was run.

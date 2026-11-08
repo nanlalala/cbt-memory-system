@@ -43,3 +43,21 @@ Its actual browser UI, real model extraction/answers, production recovery, CBT
 professional review and participant outcomes have not been verified by this
 replay. The prospective v2 evaluation contract must be frozen and a separate
 fair model/participant comparison run before claiming memory or CBT benefit.
+
+## Negation review follow-up
+
+The original replays above are retained with their original executable identities.
+A later automated review found negated pause/cancellation/refusal predicates being
+accepted as opposite states. The corrected executable is
+`9166f233e1ba0305ec1c558da77f9afade476e7d`; the Colab entry now pins that commit.
+The [fresh published-code replay](engineering-replay-negation-20261108.json) again
+passed four scenarios / 17 stage assertions, in a new file/run without overwriting
+prior runs. This replay itself does not contain the negation test matrix.
+
+The separate rule and actual dialogue regressions cover predicate-specific
+negation, cross-object scope, Unicode/plain contractions, unknown self-reports,
+and questions that must not update the state they ask about. All 964 release
+tests ran in cloud Linux: 963 passed and one optional reference-validator check
+was skipped in the default environment; that check passes in the separate
+reference environment. These remain engineering checks, with zero real model/API
+calls and no efficacy conclusion.
