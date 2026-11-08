@@ -378,6 +378,7 @@ def render_operation_receipts(reply: dict[str, Any] | None, *, organizing_result
         "offline_software_demo": "离线流程演示，未调用模型",
         "budget_not_sent": "预算不足，未外发", "attempt_unknown": "外发结果未知，不自动重投",
         "failed_or_unknown": "回答失败或结果未知", "stale_discarded": "来源已失效，旧回答已丢弃",
+        "stale": "旧回答失效，仅回执",
         "stale_not_sent": "来源或许可变化，未外发", "local_control": "本地控制已处理",
         "local_preference_control": "已处理本轮范围偏好，未外发",
         "external_response_not_permitted": "回答用途未获准，未外发",
@@ -484,7 +485,12 @@ def _launch_controlled_demo(session: Any, widgets: Any, display: Any) -> Any:
     ])])
     management.set_title(0, "查看分类与本地撤回 · 可选")
     management.selected_index = None
-    state = {"busy": False, "safety_paused": False, "pending_input": None}
+    state = {"busy": False, "safety_paused": False, "pending_input": None, "session_epoch": 0}
+
+    def current_session_identity():
+        # The epoch also isolates injected UI sessions that do not expose a
+        # public session_id. A signature alone is not an operation identity.
+        return (getattr(session, "session_id", None), state["session_epoch"])
 
     def enabled():
         allowed = bool(acknowledge.value) and not state["busy"]
@@ -538,24 +544,56 @@ def _launch_controlled_demo(session: Any, widgets: Any, display: Any) -> Any:
             permissions = {key: field.value is True for key, field in permission_widgets.items()}
             signature = hashlib.sha256(json.dumps([text, permissions], sort_keys=True, ensure_ascii=False).encode()).hexdigest()
             pending = state['pending_input']
-            if pending is None or pending['signature'] != signature:
-                pending = {'input_id': 'ui-input-' + uuid.uuid4().hex, 'signature': signature}
+            identity = current_session_identity()
+            if pending is None or pending['signature'] != signature or pending['session_identity'] != identity:
+                pending = {'input_id': 'ui-input-' + uuid.uuid4().hex, 'signature': signature,
+                           'session_identity': identity}
                 state['pending_input'] = pending
             reply = session.send_message(text, input_id=pending['input_id'], permissions=permissions)
             if not isinstance(reply, dict):
                 receipts.value = render_operation_receipts(None)
                 status.value = "<p>未收到可核对回执，不报告成功。</p>"
                 return
-            state['pending_input'] = None
             receipts.value = render_operation_receipts(reply)
             source = reply.get("source_commit") or {}
-            if reply.get("response_retained") is False or source.get("source_status") != "committed":
+            if reply.get("replayed") is True:
+                # A cached receipt need not append a new turn or last_reply.
+                # Display its explicit identity and permitted returned body,
+                # never silently turn it into a new conversational exchange.
+                transient.value = ("<h4>已恢复原操作回执，未新增发送</h4>"
+                    + _paragraph("操作编号：" + str(reply.get("input_id", pending['input_id'])))
+                    + _paragraph("原会话：" + str(reply.get("original_session_id") or reply.get("session_id")
+                                                    or identity[0] or "未提供"))
+                    + _paragraph("此回执没有可重放的回答正文。" if reply.get("answer_replay_status") == "receipt_only"
+                                 else reply.get("text") or "此回执没有可重放的回答正文。"))
+            elif reply.get("response_retained") is False or source.get("source_status") != "committed":
                 # This is presentation only. Never copy reply/text into a UI
                 # history, SessionState, a subsequent request, or notebook cell.
                 transient.value = ("<h4>仅本轮显示 下次操作清除</h4>" + _paragraph(text)
                                    + _paragraph(reply.get("text", "")))
-            message.value = ""
             status.value = "<p>已取得本轮回执。来源、回答与整理请分别查看。</p>"
+            message.value = ""
+            # Receipt/body widget assignment can fail after the provider has
+            # succeeded. Clear only after the complete UI handoff; otherwise
+            # a same-session manual retry must retain this operation identity.
+            state['pending_input'] = None
+        perform(action)
+
+    def next_session_clicked(_):
+        def action():
+            pending = state['pending_input']
+            session.new_session()
+            state['session_epoch'] += 1
+            state['pending_input'] = None
+            if pending is not None:
+                # Keep only the old operation's body-free identity. Starting a
+                # session is not permission to retry a possibly charged call.
+                receipts.value = ("<h4>上一会话有未决操作，未自动重试</h4>"
+                    + _paragraph("原操作编号：" + pending['input_id'])
+                    + _paragraph("原会话：" + str(pending['session_identity'][0] or "未提供")))
+                status.value = "<p>已开始新会话。再次发送会建立新输入；上一会话操作不会被静默当作本轮重试。</p>"
+            else:
+                status.value = "<p>已开始新会话。</p>"
         perform(action)
 
     def organize_clicked(_):
@@ -585,7 +623,7 @@ def _launch_controlled_demo(session: Any, widgets: Any, display: Any) -> Any:
     organize.on_click(organize_clicked)
     withdraw.on_click(withdraw_clicked)
     refresh_button.on_click(lambda _: perform(lambda: None))
-    next_session.on_click(lambda _: perform(session.new_session))
+    next_session.on_click(next_session_clicked)
     acknowledge.observe(lambda _: enabled(), names="value")
     root = widgets.VBox([title, location, acknowledge, mode, chat, transient, message, purposes,
                          widgets.HBox([send, next_session, refresh_button, organize]), status, receipts,

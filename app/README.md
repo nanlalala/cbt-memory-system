@@ -34,6 +34,12 @@ protocol identities as software verification only. Approved storage must retain
 the newest control anchor independently of old DB backups; the runtime's process
 lifetime alone does not provide cross-runtime persistence.
 
+The v2.1 replay contains five fictional scenarios, 22 assertions and six local
+mock calls. It includes historical-source-only retrieval, zero-hit/top-k controls
+and exact final outbound body/offset checks. The earlier four-scenario records
+are preserved at their original executable identities. Review repairs and their
+regressions are listed in the [remediation record](../docs/review-c757-remediation-20261109.md).
+
 See the [implementation contract](../docs/cbt-memory-implementation-contract-v2.md)
 for limits, recovery, deletion scope and prospective fair evaluation. New v2
 model comparisons, professional reviews and participant outcomes have not run.

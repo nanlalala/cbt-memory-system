@@ -54,6 +54,25 @@ def _utc(value):
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def cumulative_coverage_interval(event):
+    """Return a validated aggregate's source-bound coverage sorting interval.
+
+    This helper does not validate linguistic support; the canonical task-event
+    validator supplies that boundary. It never substitutes receipt time for a
+    declared historical coverage date.
+    """
+    payload = event.get('payload') if isinstance(event, Mapping) else None
+    if not isinstance(payload, Mapping) or payload.get('report_mode') != 'cumulative':
+        raise ValueError('coverage interval requires a cumulative report')
+    cutoff = _source_moment(payload.get('covers_through', event['occurred_at']))
+    if event.get('occurred_precision') == 'day':
+        low, high = _source_moment(event['occurred_at']), _source_moment(event['occurred_before'])
+        if not low <= cutoff < high:
+            raise ValueError('coverage timestamp is outside its source day')
+        return low, high
+    return cutoff, cutoff
+
+
 def resolve_event_date_reference(text, *, source_time, task_instance_id, period_id,
                                  timezone_name="UTC"):
     """Resolve an explicit day reference without claiming a physical attempt.
@@ -123,7 +142,7 @@ def resolve_event_date_reference(text, *, source_time, task_instance_id, period_
 
 
 def resolve_attempt_reference(text, *, source_time, task_instance_id, period_id,
-                              timezone_name="UTC"):
+                              timezone_name="UTC", existing_events=None):
     """Resolve one explicitly dated attempt, conservatively and deterministically.
 
     Unqualified same-day reports share the day identity; a later report is not
@@ -158,6 +177,30 @@ def resolve_attempt_reference(text, *, source_time, task_instance_id, period_id,
         value = int(word) if word.isdecimal() else _NUMBER_WORDS[word]
         if value > 1:
             return None
+    # The default first-day identity is only safe when the day has no known
+    # physical attempt. A later unqualified report must reuse a uniquely known
+    # attempt even if its original explicit ordinal was 'second'.
+    if existing_events is not None and not isinstance(existing_events, (list, tuple)):
+        raise ValueError("existing_events must be a sequence of task events")
+    if not ordinals and existing_events is not None:
+        same_day = set()
+        for event in existing_events:
+            if not isinstance(event, Mapping):
+                raise ValueError("existing task events must be mappings")
+            payload = event.get("payload")
+            if (event.get("event_type") == "progress_report"
+                    and event.get("task_instance_id") == task_instance_id
+                    and event.get("period_id") == resolved["period_id"]
+                    and event.get("event_date") == resolved["event_date"]
+                    and isinstance(payload, Mapping) and payload.get("report_mode") == "attempt"):
+                same_day.add(_required_string(payload.get("attempt_id"), "existing attempt_id"))
+        if len(same_day) > 1:
+            return None
+        if same_day:
+            return {**resolved, "attempt_id": next(iter(same_day)), "attempt_ordinal": None,
+                    "explicit_ordinal": False, "unqualified_day_reference": True,
+                    "identity_rule": "reuse_unique_existing_task_period_day_attempt_v2",
+                    "requires_existing_date_uniqueness_check": False}
     ordinal = ordinals[0] if ordinals else 1
     key = [task_instance_id, resolved["period_id"], resolved["event_date"], ordinal]
     identity = hashlib.sha256(json.dumps(key, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()[:32]
@@ -229,7 +272,16 @@ def parse_current_correction(text, task_payload):
     if not candidates:
         return None
     try:
-        target = max(candidates, key=lambda event: (_source_moment(event["reported_at"]), event["event_id"]))
+        if len(candidates) == 1:
+            # A single candidate needs no ordering assumption. This also
+            # preserves the minimal legacy candidate-builder input contract;
+            # the resulting event still requires full canonical validation.
+            target = candidates[0]
+            _source_moment(target['reported_at'])
+        else:
+            target = max(candidates, key=lambda event: (
+                tuple(reversed(cumulative_coverage_interval(event))) if field == 'count' else (),
+                _source_moment(event["reported_at"]), event["event_id"]))
     except (ValueError, KeyError, TypeError):
         return None
     start, end = match.start(1), match.end(2)

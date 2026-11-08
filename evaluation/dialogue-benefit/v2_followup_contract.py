@@ -162,27 +162,30 @@ def freeze_materials(cases: list[dict], *, exposure_ledger: list[dict] | None = 
     for cid in normalized:
         visit(cid)
 
-    parent = {cid: cid for cid in normalized}
-    def find(cid: str) -> str:
-        while parent[cid] != cid:
-            parent[cid] = parent[parent[cid]]
-            cid = parent[cid]
-        return cid
-    def union(a: str, b: str) -> None:
+    # Keep historical-only identities as graph nodes, too. Projecting each
+    # ledger row straight onto the current case set loses paths such as
+    # A -> old mother <- B when those edges occur in separate ledger rows.
+    # Typed tuples avoid accidental source/mother/case collisions.
+    parent: dict[tuple[str, str], tuple[str, str]] = {}
+    def find(node: tuple[str, str]) -> tuple[str, str]:
+        parent.setdefault(node, node)
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+    def union(a: tuple[str, str], b: tuple[str, str]) -> None:
         ra, rb = find(a), find(b)
         if ra != rb:
             parent[max(ra, rb)] = min(ra, rb)
 
-    token_cases: dict[tuple[str, str], list[str]] = {}
     for cid, row in normalized.items():
+        current = ("case_ids", cid)
+        find(current)
         for field in ("source_group_ids", "mother_ids"):
             for token in row[field]:
-                token_cases.setdefault((field, token), []).append(cid)
+                union(current, (field, token))
         for prior in row["parent_case_ids"]:
-            union(cid, prior)
-    for connected in token_cases.values():
-        for other in connected[1:]:
-            union(connected[0], other)
+            union(current, ("case_ids", prior))
 
     if exposure_ledger is None:
         exposure_ledger = []
@@ -195,20 +198,23 @@ def freeze_materials(cases: list[dict], *, exposure_ledger: list[dict] | None = 
         clean["reason"] = _text(row["reason"])
         if not any(clean[key] for key in ("case_ids", "source_group_ids", "mother_ids")):
             raise ValueError("Exposure record has no attributable identity")
-        members = {cid for cid in clean["case_ids"] if cid in normalized}
-        for field in ("source_group_ids", "mother_ids"):
-            for token in clean[field]:
-                members.update(token_cases.get((field, token), []))
-        ordered = sorted(members)
-        for other in ordered[1:]:
-            union(ordered[0], other)
-        ledger.append((clean, members))
+        tokens = [(field, token) for field in ("case_ids", "source_group_ids", "mother_ids")
+                  for token in clean[field]]
+        find(tokens[0])
+        for other in tokens[1:]:
+            union(tokens[0], other)
+        ledger.append((clean, tokens[0]))
 
-    groups: dict[str, list[str]] = {}
+    groups: dict[tuple[str, str], list[str]] = {}
     for cid in sorted(normalized):
-        groups.setdefault(find(cid), []).append(cid)
+        groups.setdefault(find(("case_ids", cid)), []).append(cid)
+    # Resolve exposure only after all historical edges are connected. A row
+    # with no direct current-case overlap can still expose its final component.
+    ledger_reasons: dict[tuple[str, str], set[str]] = {}
+    for entry, token in ledger:
+        ledger_reasons.setdefault(find(token), set()).add(entry["reason"])
     output = []
-    for members in groups.values():
+    for root, members in groups.items():
         splits = {normalized[cid]["split"] for cid in members}
         if len(splits) != 1:
             raise ValueError("A connected mother/source/derivative group crosses splits")
@@ -219,10 +225,9 @@ def freeze_materials(cases: list[dict], *, exposure_ledger: list[dict] | None = 
             if row["exposed"]:
                 exposed = True
                 reasons.update(row["exposure_reasons"] or [f"declared_exposure:{cid}"])
-        for entry, attributed in ledger:
-            if attributed.intersection(members):
-                exposed = True
-                reasons.add(entry["reason"])
+        if root in ledger_reasons:
+            exposed = True
+            reasons.update(ledger_reasons[root])
         split = next(iter(splits))
         if split == "blind_test" and (exposed or not exposure_ledger_complete):
             raise ValueError("Blind test requires unexposed lineage and a complete exposure ledger")

@@ -184,6 +184,8 @@ class SQLiteMemoryStore:
 
     def _put(self, connection: sqlite3.Connection, record: MemoryRecord) -> None:
         payload = json.dumps(record.to_dict(), ensure_ascii=False, sort_keys=True)
+        if not self._durable_memory_visible(record.to_dict()):
+            raise MemoryStorageConflict("withdrawn durable memory cannot be reintroduced through the manager")
         existing = connection.execute(
             "SELECT user_id FROM memories WHERE memory_id = ?", (record.memory_id,)
         ).fetchone()
@@ -215,13 +217,66 @@ class SQLiteMemoryStore:
             ),
         )
 
+    def _durable_memory_visible(self, data: dict) -> bool:
+        """Apply the persistent control ledger to same-database manager copies.
+
+        A source-first candidate also has a legacy-manager representation. Old
+        versions could leave that copy behind after committing a revocation.
+        Every management read therefore fails closed, independently of whether
+        physical cleanup already completed. Unrelated legacy records retain
+        their existing contract and do not acquire guessed source bindings.
+        """
+        if not self.connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dm_objects'"
+        ).fetchone():
+            return True
+        user, mid = data.get('user_id'), data.get('memory_id')
+        obj = self.connection.execute(
+            'SELECT blocked FROM dm_objects WHERE user_id=? AND object_id=?',
+            (user, 'memory:' + str(mid)),
+        ).fetchone()
+        controlled = ('controlled_v2' in data.get('tags', []) or
+                      str(mid).startswith('v2-memory-') or obj is not None)
+        if not controlled:
+            return True
+        if obj is not None and obj['blocked']:
+            return False
+        evidence = data.get('source_evidence')
+        if type(evidence) is not dict or not evidence.get('turn_ids'):
+            return False
+        bodies = []
+        for sid in evidence['turn_ids']:
+            source = self.connection.execute(
+                'SELECT text,active,permissions_json FROM dm_sources WHERE user_id=? AND source_id=?',
+                (user, sid),
+            ).fetchone()
+            if source is None or not source['active']:
+                return False
+            if json.loads(source['permissions_json']).get('long_term_use') is not True:
+                return False
+            controls = self.connection.execute(
+                "SELECT scope,start,end FROM dm_revocations WHERE user_id=? AND target_kind='source' AND target_id=?",
+                (user, sid),
+            ).fetchall()
+            text = source['text']
+            for control in controls:
+                if control['scope'] in {'source', 'stop_use'}:
+                    return False
+                if control['scope'] in {'span', 'span_stop_use'}:
+                    text = (text[:control['start']] + '█' * (control['end'] - control['start']) +
+                            text[control['end']:])
+            bodies.append(text)
+        quote = evidence.get('supporting_text')
+        return type(quote) is str and bool(quote) and quote in '\n'.join(bodies)
+
     def get(self, user_id: str, memory_id: str) -> MemoryRecord | None:
         self._require_readable()
         row = self.connection.execute(
             "SELECT record_json FROM memories WHERE user_id = ? AND memory_id = ?",
             (user_id, memory_id),
         ).fetchone()
-        return MemoryRecord.from_dict(json.loads(row["record_json"])) if row else None
+        data = json.loads(row['record_json']) if row else None
+        return MemoryRecord.from_dict(data) if data is not None and self._durable_memory_visible(data) else None
 
     def list_for_user(
         self,
@@ -235,7 +290,8 @@ class SQLiteMemoryStore:
             "SELECT record_json FROM memories WHERE user_id = ? ORDER BY updated_at, memory_id",
             (user_id,),
         ).fetchall()
-        records = [MemoryRecord.from_dict(json.loads(row["record_json"])) for row in rows]
+        records = [MemoryRecord.from_dict(data) for row in rows
+                   if self._durable_memory_visible(data := json.loads(row['record_json']))]
         if lifecycle_statuses is not None:
             records = [item for item in records if item.lifecycle_status in lifecycle_statuses]
         if memory_types is not None:

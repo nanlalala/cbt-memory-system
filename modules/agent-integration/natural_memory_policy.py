@@ -13,6 +13,7 @@ import re
 from zoneinfo import ZoneInfo
 
 from dialogue_service import DialogueSession
+from memory_contract import parse_rfc3339
 
 POLICY_VERSION = "natural-memory-policy-v2.0"
 PERMISSION_KEYS = ("save", "long_term_use", "response_external", "extraction_external")
@@ -20,12 +21,7 @@ POLICY_HASH = hashlib.sha256((POLICY_VERSION + ":subject,field,value;7d;one-ques
 
 
 def moment(value: str) -> datetime:
-    if type(value) is not str:
-        raise ValueError("timestamp must be a string")
-    dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if dt.tzinfo is None:
-        raise ValueError("timestamp requires a timezone")
-    return dt
+    return parse_rfc3339(value)
 
 
 def permissions_for_input(text: str, defaults: dict) -> dict:

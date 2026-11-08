@@ -1,0 +1,263 @@
+{
+  "api_calls": 0,
+  "assertion_count": 22,
+  "effectiveness_claim": false,
+  "execution_host_claim": "software_only_no_colab_guard_bypass",
+  "input_counts": {
+    "answer_unknown": 2,
+    "correction_and_deletion": 3,
+    "history_source_integrity": 2,
+    "multi_axis_and_worker": 4,
+    "no_save_pause": 3
+  },
+  "live_model": false,
+  "live_model_or_network_used": false,
+  "mock_provider_calls": 6,
+  "persistence_boundary": "file_and_independent_control_anchor_depend_on_the_approved_storage_location",
+  "protocol": {
+    "automatic_retries": false,
+    "background_worker": false,
+    "driver_sha256": "ba5c0c99852b799b205bb8a23e2e42e83c135344321fb87b68db30f745decb7d",
+    "fixture_source_times": [
+      "2026-11-03T09:00:00Z",
+      "2026-11-04T09:00:00Z",
+      "2026-11-05T09:00:00Z",
+      "2026-11-06T09:00:00Z",
+      "2026-11-06T10:00:00Z"
+    ],
+    "kind": "fictional_software_contract_replay_not_effectiveness_experiment",
+    "maximum_inputs": {
+      "answer_unknown": 2,
+      "correction_and_deletion": 4,
+      "history_source_integrity": 2,
+      "multi_axis_and_worker": 4,
+      "no_save_pause": 3
+    },
+    "maximum_mock_provider_attempts_per_scenario": 8,
+    "maximum_mock_provider_attempts_total": 40,
+    "real_api_calls_permitted": 0,
+    "run_id": "published-2d48a791",
+    "scenario_names": [
+      "multi_axis_and_worker",
+      "correction_and_deletion",
+      "no_save_pause",
+      "answer_unknown",
+      "history_source_integrity"
+    ],
+    "scenario_protocol_hashes": {
+      "answer_unknown": "631237c65e785a8407c1a5c8bab372e620a12e7a5bbb1244f96b9e1f1d77fd20",
+      "correction_and_deletion": "020631612c0af85e57f55bfb7012f884bbfc74347cc99326cb2479d9f6437d6a",
+      "history_source_integrity": "631237c65e785a8407c1a5c8bab372e620a12e7a5bbb1244f96b9e1f1d77fd20",
+      "multi_axis_and_worker": "020631612c0af85e57f55bfb7012f884bbfc74347cc99326cb2479d9f6437d6a",
+      "no_save_pause": "631237c65e785a8407c1a5c8bab372e620a12e7a5bbb1244f96b9e1f1d77fd20"
+    },
+    "synthetic_clock": true,
+    "version": "controlled-memory-scripted-v2.1",
+    "worker_batch_limit": 4,
+    "worker_queue_limit": 12
+  },
+  "protocol_hash": "fd4c300bcef8aec2ee3f6c49ba4592f0c7456a5bc19ca1143ba357f14d6b29ca",
+  "scenarios": [
+    {
+      "assertions": [
+        {
+          "assertion": "acceptance_progress_pause_and_unknown_coexist",
+          "observed": {
+            "acceptance": "agreed",
+            "outcome": "unknown",
+            "participation": "paused",
+            "reported_count": 1,
+            "target_count": 2
+          },
+          "passed": true
+        },
+        {
+          "assertion": "task_identity_survives_progress_and_pause",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "actual_bounded_worker_and_manager_saved_source_only_candidates",
+          "observed": {
+            "candidate_count": 3,
+            "worker_outcomes": [
+              {
+                "candidate_count": 1,
+                "job_id": "job-fb69cd0eccc64e5383c6e4c97a4af1c8",
+                "semantic_status": "source_only_no_model",
+                "status": "completed"
+              },
+              {
+                "candidate_count": 1,
+                "job_id": "job-8ef4b0f693174b92b38766424f1cab7b",
+                "semantic_status": "source_only_no_model",
+                "status": "completed"
+              },
+              {
+                "candidate_count": 1,
+                "job_id": "job-9a14ff51de094707afea014f0dbe4b96",
+                "semantic_status": "source_only_no_model",
+                "status": "completed"
+              }
+            ]
+          },
+          "passed": true
+        },
+        {
+          "assertion": "canonical_schema_two_candidates_remain_unconfirmed",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "task_projection_preserves_current_multi_axis_state",
+          "observed": {
+            "answer_status": "offline_software_demo",
+            "history_quote_claim_count": 2,
+            "included_claim_count": 6
+          },
+          "passed": true
+        }
+      ],
+      "protocol_hash": "020631612c0af85e57f55bfb7012f884bbfc74347cc99326cb2479d9f6437d6a",
+      "scenario": "multi_axis_and_worker"
+    },
+    {
+      "assertions": [
+        {
+          "assertion": "correction_keeps_task_identity_and_replaces_current_target",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "content_deletion_blocks_current_and_clears_payload",
+          "observed": {
+            "replica_cleanup": "not_claimed_external_copies_not_controlled",
+            "status": "blocked"
+          },
+          "passed": true
+        },
+        {
+          "assertion": "deleted_two_does_not_restore_old_three",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "ordinary_source_view_no_longer_contains_deleted_targets",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "reopen_obeys_the_same_persistent_deletion_barrier",
+          "observed": null,
+          "passed": true
+        }
+      ],
+      "protocol_hash": "020631612c0af85e57f55bfb7012f884bbfc74347cc99326cb2479d9f6437d6a",
+      "scenario": "correction_and_deletion"
+    },
+    {
+      "assertions": [
+        {
+          "assertion": "no_save_pause_applies_only_to_current_turn",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "private_input_not_retained_in_database_snapshot_or_hash",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "private_input_not_reused_in_next_outbound_or_extraction_background",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "unsaved_current_change_does_not_reactivate_old_current_value",
+          "observed": null,
+          "passed": true
+        }
+      ],
+      "mock_provider_calls": 3,
+      "protocol_hash": "631237c65e785a8407c1a5c8bab372e620a12e7a5bbb1244f96b9e1f1d77fd20",
+      "scenario": "no_save_pause"
+    },
+    {
+      "assertions": [
+        {
+          "assertion": "mock_answer_failure_does_not_rollback_source_or_current_control",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "same_input_retry_does_not_repeat_model_source_or_state_update",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "unknown_attempt_and_unknown_usage_are_distinct_from_zero_cost",
+          "observed": {
+            "attempt_status": "attempt_unknown",
+            "usage": null
+          },
+          "passed": true
+        }
+      ],
+      "mock_provider_calls": 1,
+      "protocol_hash": "631237c65e785a8407c1a5c8bab372e620a12e7a5bbb1244f96b9e1f1d77fd20",
+      "scenario": "answer_unknown"
+    },
+    {
+      "assertions": [
+        {
+          "assertion": "history_query_retrieves_expected_sources_with_top_k_six",
+          "observed": {
+            "history_quote_claim_count": 6,
+            "selected_source_ids": [
+              "fixture-history-0",
+              "fixture-history-1",
+              "fixture-history-2",
+              "fixture-history-3",
+              "fixture-history-4",
+              "fixture-history-5"
+            ]
+          },
+          "passed": true
+        },
+        {
+          "assertion": "final_outbound_quotes_match_full_source_body_offsets_role_and_time",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "unrelated_source_and_seventh_rank_are_absent_from_outbound",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "zero_hit_query_has_no_historical_claims_or_body_in_final_messages",
+          "observed": null,
+          "passed": true
+        },
+        {
+          "assertion": "history_fixture_uses_only_two_bounded_response_mocks",
+          "observed": {
+            "mock_response_calls": 2
+          },
+          "passed": true
+        }
+      ],
+      "mock_provider_calls": 2,
+      "protocol_hash": "631237c65e785a8407c1a5c8bab372e620a12e7a5bbb1244f96b9e1f1d77fd20",
+      "scenario": "history_source_integrity"
+    }
+  ],
+  "status": "passed",
+  "execution_identity": {
+    "revision": "2d48a7917e17aa8e02fa13f419ebe35961e11d0f",
+    "tree": "483db14a50042229c3645f05a090161d3a3f3959",
+    "working_tree_at_execution": "clean",
+    "host": "independent Linux cloud container",
+    "real_api_or_model_calls": 0
+  }
+}

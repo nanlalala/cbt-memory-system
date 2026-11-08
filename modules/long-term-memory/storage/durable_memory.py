@@ -124,9 +124,46 @@ class DurableMemoryStore:
             if had_v2 and not self._binding_path.is_file():
                 raise DurableConflict('existing v2 database requires its current independent control binding')
         self._create_schema()
-        if store.database!=':memory:':self._initialize_identity(had_v2)
+        if store.database!=':memory:':
+            # A commit publishes its filesystem checkpoint before committing
+            # SQLite. Identity initialization must take the same write lock,
+            # otherwise it could compare an old DB snapshot to that checkpoint.
+            # This bootstrap has no durable commit hook yet; maintenance stores
+            # may be opened for verification but remain blocked for normal use.
+            with self.store.transaction(immediate=True, _maintenance=True):
+                self._initialize_identity(had_v2)
         self.store._before_commit=self._checkpoint_before_commit
         self.store._before_read=self._verify_control_anchor
+        self._ensure_attempt_object_schema()
+
+    def _ensure_attempt_object_schema(self) -> None:
+        """Extend an authenticated store only after verifying its old anchor.
+
+        Old attempts have *unknown*, rather than empty, object dependencies.
+        Their answer bodies are discarded in the same schema transaction. An
+        old in-flight answer may later record usage, but may never be published
+        or automatically re-sent. New attempts may explicitly bind an empty map.
+        Maintenance stores defer this extension until maintenance is finished.
+        """
+        if 'object_versions_json' in {r[1] for r in self.connection.execute('PRAGMA table_info(dm_attempts)')}:
+            return
+        if self.connection.execute("SELECT value FROM dm_meta WHERE key='maintenance'").fetchone()[0]:
+            return
+        with self.store.transaction(immediate=True):
+            self._writable()
+            # A second constructor may have observed the old schema before
+            # waiting for the first constructor's migration write reservation.
+            if 'object_versions_json' in {r[1] for r in self.connection.execute('PRAGMA table_info(dm_attempts)')}:
+                return
+            self.connection.execute("ALTER TABLE dm_attempts ADD COLUMN object_versions_json TEXT NOT NULL DEFAULT '{}'")
+            self.connection.execute("""
+                UPDATE dm_attempts SET response_json=NULL,
+                    status=CASE
+                      WHEN status='succeeded' THEN 'stale'
+                      WHEN status IN ('sending','attempt_unknown') THEN 'dependency_unknown'
+                      ELSE status END
+                WHERE purpose='response'
+            """)
 
     @classmethod
     def open(cls, database: str | Path, *, approved_root: str | Path,
@@ -271,6 +308,19 @@ class DurableMemoryStore:
 
     def _verify_control_anchor(self,*,allow_maintenance: bool=False) -> None:
         if getattr(self.store,'_control_fault',False):raise StorageControlFailure('control-anchor failure requires maintenance')
+        if not self.connection.in_transaction:
+            # This is a read guard, not a memory write. In particular it must
+            # never invoke _before_commit or advance storage_revision. BEGIN
+            # IMMEDIATE serializes the DB+filesystem snapshot with all durable
+            # commits, without weakening the exact checkpoint comparison.
+            self.connection.execute('BEGIN IMMEDIATE')
+            try:
+                self._verify_control_anchor(allow_maintenance=allow_maintenance)
+                self.connection.commit()
+            except BaseException:
+                self.connection.rollback()
+                raise
+            return
         flag=self.connection.execute("SELECT value FROM dm_meta WHERE key='maintenance'").fetchone()
         if flag and flag[0] and not allow_maintenance:raise DurableConflict('maintenance blocks memory use until latest ledger verification')
         if self._file_identity is None:return
@@ -411,8 +461,8 @@ class DurableMemoryStore:
         if source["source_time"] is not None:
             if type(source["source_time"]) is not str:
                 raise ValueError("source_time must be an aware timestamp or None")
-            stamp = datetime.fromisoformat(source["source_time"].replace("Z","+00:00"))
-            if stamp.tzinfo is None: raise ValueError("source_time requires timezone")
+            from memory_contract import parse_rfc3339
+            parse_rfc3339(source["source_time"], path='source_time')
         permissions = source["permissions"]
         if type(permissions) is not dict or set(permissions) - set(PERMISSIONS):
             raise ValueError("invalid source permissions")
@@ -430,6 +480,8 @@ class DurableMemoryStore:
             if old:
                 if old[0] != fingerprint: raise DurableConflict("input_id already identifies another input")
                 return {**self.get_input(user,iid),"replayed":True}
+            if self._source_blocked(user, sid):
+                raise DurableConflict("source_id has a persistent withdrawal barrier")
             if self.connection.execute("SELECT 1 FROM dm_sources WHERE user_id=? AND source_id=?",(user,sid)).fetchone():
                 raise DurableConflict("source_id already exists, including withdrawn sources")
             self.connection.execute("INSERT INTO dm_sources VALUES (?,?,?,?,?,?,?,1)",(user,sid,iid,source['text'],source['role'],source['source_time'],_json(permissions)))
@@ -450,18 +502,25 @@ class DurableMemoryStore:
         if not _internal_control_read:self._verify_control_anchor()
         row=self.connection.execute("SELECT * FROM dm_sources WHERE user_id=? AND source_id=?",(user_id,source_id)).fetchone()
         if row is None or not row['active']:return None
+        if self._source_blocked(user_id, source_id, include_stop_use=require_use):return None
         if require_use and self._paused_locked(user_id):return None
         permissions=json.loads(row['permissions_json'])
         if require_use and permissions['long_term_use'] is not True:return None
         if as_of is not None:
-            cutoff=datetime.fromisoformat(as_of.replace('Z','+00:00'))
-            if cutoff.tzinfo is None:raise ValueError('source cutoff requires timezone')
-            if row['source_time'] is None or datetime.fromisoformat(row['source_time'].replace('Z','+00:00')) > cutoff:return None
+            from memory_contract import parse_rfc3339
+            cutoff=parse_rfc3339(as_of, path='as_of')
+            if row['source_time'] is None or parse_rfc3339(row['source_time'], path='source_time') > cutoff:return None
         text=row['text']
         if require_use:
             for withdrawn in self.connection.execute("SELECT start,end FROM dm_revocations WHERE user_id=? AND target_kind='source' AND target_id=? AND scope='span_stop_use'",(user_id,source_id)):
                 text=text[:withdrawn['start']]+'█'*(withdrawn['end']-withdrawn['start'])+text[withdrawn['end']:]
         return {'user_id':row['user_id'],'source_id':row['source_id'],'input_id':row['input_id'],'text':text,'role':row['role'],'source_time':row['source_time'],'permissions':permissions}
+
+    def _source_blocked(self, user_id: str, source_id: str, *, include_stop_use: bool=True) -> bool:
+        scopes = ('source', 'stop_use') if include_stop_use else ('source',)
+        return any(row['scope'] in scopes for row in self.connection.execute(
+            "SELECT scope FROM dm_revocations WHERE user_id=? AND target_kind='source' AND target_id=?",
+            (user_id, source_id)))
 
     def list_sources(self, user_id: str, *, as_of: str | None = None) -> list[dict]:
         return [source for row in self.connection.execute("SELECT source_id FROM dm_sources WHERE user_id=? ORDER BY source_time,source_id",(user_id,)).fetchall()
@@ -494,13 +553,42 @@ class DurableMemoryStore:
             self.connection.execute('UPDATE dm_jobs SET status=? WHERE job_id=?',(status,job_id))
             return {'status':status}
 
-    def get_attempt(self,user_id: str,request_key: str) -> dict | None:
+    def _object_versions_live(self, user_id: str, expected: dict) -> bool:
+        for object_id, version in expected.items():
+            row = self.connection.execute('SELECT version,blocked FROM dm_objects WHERE user_id=? AND object_id=?',
+                                          (user_id, object_id)).fetchone()
+            if row is None:
+                if version != 0:return False
+            elif row['blocked'] or row['version'] != version:
+                return False
+        return True
+
+    def _attempt_live(self, row, *, run_id: str | None=None, session_id: str | None=None,
+                      current_context: bool=False) -> bool:
+        if row['generation'] != self.current_generation(row['user_id']) or self._paused_locked(row['user_id']):
+            return False
+        if run_id is not None and run_id != row['run_id']:return False
+        if session_id is not None and session_id != row['session_id']:return False
+        if not self._object_versions_live(row['user_id'], json.loads(row['object_versions_json'])):
+            return False
+        current_sources = set(json.loads(row['current_source_ids_json']))
+        allow_current = current_context or (run_id == row['run_id'] and session_id == row['session_id'])
+        permission = 'response_external' if row['purpose'] == 'response' else 'extraction_external'
+        for sid in json.loads(row['source_ids_json']):
+            source = self.get_source(row['user_id'], sid, require_use=not (allow_current and sid in current_sources))
+            if source is None or source['permissions'][permission] is not True:return False
+            if self._source_blocked(row['user_id'], sid):return False
+        return True
+
+    def get_attempt(self,user_id: str,request_key: str,*,run_id: str | None=None,
+                    session_id: str | None=None) -> dict | None:
         self._verify_control_anchor()
         row=self.connection.execute('SELECT * FROM dm_attempts WHERE user_id=? AND request_key=?',(user_id,request_key)).fetchone()
         if row is None:return None
-        live=row['generation']==self.current_generation(user_id)
+        live=self._attempt_live(row, run_id=run_id, session_id=session_id)
         return {'attempt_id':row['attempt_id'],'status':row['status'],'purpose':row['purpose'],
                 'generation':row['generation'],'run_id':row['run_id'],'session_id':row['session_id'],
+                'object_versions':json.loads(row['object_versions_json']),
                 'publishable':live and row['status']=='succeeded' and row['response_json'] is not None,
                 'response':json.loads(row['response_json']) if live and row['status']=='succeeded' and row['response_json'] is not None else None,
                 'usage':json.loads(row['usage_json']) if row['usage_json'] is not None else None}
@@ -508,7 +596,8 @@ class DurableMemoryStore:
     def begin_attempt(self, user_id: str, request_key: str, purpose: str, source_ids: list[str], *,
                       run_id: str = 'default', session_id: str = 'default', expected_generation: int | None = None,
                       job_id: str | None = None, claim_token: str | None = None,
-                      current_source_ids: list[str] | None = None,current_input_id: str | None=None) -> dict:
+                      current_source_ids: list[str] | None = None,current_input_id: str | None=None,
+                      expected_object_versions: dict[str,int] | None=None) -> dict:
         _id(user_id,'user_id');_id(request_key,'request_key');_id(run_id,'run_id');_id(session_id,'session_id')
         if purpose not in {'response','extraction','verification'}:raise ValueError('invalid external purpose')
         if type(source_ids) is not list or any(type(s) is not str for s in source_ids) or len(set(source_ids))!=len(source_ids):raise ValueError('source_ids must be unique strings')
@@ -521,16 +610,23 @@ class DurableMemoryStore:
         if current_input_id is not None:_id(current_input_id,'current_input_id')
         if purpose=='response' and current_input_id is not None and request_key!='response:'+current_input_id:
             raise PermissionError('bound response request must use its canonical input identity')
+        expected_object_versions={} if expected_object_versions is None else expected_object_versions
+        if (type(expected_object_versions) is not dict or
+            any(type(k) is not str or not k.strip() or k != k.strip() or type(v) is not int or v < 0
+                for k,v in expected_object_versions.items())):
+            raise ValueError('expected_object_versions must map object IDs to nonnegative integer versions')
         with self.store.transaction(immediate=True):
             self._writable();self._user(user_id);self._normal_allowed(user_id);limits=self._run(run_id)
             generation=self.current_generation(user_id)
             if expected_generation is not None and expected_generation != generation:raise DurableConflict('control generation changed before send admission')
+            if not self._object_versions_live(user_id, expected_object_versions):
+                raise DurableConflict('object version changed before send admission')
             existing=self.connection.execute('SELECT * FROM dm_attempts WHERE user_id=? AND request_key=?',(user_id,request_key)).fetchone()
             if existing:
-                if (existing['purpose'],existing['source_ids_json'],existing['current_source_ids_json'],existing['current_input_id'],existing['run_id'],existing['session_id']) != (purpose,_json(source_ids),_json(current_source_ids),current_input_id,run_id,session_id):raise DurableConflict('canonical request identity changed')
-                if existing['generation']!=generation:return {'status':'stale','publishable':False,'response':None,'clear_payload':True,'replayed':True}
+                if (existing['purpose'],existing['source_ids_json'],existing['current_source_ids_json'],existing['current_input_id'],existing['run_id'],existing['session_id'],existing['object_versions_json']) != (purpose,_json(source_ids),_json(current_source_ids),current_input_id,run_id,session_id,_json(expected_object_versions)):raise DurableConflict('canonical request identity changed')
+                if not self._attempt_live(existing, run_id=run_id, session_id=session_id):return {'status':'stale','publishable':False,'response':None,'clear_payload':True,'replayed':True}
                 if existing['status']=='succeeded':return {'status':'succeeded','attempt_id':existing['attempt_id'],'publishable':existing['response_json'] is not None,'response':json.loads(existing['response_json']) if existing['response_json'] is not None else None,'response_retained':existing['response_json'] is not None,'replayed':True}
-                if existing['status'] in {'sending','attempt_unknown'}:raise AttemptUnknown('external outcome unknown; never resend on a lease timeout')
+                if existing['status'] in {'sending','attempt_unknown','dependency_unknown'}:raise AttemptUnknown('external outcome unknown; never resend on a lease timeout')
                 raise DurableConflict('canonical request already attempted; explicit new attempt identity required')
             permission='response_external' if purpose=='response' else 'extraction_external'
             bound_input=self.get_input(user_id,current_input_id) if current_input_id is not None else None
@@ -553,7 +649,7 @@ class DurableMemoryStore:
             session_count=self.connection.execute('SELECT COUNT(*) FROM dm_attempts WHERE run_id=? AND user_id=? AND session_id=?',(run_id,user_id,session_id)).fetchone()[0]
             if run_count>=limits['max_run_calls'] or session_count>=limits['max_session_calls']:raise BudgetExhausted('frozen run/session call limit reached')
             attempt_id='attempt-'+uuid.uuid4().hex
-            self.connection.execute("INSERT INTO dm_attempts(attempt_id,user_id,request_key,purpose,source_ids_json,current_source_ids_json,run_id,session_id,generation,status,response_json,usage_json,job_id,created_at,current_input_id,can_retain_response) VALUES (?,?,?,?,?,?,?,?,?,'sending',NULL,NULL,?,?,?,?)",(attempt_id,user_id,request_key,purpose,_json(source_ids),_json(current_source_ids),run_id,session_id,generation,job_id,_now(),current_input_id,int(retain_eligible)))
+            self.connection.execute("INSERT INTO dm_attempts(attempt_id,user_id,request_key,purpose,source_ids_json,current_source_ids_json,run_id,session_id,generation,status,response_json,usage_json,job_id,created_at,current_input_id,can_retain_response,object_versions_json) VALUES (?,?,?,?,?,?,?,?,?,'sending',NULL,NULL,?,?,?,?,?)",(attempt_id,user_id,request_key,purpose,_json(source_ids),_json(current_source_ids),run_id,session_id,generation,job_id,_now(),current_input_id,int(retain_eligible),_json(expected_object_versions)))
             if job_id:self.connection.execute("UPDATE dm_jobs SET status='sending' WHERE job_id=?",(job_id,))
             return {'attempt_id':attempt_id,'status':'sending','generation':generation,'replayed':False,'publishable':False}
 
@@ -567,8 +663,8 @@ class DurableMemoryStore:
             self._writable()
             row=self.connection.execute('SELECT * FROM dm_attempts WHERE attempt_id=?',(attempt_id,)).fetchone()
             if row is None:raise DurableConflict('unknown attempt')
-            if row['status'] not in {'sending','attempt_unknown'}:raise DurableConflict('attempt already finalized')
-            stale=row['generation']!=self.current_generation(row['user_id']) or self._paused_locked(row['user_id'])
+            if row['status'] not in {'sending','attempt_unknown','dependency_unknown'}:raise DurableConflict('attempt already finalized')
+            stale=row['status']=='dependency_unknown' or not self._attempt_live(row, current_context=True)
             permission='response_external' if row['purpose']=='response' else 'extraction_external'
             current_source_ids=json.loads(row['current_source_ids_json'])
             for sid in json.loads(row['source_ids_json']):
@@ -576,7 +672,8 @@ class DurableMemoryStore:
                 stale=stale or source is None or source['permissions'][permission] is not True
             status='stale' if stale else {'success':'succeeded','failed':'failed','unknown':'attempt_unknown'}[outcome]
             stored=response_json if status=='succeeded' and retain_response and row['can_retain_response'] else None
-            self.connection.execute('UPDATE dm_attempts SET status=?,response_json=?,usage_json=? WHERE attempt_id=?',(status,stored,usage_json,attempt_id))
+            recorded_usage=usage_json if usage_json is not None else row['usage_json']
+            self.connection.execute('UPDATE dm_attempts SET status=?,response_json=?,usage_json=? WHERE attempt_id=?',(status,stored,recorded_usage,attempt_id))
             if row['job_id'] and status in {'stale','failed','attempt_unknown'}:self.connection.execute('UPDATE dm_jobs SET status=? WHERE job_id=?',(status,row['job_id']))
             return {'attempt_id':attempt_id,'status':status,'publishable':status=='succeeded','clear_payload':status!='succeeded','response_retained':stored is not None,'response':response if status=='succeeded' else None}
 
@@ -623,6 +720,15 @@ class DurableMemoryStore:
             else:self.connection.execute('INSERT INTO dm_objects VALUES (?,?,?,?,0)',(user_id,object_id,next_version,body))
             self.connection.execute('INSERT INTO dm_object_versions VALUES (?,?,?,?)',(user_id,object_id,next_version,body))
             self.connection.execute('INSERT INTO dm_effects VALUES (?,?,?,?,?)',(user_id,effect_key,object_id,fingerprint,next_version))
+            # Ordinary task corrections do not bump withdrawal generation. They
+            # invalidate only cached answers actually bound to this object.
+            for attempt in self.connection.execute(
+                "SELECT attempt_id,object_versions_json FROM dm_attempts WHERE user_id=? AND status='succeeded'",
+                (user_id,)).fetchall():
+                versions=json.loads(attempt['object_versions_json'])
+                if object_id in versions and versions[object_id] != next_version:
+                    self.connection.execute("UPDATE dm_attempts SET status='stale',response_json=NULL WHERE attempt_id=?",
+                                            (attempt['attempt_id'],))
             # Retain dependencies across object versions: deleting the corrected
             # current value must not uncover an older source-backed value.
             self.connection.executemany("INSERT OR IGNORE INTO dm_dependencies VALUES (?,'object',?,?,?,?)",[(user_id,object_id,sid,start,end) for sid,start,end in spans])
@@ -699,6 +805,14 @@ class DurableMemoryStore:
                 self.connection.execute('INSERT INTO dm_objects VALUES (?,?,1,NULL,1) ON CONFLICT(user_id,object_id) DO UPDATE SET version=version+1,payload_json=NULL,blocked=1',(user_id,oid))
                 self.connection.execute('UPDATE dm_object_versions SET payload_json=NULL WHERE user_id=? AND object_id=?',(user_id,oid))
                 self.connection.execute('UPDATE dm_representations SET active=0,body_json=NULL WHERE user_id=? AND object_id=?',(user_id,oid))
+            # Same-database manager rows are controlled replicas, not external
+            # copies. Erase their content/record_json/supporting_text in this
+            # very transaction, before acknowledging primary cleanup.
+            for replica in self.connection.execute(
+                'SELECT memory_id,record_json FROM memories WHERE user_id=?', (user_id,)).fetchall():
+                if not self.store._durable_memory_visible(json.loads(replica['record_json'])):
+                    self.connection.execute('DELETE FROM memories WHERE user_id=? AND memory_id=?',
+                                            (user_id,replica['memory_id']))
             # Conservative per-user fencing prevents stale results/caches from
             # containing a withdrawn span even when a provider supplied extras.
             self.connection.execute("UPDATE dm_attempts SET response_json=NULL,status=CASE WHEN status='succeeded' THEN 'stale' ELSE status END WHERE user_id=?",(user_id,))
@@ -735,4 +849,5 @@ class DurableMemoryStore:
             current=self.control_ledger()
             if latest_control_ledger is None or latest_control_ledger!=current:raise DurableConflict('latest complete control ledger required; stale restore refused')
             self.connection.execute("UPDATE dm_meta SET value=0 WHERE key='maintenance'")
-            return {'status':'ready','control_watermark':current['watermark'],'replica_cleanup':'not_claimed'}
+            self._ensure_attempt_object_schema()
+        return {'status':'ready','control_watermark':current['watermark'],'replica_cleanup':'not_claimed'}
