@@ -199,18 +199,23 @@ def freeze(output):
         except Exception as exc:
             event(event="attempt_failed", filename=filename, error_type=type(exc).__name__)
             raise
-    if digest(raw["therapyjudgebench.jsonl"]) != DATA_SHA256:
-        raise ValueError("published_jsonl_sha256_mismatch")
-    card = raw["README.md"].decode("utf-8")
-    if "2.0.0" not in card or "CC BY 4.0" not in card:
-        raise ValueError("canonical_card_version_or_license_missing")
-    if b"Attribution 4.0 International" not in raw["LICENSE"]:
-        raise ValueError("canonical_cc_by_4_license_missing")
-    croissant = parse_json(raw["croissant.json"])
-    if not any(item.get("sha256") == DATA_SHA256 for item in croissant["distribution"]):
-        raise ValueError("publisher_checksum_metadata_mismatch")
-    records = [parse_json(line) for line in raw["therapyjudgebench.jsonl"].decode("utf-8").splitlines() if line.strip()]
-    audit, groups = audit_records(records)
+    event(event="validation_started")
+    try:
+        if digest(raw["therapyjudgebench.jsonl"]) != DATA_SHA256:
+            raise ValueError("published_jsonl_sha256_mismatch")
+        card = raw["README.md"].decode("utf-8")
+        if "2.0.0" not in card or "CC BY 4.0" not in card:
+            raise ValueError("canonical_card_version_or_license_missing")
+        if b"Attribution 4.0 International" not in raw["LICENSE"]:
+            raise ValueError("canonical_cc_by_4_license_missing")
+        croissant = parse_json(raw["croissant.json"])
+        if not any(item.get("sha256") == DATA_SHA256 for item in croissant["distribution"]):
+            raise ValueError("publisher_checksum_metadata_mismatch")
+        records = [parse_json(line) for line in raw["therapyjudgebench.jsonl"].decode("utf-8").splitlines() if line.strip()]
+        audit, groups = audit_records(records)
+    except Exception as exc:
+        event(event="validation_failed", error_type=type(exc).__name__)
+        raise
     write(source_dir / "schema_audit.json", (canonical(audit) + "\n").encode())
     write(source_dir / "profile_exposure_groups.json", (canonical(groups) + "\n").encode())
     manifest = {"protocol": VERSION, "repository": REPOSITORY, "revision": REVISION,
