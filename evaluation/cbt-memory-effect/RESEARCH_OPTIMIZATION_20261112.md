@@ -74,6 +74,15 @@ as separate costs. Report all cases by arm, version, language and four template
 families, including ties, losses, format failures and actual token/latency costs.
 These exposed development cases are not an independent held-out benchmark.
 
+The v1 pre-generation guard stopped with 72 distinct payloads and zero model
+answers. Fresh product databases assigned different internal task UUIDs even
+when their task contents were identical. V2 keeps the original v1 artifacts,
+uses deterministic wire aliases for identifier metadata only, and preserves
+actual UUIDs and version dependencies in the private preparation/gate records.
+Values, quotations, offsets, dates and source IDs do not change. Both product
+versions use this same amended harness; their new directories and hashes are
+frozen before the first generation. The 64-attempt ceiling is unchanged.
+
 MusPsy's official MIT-licensed synthetic dialogue files were frozen in Colab at
 `eaae4df12808f4cbda97d8bc8b243b34cc69f613`: 1,199 files, 31,918,882 bytes;
 manifest SHA256

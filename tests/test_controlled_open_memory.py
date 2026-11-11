@@ -78,6 +78,30 @@ class ControlledOpenTests(unittest.TestCase):
   M.product();module=sys.modules['task_projector']
   with patch.object(module,'__file__','/unrelated/old-checkout/task_projector.py'):
    with self.assertRaisesRegex(RuntimeError,'foreign cached product'):M.product()
+ def test_fresh_databases_have_identical_wire_but_keep_distinct_actual_task_ids(self):
+  rows=self.prepared(1);other=Path(self.tmp.name)/'second'
+  M.prepare(other,fixture_only=True,case_limit=1)
+  second=[json.loads(l) for l in (other/'requests.jsonl').read_text().splitlines()]
+  self.assertEqual([r['request_sha256'] for r in rows],[r['request_sha256'] for r in second])
+  a=json.loads(Path(rows[0]['prepared_case_path']).read_text())
+  b=json.loads(Path(second[0]['prepared_case_path']).read_text())
+  self.assertNotEqual(a['wire_task_aliases'][0]['actual_task_instance_id'],b['wire_task_aliases'][0]['actual_task_instance_id'])
+  self.assertEqual(a['wire_task_aliases'][0]['wire_alias'],b['wire_task_aliases'][0]['wire_alias'])
+  for r in rows:
+   self.assertNotIn(a['wire_task_aliases'][0]['actual_task_instance_id'],json.dumps(r['messages']))
+   self.assertTrue(M.make_gates(self.out).preflight(r)['expected_task_versions'])
+ def test_alias_rendering_does_not_change_user_text_values_or_evidence_offsets(self):
+  product=M.product();actual='task-deadbeef';alias='task-view-fixed'
+  text='My literal diary happens to mention task-deadbeef.'
+  span=product.EvidenceSpan('source:original','span:'+actual,text,0,len(text),'2026-11-03T08:00:00Z','user')
+  claim=product.EvidenceClaim(actual+':target_count','target_count',2,(span,),support_status='rule_verified')
+  bundle=product.EvidenceBundle('task:'+actual,(claim,),actual)
+  result=M._alias_bundle_ids([bundle],{actual:alias})[0];changed=result.claims[0]
+  self.assertEqual(result.task_instance_id,alias);self.assertEqual(changed.value,2)
+  witness=changed.spans[0]
+  self.assertEqual((witness.source_id,witness.text,witness.start,witness.end,witness.role,witness.source_time),
+   (span.source_id,span.text,span.start,span.end,span.role,span.source_time))
+  self.assertIn(actual,witness.text)
  def test_preflight_does_not_read_assessor_target(self):
   row=self.prepared(1)[0];g=M.make_gates(self.out);target=self.out/'assessor_only'/'targets.json'
   original=Path.read_text

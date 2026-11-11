@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[1]
-VERSION='controlled-open-reader-state-v1'
+VERSION='controlled-open-reader-state-v2-stable-wire-task-aliases'
 ARMS=('raw_history_rag','managed_memory_rag')
 SOURCE_CAP=9
 RECENT=6
@@ -140,6 +140,45 @@ def fixed_materials():
      'template_variant':variant})
  return cases,targets
 
+def _task_wire_aliases(session):
+ """Deterministic view names; actual durable IDs remain authoritative off-wire.
+
+ The stable key includes the first explicit source event, so distinct new task
+ instances for the same user, activity and period do not collapse together.
+ A task without such a source witness cannot acquire a guessed stable identity.
+ """
+ aliases={};audit=[]
+ for obj in session._objects('task'):
+  payload=obj['payload'];tid=payload['task_instance_id'];events=payload.get('events',[])
+  if not events:continue
+  first=min(events,key=lambda e:(e['reported_at'],e['event_id']))
+  key={'user_id':session.user_id,'goal_id':payload['goal_id'],
+   'object_label':payload['object_label'],'period_id':payload['period_id'],
+   'initial_source_id':first['source_id'],'initial_event_id':first['event_id']}
+  alias='task-view-'+stable(key)[:24]
+  if alias in aliases.values():raise ValueError('stable task view key is ambiguous')
+  aliases[tid]=alias
+  audit.append({'actual_task_instance_id':tid,'wire_alias':alias,'stable_key_sha256':stable(key)})
+ return aliases,audit
+
+def _alias_bundle_ids(bundles,aliases):
+ """Translate identifier metadata only; literal text/value/source IDs stay exact."""
+ def translated(identifier):
+  if identifier is None:return None
+  for actual,alias in sorted(aliases.items()):identifier=identifier.replace(actual,alias)
+  return identifier
+ def span(value):return replace(value,span_id=translated(value.span_id))
+ result=[]
+ for b in bundles:
+  claims=[]
+  for c in b.claims:
+   claims.append(replace(c,claim_id=translated(c.claim_id),
+    spans=tuple(span(v) for v in c.spans),
+    evidence_options=tuple(tuple(span(v) for v in option) for option in c.evidence_options)))
+  result.append(replace(b,bundle_id=translated(b.bundle_id),
+   task_instance_id=translated(b.task_instance_id),claims=tuple(claims)))
+ return result
+
 def _cap_bundles(bundles):
  # Whole product bundles, including all field witnesses, are admitted atomically.
  out=[];used=set();dropped=[]
@@ -190,8 +229,9 @@ def prepare_one(case,directory,*,fixture_only=False):
   base += [{'role':s['role'],'content':s['text']} for s in recent]
   base += [{'role':'user','content':case['input']}]
   contexts={}
+  aliases,alias_audit=_task_wire_aliases(session)
   for arm,bundles in zip(ARMS,(raw,managed)):
-   capped,capdrops=_cap_bundles(bundles)
+   capped,capdrops=_cap_bundles(_alias_bundle_ids(bundles,aliases))
    package=m.build_outbound_messages(base,capped,max_outbound_chars=MAX_CHARS,
     max_response_tokens=MAX_OUTPUT,request_metadata={'model':'Qwen2.5-1.5B-Instruct','temperature':0},usage=None)
    legacy.assert_evidence_integrity(package,pool)
@@ -218,6 +258,7 @@ def prepare_one(case,directory,*,fixture_only=False):
    'contexts':contexts,'parent_trace':trace,'code_identity':identity(),
    'recent_messages':base[1:-1],'database':str(database.resolve()),'approved_root':str(Path(directory).resolve()),
    'actual_state_projection_present':any(b.bundle_id.startswith('task:') for b in managed),
+   'wire_task_aliases':alias_audit,
    'no_llm_extraction':True,'actual_new_model_calls':0}
   writejson(Path(directory)/'prepared_case.json',result)
   return result
@@ -254,6 +295,8 @@ def prepare(output,*,fixture_only=False,case_limit=None):
   'recent_messages':RECENT,'retrieved_source_cap_each_arm':SOURCE_CAP,'max_outbound_chars':MAX_CHARS,
   'recent_sources_do_not_consume_raw_retrieval_slots':True,
   'raw_and_managed_share_original_source_ranking':True,
+  'task_wire_alias_policy':'stable_user_goal_activity_period_initial_explicit_event_v1',
+  'actual_durable_task_ids_retained_in_private_audit':True,
   'max_new_tokens':MAX_OUTPUT,'no_llm_extraction':True,'new_provider_calls':0,
   'case_file_sha256':filehash(out/'generation_cases.json'),
   'targets_file_sha256':filehash(out/'assessor_only'/'targets.json'),

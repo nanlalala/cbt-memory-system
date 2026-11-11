@@ -36,7 +36,7 @@ from knowledge_adapter_v2 import KnowledgeAdapter
 from source_candidate_selection import (VERSION as SOURCE_SELECTION_VERSION,
                                         select_source_supplements)
 
-VERSION = 'controlled-memory-v2.3-english-explicit-state'
+VERSION = 'controlled-memory-v2.2-source-aware-candidates'
 DEFAULT_PERMISSIONS = {k: True for k in ('save', 'long_term_use', 'response_external', 'extraction_external')}
 SYSTEM = ('You are a nonclinical research prototype for fictional CBT reflection. '
           'Use current sourced task fields only when rule_verified. Historical quotations are dated '
@@ -464,7 +464,7 @@ class ControlledDialogueSession(DialogueSession):
                 append(value, {'target_count': count} if count is not None else {}, (value,), count, 'target_count')
                 break
         correction = parse_current_correction(text, payload)
-        correction_language = bool(re.search(r'改成|改为|更正|纠正|说错|而是|\b(?:correct(?:ed|ion|ing)?|actually)\b', text, re.I))
+        correction_language = bool(re.search(r'改成|改为|更正|纠正|说错|而是|\b(?:correct|correction|actually)\b', text, re.I))
         if correction:
             append('corrected', {'target_event_id': correction['target_event_id'], 'changes': correction['changes']},
                    exact_bindings=correction['claim_bindings'])
