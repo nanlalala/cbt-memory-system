@@ -102,7 +102,7 @@ def checkpoint(output, archive, *, final=False):
     for name, source_root in ROOTS.items():
         if source_root.exists():
             for source in sorted(source_root.rglob("*")):
-                if source.is_file() and source.suffix in EXTENSIONS:
+                if source.is_file() and (source.suffix in EXTENSIONS or source.name == "LICENSE"):
                     copy(source, Path(name) / source.relative_to(source_root))
     for filename in MODEL_METADATA:
         source = MODEL_ROOT / filename
