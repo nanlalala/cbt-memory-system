@@ -18,10 +18,12 @@ import subprocess
 import zipfile
 
 
-VERSION = "cbt-open-state-audit-checkpoint-v1"
+VERSION = "cbt-open-state-audit-checkpoint-v2-complete-preparation-history"
 CONTENT = Path("/content")
 MODEL_ROOT = CONTENT / "cbt-open-reader-20261112-v1"
 ROOTS = {
+    "discarded_prepared_before_v1": CONTENT / "cbt-open-state-prepared-before-20261112-v1",
+    "discarded_prepared_after_v1": CONTENT / "cbt-open-state-prepared-after-20261112-v1",
     "prepared_before": CONTENT / "cbt-open-state-prepared-before-20261112-v2",
     "prepared_after": CONTENT / "cbt-open-state-prepared-after-20261112-v2",
     "answers_before": CONTENT / "cbt-open-state-answers-before-20261112-v2",
@@ -94,7 +96,7 @@ def checkpoint(output, archive, *, final=False):
         os.chmod(destination, 0o600)
         size = destination.stat().st_size
         total += size
-        if total > 128_000_000:
+        if total > 256_000_000:
             raise ValueError("bounded_checkpoint_size_exceeded")
         files.append({"path": str(relative), "source_path": str(source), "bytes": size,
                       "sha256": digest(destination), "method": method})
@@ -109,7 +111,8 @@ def checkpoint(output, archive, *, final=False):
         if source.exists():
             copy(source, Path("model_metadata") / filename)
     for pattern in ("cbt-open-state-*-20261112-v*.json", "cbt-open-state-reader-*-20261112-v2.log",
-                    "therapyjudge-five-calibration-token-preflight-v*.json"):
+                    "therapyjudge-five-calibration-token-preflight-v*.json",
+                    "cbt-open-state-v1-abort-before-generation-20261112.json"):
         for source in sorted(CONTENT.glob(pattern)):
             copy(source, Path("reports") / source.name)
     revisions = {}
