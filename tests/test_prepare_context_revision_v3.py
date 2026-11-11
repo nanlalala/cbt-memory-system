@@ -15,12 +15,15 @@ P = M.product_modules(ROOT)
 
 
 class CheckpointDryRunTests(unittest.TestCase):
-    def fixture(self, root, *, delete_first=False):
+    def fixture(self, root, *, delete_first=False, extra_turns=0):
         old = root / "old-v2"; case_dir = old / "cases/probe-0"; case_dir.mkdir(parents=True)
         (old / "generation").mkdir()
         history = [{"message_id": "turn-0", "source_order": 0, "role": "user", "content": "I have not agreed to thought records."},
             {"message_id": "turn-1", "source_order": 1, "role": "assistant", "content": "We can discuss your preference."},
             {"message_id": "turn-2", "source_order": 2, "role": "user", "content": "I prefer discussing the nervousness."}]
+        history += [{"message_id": "turn-" + str(i), "source_order": i, "role": "user",
+                     "content": "A distinct original report about preference number " + str(i)}
+                    for i in range(3, 3 + extra_turns)]
         permissions = {key: True for key in ("save", "long_term_use", "response_external", "extraction_external")}
         session = P.ControlledDialogueSession.open(str(case_dir / "memory.sqlite"), approved_root=str(case_dir),
             user_id="fixture-user", background=False)
@@ -44,7 +47,7 @@ class CheckpointDryRunTests(unittest.TestCase):
         cases = []
         for i, query in enumerate(["thought records", "nervousness", "discuss preference"]):
             case = {"case_id": "probe-" + str(i), "source_family_id": "fixture-family", "history": history,
-                "history_cutoff_order_exclusive": 3, "input": "What did I say about " + query + "?",
+                "history_cutoff_order_exclusive": len(history), "input": "What did I say about " + query + "?",
                 "retrieval_query": query}
             cases.append({**case, "case_sha256": M.digest(case)})
         generation = old / "generation/cases.jsonl"
@@ -173,6 +176,40 @@ class CheckpointDryRunTests(unittest.TestCase):
         self.assertEqual(tracked.calls_attempted, 1)
         self.assertEqual(tracked.calls_completed, 0)
         self.assertEqual(tracked.texts_completed, 0)
+
+    def test_raw_uses_entire_eligible_pool_and_both_arms_share_budget_capacity(self):
+        class AllRelevantEncoder:
+            model_identity = {"repo_id": "fixture-all-relevant", "revision": "fixed"}
+            def encode(self, texts, *, is_query):
+                return [[1.0, 0.0] for _ in texts]
+        original_raw = P.StableSourceRetriever
+        search_options = []
+        class InspectRaw:
+            def __init__(self, *args, **kwargs):
+                self.retriever = original_raw(*args, **kwargs)
+            def search(self, *args, **kwargs):
+                search_options.append(kwargs)
+                return self.retriever.search(*args, **kwargs)
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); old = self.fixture(root, extra_turns=7)
+            with patch.object(P, "StableSourceRetriever", InspectRaw):
+                result = M.prepare(old, root / "full-pool", product_repo=ROOT, fixture_only=True,
+                    encoder_name="multilingual-e5-small", encoder_factory=AllRelevantEncoder,
+                    recent_messages=0, max_outbound_chars=6000)
+            self.assertEqual(len(search_options), 3)
+            for options in search_options:
+                self.assertEqual(options["top_k"], 10)
+                self.assertEqual(options["lexical_k"], 10)
+                self.assertEqual(options["dense_k"], 10)
+            self.assertEqual(result["version"], "checkpoint-context-v3-development-dryrun-v2")
+            for row in result["by_case"]:
+                self.assertEqual(row["raw_candidate_depth"], row["eligible_source_count"])
+                self.assertEqual(row["arm_source_selection"]["raw_history_rag"]["retrieved_count"], 10)
+                self.assertEqual(row["arm_source_selection"]["managed_memory_rag"]["retrieved_count"], 10)
+                self.assertTrue(all(size <= 6000 for size in row["arm_context_sizes"].values()))
+            protocol = M.read_json(root / "full-pool/protocol.json")
+            self.assertEqual(protocol["retrieval"]["raw_candidate_depth"], "eligible_source_pool_size_up_to_64")
+            self.assertIn("no arm-specific quote quota", protocol["retrieval"]["quotation_capacity"])
 
     def test_encoder_loading_failure_is_not_silently_replaced_with_lexical(self):
         with tempfile.TemporaryDirectory() as folder:

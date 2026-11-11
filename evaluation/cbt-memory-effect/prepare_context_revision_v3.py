@@ -27,7 +27,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import context_assembly_v3 as assembly
 
-VERSION = "checkpoint-context-v3-development-dryrun-v1"
+VERSION = "checkpoint-context-v3-development-dryrun-v2"
 EPOCH = datetime(2000, 1, 3, tzinfo=timezone.utc)
 
 
@@ -288,8 +288,16 @@ def prepare(old_run, output, *, product_repo, max_outbound_chars=6000, recent_me
             cutoff_stamp = (EPOCH + timedelta(seconds=case["history_cutoff_order_exclusive"])).isoformat()
             query = case.get("retrieval_query", case["input"])
             embedding_before = encoder.statistics() if encoder is not None else None
+            if len(sources) > 64:
+                raise ValueError("checkpoint source pool exceeds bounded 64-turn protocol")
+            # Both channels may rank the entire same eligible original pool.
+            # The exact complete-request budget, not a smaller raw top-k quota,
+            # decides which quotations fit in each arm. Candidate summaries add
+            # a ranking signal; they do not grant managed extra source capacity.
+            raw_depth = max(1, len(sources))
             raw = product.StableSourceRetriever(sources, encoder=encoder).search(query, user_id=user,
-                source_cutoff=cutoff_stamp, as_of=None, for_external_response=True, top_k=6)
+                source_cutoff=cutoff_stamp, as_of=None, for_external_response=True,
+                top_k=raw_depth, lexical_k=raw_depth, dense_k=raw_depth)
             raw_ids = list(dict.fromkeys(hit.source_id for hit in raw.hits))
             candidate_ids, candidate_trace = candidate_ranks(durable, product, sources, query, user, encoder=encoder)
             recent_ids = [source["source_id"] for source in sources][-recent_messages:] if recent_messages else []
@@ -305,7 +313,8 @@ def prepare(old_run, output, *, product_repo, max_outbound_chars=6000, recent_me
             rows.append({"case_id": case["case_id"], "source_family_id": case["source_family_id"],
                 "case_sha256": case["case_sha256"], "not_send_ready": True,
                 "retrieval_query_sha256": hashlib.sha256(query.encode()).hexdigest(),
-                "source_exclusions": exclusions, "raw_retrieval_trace": raw.trace,
+                "source_exclusions": exclusions, "eligible_source_count": len(sources),
+                "raw_candidate_depth": len(sources), "raw_retrieval_trace": raw.trace,
                 "candidate_index_trace": candidate_trace,
                 "local_embedding_work": ({key: value - embedding_before[key] for key, value in encoder.statistics().items()}
                     if encoder is not None else None), "assembly": result})
@@ -315,7 +324,10 @@ def prepare(old_run, output, *, product_repo, max_outbound_chars=6000, recent_me
         "old_protocol_sha256": old_protocol["protocol_sha256"], "source_family_id": anchor_case["source_family_id"],
         "selected_cases": [case["case_id"] for case in selected], "source_checkpoint_hashes": before,
         "max_outbound_chars": max_outbound_chars, "recent_messages": recent_messages,
-        "retrieval": {"raw": ("StableSourceRetriever_TFIDF_plus_pinned_E5_top6" if encoder is not None else "StableSourceRetriever_TFIDF_top6"),
+        "retrieval": {"raw": ("StableSourceRetriever_TFIDF_plus_pinned_E5_eligible_pool" if encoder is not None else "StableSourceRetriever_TFIDF_eligible_pool"),
+            "raw_candidate_depth": "eligible_source_pool_size_up_to_64",
+            "raw_lexical_k_and_dense_k": "eligible_source_pool_size_up_to_64",
+            "quotation_capacity": "all arms fill the same complete-request character budget; no arm-specific quote quota",
             "candidate": ("MemoryRetriever_TFIDF_plus_pinned_E5_top3_minimum0.12" if encoder is not None else "MemoryRetriever_TFIDF_top3_minimum0.12"),
             "encoder": encoder_name, "encoder_model_identity": encoder.model_identity if encoder is not None else None,
             "same_encoder_instance_for_both_channels": encoder is not None, "fusion": "equal_weight_RRF_k60"},
@@ -342,7 +354,13 @@ def prepare(old_run, output, *, product_repo, max_outbound_chars=6000, recent_me
         "original_checkpoint_unchanged": True, "protocol_sha256": development["protocol_sha256"],
         "by_case": [{"case_id": row["case_id"], "raw_managed_same_request":
             row["assembly"]["contexts"]["raw_history_rag"]["request_sha256"] == row["assembly"]["contexts"]["managed_memory_rag"]["request_sha256"],
-            "arm_context_sizes": {arm: context["outbound_chars"] for arm, context in row["assembly"]["contexts"].items()}}
+            "eligible_source_count": row["eligible_source_count"],
+            "raw_candidate_depth": row["raw_candidate_depth"],
+            "arm_context_sizes": {arm: context["outbound_chars"] for arm, context in row["assembly"]["contexts"].items()},
+            "arm_source_selection": {arm: {"recent_count": len(context["recent_source_ids"]),
+                "retrieved_count": len(context["retrieved_source_ids"]),
+                "dropped_count": len(context["dropped_sources"])}
+                for arm, context in row["assembly"]["contexts"].items()}}
                     for row in rows], "effect_scores": None}
     (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
     return summary
