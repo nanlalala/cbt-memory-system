@@ -52,6 +52,10 @@ They are a development case, not three independent samples or a dataset-level
 effect estimate. The source family identified in the frozen development
 protocol is exposed; source-ID case fragments are not used as family IDs.
 
+The subsequent whole-set locator audit registered all 200 frozen source
+families as assessed. They must not be relabelled as untouched held-out
+families in a later optimization study.
+
 Before a new held-out answer run:
 
 - Reconcile all earlier v1/v2 exposure inventories. A family with uncertain
