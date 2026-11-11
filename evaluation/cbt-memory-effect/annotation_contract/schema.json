@@ -1,0 +1,346 @@
+{
+  "$comment": "See validate.py for source/hash/cutoff/role/independent-human cross-checks.",
+  "$defs": {
+    "current_state": {
+      "additionalProperties": false,
+      "properties": {
+        "axis": {
+          "enum": [
+            "acceptance",
+            "participation",
+            "reported_count",
+            "target_count",
+            "preference",
+            "goal_status",
+            "reported_outcome"
+          ]
+        },
+        "basis_fact_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "state_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "subject_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "superseded_fact_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "truth_status": {
+          "enum": [
+            "known",
+            "unknown",
+            "not_annotated"
+          ]
+        },
+        "value": {}
+      },
+      "required": [
+        "state_id",
+        "subject_id",
+        "axis",
+        "value",
+        "truth_status",
+        "basis_fact_ids",
+        "superseded_fact_ids"
+      ],
+      "type": "object"
+    },
+    "memory_target": {
+      "additionalProperties": false,
+      "properties": {
+        "assertion": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/source_span"
+          },
+          "type": "array"
+        },
+        "fact_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "situation",
+            "thought",
+            "emotion",
+            "goal",
+            "practice",
+            "preference",
+            "reported_count",
+            "target_count",
+            "participation",
+            "user_consent",
+            "assistant_suggestion",
+            "reported_outcome"
+          ]
+        },
+        "necessity": {
+          "enum": [
+            "required_memory",
+            "optional",
+            "context_only"
+          ]
+        },
+        "permitted_for_response": {
+          "type": "boolean"
+        },
+        "source_scope": {
+          "enum": [
+            "history",
+            "current_input"
+          ]
+        },
+        "truth_status": {
+          "enum": [
+            "known",
+            "unknown",
+            "not_annotated"
+          ]
+        },
+        "unknown_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "value": {}
+      },
+      "required": [
+        "fact_id",
+        "kind",
+        "assertion",
+        "value",
+        "truth_status",
+        "necessity",
+        "source_scope",
+        "permitted_for_response",
+        "evidence",
+        "unknown_reason"
+      ],
+      "type": "object"
+    },
+    "response_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "abstain_on_fact_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "clarification": {
+          "enum": [
+            "none_needed",
+            "relevant_unknown_only",
+            "unreviewed"
+          ]
+        },
+        "do_not_assert_fact_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "abstain_on_fact_ids",
+        "do_not_assert_fact_ids",
+        "clarification"
+      ],
+      "type": "object"
+    },
+    "review": {
+      "additionalProperties": false,
+      "properties": {
+        "adjudicator_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agreement": {
+          "enum": [
+            "unreviewed",
+            "agreed",
+            "disagreed",
+            "adjudicated"
+          ]
+        },
+        "human_record_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "label_origin": {
+          "enum": [
+            "human_draft",
+            "model_proposal",
+            "unannotated",
+            "invented_fixture"
+          ]
+        },
+        "reviewer_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "label_origin",
+        "reviewer_ids",
+        "agreement",
+        "adjudicator_id",
+        "human_record_refs"
+      ],
+      "type": "object"
+    },
+    "source_span": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "message_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "source_order": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_text_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "start": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "message_id",
+        "source_order",
+        "source_text_sha256",
+        "start",
+        "end"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:cbt-memory:natural-source-annotation:v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Assessor-only annotation extension for existing cactus_materials pending rows; semantic source review is independent from structural validation.",
+  "properties": {
+    "annotation_schema_version": {
+      "const": "natural-cbt-memory-source-annotation-v1"
+    },
+    "annotation_status": {
+      "enum": [
+        "pending_independent_source_annotation",
+        "draft_source_annotation",
+        "under_independent_review",
+        "adjudication_required",
+        "independently_reviewed"
+      ]
+    },
+    "case_id": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "case_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "expected_current_state": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/current_state"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "expected_response_policy": {
+      "$ref": "#/$defs/response_policy"
+    },
+    "fixture_only": {
+      "type": "boolean"
+    },
+    "future_counselor_answer_is_gold": {
+      "const": false
+    },
+    "memory_targets": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/memory_target"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "review": {
+      "$ref": "#/$defs/review"
+    },
+    "semantic_gold_available": {
+      "type": "boolean"
+    },
+    "source_family_id": {
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "annotation_schema_version",
+    "case_id",
+    "case_sha256",
+    "source_family_id",
+    "fixture_only",
+    "annotation_status",
+    "memory_targets",
+    "expected_current_state",
+    "expected_response_policy",
+    "review",
+    "semantic_gold_available",
+    "future_counselor_answer_is_gold"
+  ],
+  "title": "Natural CBT memory source annotation",
+  "type": "object"
+}
