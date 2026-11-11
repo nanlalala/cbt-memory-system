@@ -27,7 +27,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import context_assembly_v3 as assembly
 
-VERSION = "checkpoint-context-v3-development-dryrun-v2"
+VERSION = "checkpoint-context-v3-development-dryrun-v3"
 EPOCH = datetime(2000, 1, 3, tzinfo=timezone.utc)
 
 

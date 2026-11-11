@@ -55,6 +55,45 @@ class ContextAssemblyTests(unittest.TestCase):
             self.assertEqual(context["recent_source_ids"], ["recent-u", "recent-a"])
         self.assertEqual(result["contexts"]["short_term"]["retrieved_source_ids"], [])
 
+    def test_recent_source_map_matches_direct_messages_in_every_arm_without_repeating_text(self):
+        options = self.options()
+        result = M.assemble_contexts(**options)
+        maps = []
+        expected = [{"recent_index": 0, "source_id": "recent-u", "source_order": 2, "role": "user"},
+                    {"recent_index": 1, "source_id": "recent-a", "source_order": 3, "role": "assistant"}]
+        originals = {source["source_id"]: source for source in options["sources"]}
+        for context in result["contexts"].values():
+            mapping_message = next(message for message in context["messages"]
+                                   if message["content"].startswith(M.RECENT_MAP_HEADER))
+            self.assertEqual(mapping_message["role"], "system")
+            maps.append(mapping_message["content"])
+            mapping = json.loads(mapping_message["content"][len(M.RECENT_MAP_HEADER):])["recent_sources"]
+            self.assertEqual(mapping, expected)
+            direct = [message for message in context["messages"] if message["role"] != "system"]
+            for item in mapping:
+                source = originals[item["source_id"]]
+                self.assertEqual(direct[item["recent_index"]], {"role": source["role"], "content": source["text"]})
+                self.assertNotIn(source["text"], mapping_message["content"])
+                self.assertEqual(sum(message["content"].count(source["text"]) for message in context["messages"]), 1)
+                self.assertIn(item["source_id"], context["source_dependencies"])
+        self.assertEqual(len(set(maps)), 1)
+        self.assertEqual(result["version"], "source-context-assembly-v3-development-v2")
+
+    def test_recent_source_map_is_included_in_budget_and_trimmed_with_whole_exchange(self):
+        baseline = M.assemble_contexts(**self.options())["contexts"]["short_term"]
+        without_map = {**baseline["request_payload"], "messages": [message for message in baseline["messages"]
+                       if not message["content"].startswith(M.RECENT_MAP_HEADER)]}
+        self.assertLess(len(M.canonical(without_map)), baseline["outbound_chars"])
+        # This budget would fit direct recent text alone, but not its required
+        # provenance map. Drop the whole oldest exchange rather than lose IDs.
+        limit = len(M.canonical(without_map))
+        result = M.assemble_contexts(**self.options(max_outbound_chars=limit))
+        for context in result["contexts"].values():
+            self.assertEqual(context["recent_source_ids"], [])
+            self.assertFalse(any(message["content"].startswith(M.RECENT_MAP_HEADER) for message in context["messages"]))
+            self.assertLessEqual(context["outbound_chars"], limit)
+            self.assertEqual(context["messages"][-1]["content"], "That last question.")
+
     def test_compact_packet_stores_each_complete_source_once_and_keeps_dependencies(self):
         result = M.assemble_contexts(**self.options())
         managed = result["contexts"]["managed_memory_rag"]

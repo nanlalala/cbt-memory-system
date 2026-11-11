@@ -201,7 +201,7 @@ class CheckpointDryRunTests(unittest.TestCase):
                 self.assertEqual(options["top_k"], 10)
                 self.assertEqual(options["lexical_k"], 10)
                 self.assertEqual(options["dense_k"], 10)
-            self.assertEqual(result["version"], "checkpoint-context-v3-development-dryrun-v2")
+            self.assertEqual(result["version"], "checkpoint-context-v3-development-dryrun-v3")
             for row in result["by_case"]:
                 self.assertEqual(row["raw_candidate_depth"], row["eligible_source_count"])
                 self.assertEqual(row["arm_source_selection"]["raw_history_rag"]["retrieved_count"], 10)
