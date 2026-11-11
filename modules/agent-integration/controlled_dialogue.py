@@ -33,8 +33,10 @@ from stable_retrieval import StableSourceRetriever
 from task_projector import project_task, validate_task_event, verify_claim_binding, supporting_spans_for_event
 from task_input_rules import parse_current_correction, resolve_attempt_reference, resolve_event_date_reference
 from knowledge_adapter_v2 import KnowledgeAdapter
+from source_candidate_selection import (VERSION as SOURCE_SELECTION_VERSION,
+                                        select_source_supplements)
 
-VERSION = 'controlled-memory-v2.1'
+VERSION = 'controlled-memory-v2.2-source-aware-candidates'
 DEFAULT_PERMISSIONS = {k: True for k in ('save', 'long_term_use', 'response_external', 'extraction_external')}
 SYSTEM = ('You are a nonclinical research prototype for fictional CBT reflection. '
           'Use current sourced task fields only when rule_verified. Historical quotations are dated '
@@ -45,6 +47,8 @@ SYSTEM = ('You are a nonclinical research prototype for fictional CBT reflection
           'Do not add memory-verification questions: a shared product policy handles any necessary check. '
           'Professional knowledge support exists only when actual cited chunks are supplied.')
 LABELS = ('想法记录', '思维记录', '情绪记录', '行为实验', '散步', '步行', 'thought record', 'walking')
+ORIGINAL_SOURCE_LIMIT = 6
+CANDIDATE_SUPPLEMENT_SOURCE_LIMIT = 3
 NUMBER = re.compile(r'(\d+|[零一二两三四五六七八九十]+)\s*(次|times?|records?)', re.I)
 EXTRACTION_V2_SYSTEM = '''Extract only user-sourced memory candidates from the supplied turns.
 Return exactly {"candidates": [...]} as JSON without markdown. Each candidate has
@@ -267,6 +271,9 @@ class ControlledDialogueSession(DialogueSession):
             self.durable.pause_user(self.user_id)
         protocol = {'version': VERSION, 'limits': asdict(self.prototype_limits),
                     'durable_limits': asdict(self.durable_limits), 'clarification_policy': POLICY_HASH,
+                    'candidate_source_selection': SOURCE_SELECTION_VERSION,
+                    'retrieval_source_limits': {'original': ORIGINAL_SOURCE_LIMIT,
+                        'candidate_supplement': CANDIDATE_SUPPLEMENT_SOURCE_LIMIT},
                     'knowledge_policy': self.knowledge.policy_hash, 'permissions': self.default_permissions,
                     'timezone': timezone_name, 'automatic_retries': False,
                     'prompt_hashes': {'response': _hash(SYSTEM), 'extraction': _hash(EXTRACTION_V2_SYSTEM)},
@@ -651,15 +658,18 @@ class ControlledDialogueSession(DialogueSession):
             task = None
         bundles = []
         history_pool = [s for s in sources.values() if current_source is None or s['source_id'] != current_source['source_id']]
+        # This is a live product configuration, not a research-arm fairness
+        # definition. A future comparison must give raw retrieval the same
+        # total source opportunity and the same complete-request budget.
         retrieval = StableSourceRetriever(history_pool).search(query, user_id=self.user_id, source_cutoff=as_of,
-            as_of=as_of, for_external_response=self.provider is not None, top_k=6)
+            as_of=as_of, for_external_response=self.provider is not None, top_k=ORIGINAL_SOURCE_LIMIT)
         seen_spans = set()
-        for hit in retrieval.hits:
+        for raw_rank, hit in enumerate(retrieval.hits):
             source_role = sources[hit.source_id]['role']
             span = EvidenceSpan(hit.source_id, hit.span_id, hit.text, hit.start, hit.end, hit.source_time, source_role)
             bundles.append(EvidenceBundle('history:' + hit.span_id,
                 (EvidenceClaim('history:' + hit.span_id, 'history_quote', hit.text, (span,),
-                               support_status='source_quote', priority=0,
+                               support_status='source_quote', priority=-raw_rank,
                                origin='assistant_proposal' if source_role == 'assistant' else 'explicit_user_statement'),)))
             seen_spans.add((hit.source_id, hit.start, hit.end))
         # Semantic candidates are an independent retrieval channel. Their text
@@ -670,26 +680,35 @@ class ControlledDialogueSession(DialogueSession):
             if obj['status'] != 'available':
                 continue
             record = construct_memory(obj['payload']['record'], allow_legacy=False)
-            if all(sid in sources and (self.provider is None or sources[sid]['permissions']['response_external'] is True)
-                   for sid in record.source_evidence.turn_ids):
+            if (record.user_id == self.user_id and record.source_role == 'user'
+                    and record.lifecycle_status == 'candidate' and record.sensitivity != 'restricted'
+                    and all(record.permissions.get(key) is True
+                            for key in ('save', 'long_term_use', 'response_external'))
+                    and all(sid in sources and sources[sid]['role'] == 'user'
+                            and all(sources[sid]['permissions'].get(key) is True
+                                    for key in ('save', 'long_term_use', 'response_external'))
+                            for sid in record.source_evidence.turn_ids)):
                 candidates.append(record)
         semantic_hits = MemoryRetriever(candidates, policy=RetrievalPolicy(
-            allowed_lifecycle=frozenset({'candidate'}), recency_weight=0, importance_weight=0,
+            # Limit by distinct new source after restoring original bindings,
+            # rather than by records that may all describe the same quotation.
+            top_k=max(1, len(candidates)), allowed_lifecycle=frozenset({'candidate'}), recency_weight=0, importance_weight=0,
             confidence_weight=0)).search(query, user_id=self.user_id, as_of=as_of) if candidates else []
-        for ranked in semantic_hits:
-            record = ranked.record
-            for sid in record.source_evidence.turn_ids:
-                s = sources[sid]
-                identity = 'semantic:' + record.memory_id + ':' + sid
-                span = restore_source_quote(s, pointer_text=record.source_evidence.supporting_text,
-                                            span_id='semantic-source:' + record.memory_id + ':' + sid)
-                if span is None or (sid, span.start, span.end) in seen_spans:
-                    continue
-                seen_spans.add((sid, span.start, span.end))
-                bundles.append(EvidenceBundle(identity,
-                    (EvidenceClaim(identity, 'history_quote', span.text, (span,),
-                     support_status='source_quote', priority=1),)))
+        supplements, source_selection = select_source_supplements(semantic_hits,
+            sources=sources, user_id=self.user_id,
+            already_present_source_ids={sid for sid, _, _ in seen_spans},
+            max_new_sources=CANDIDATE_SUPPLEMENT_SOURCE_LIMIT)
+        supplement_dependencies = {}
+        for supplement_rank, supplement in enumerate(supplements):
+            span = supplement.span
+            identity = 'semantic:' + supplement.memory_id + ':' + span.source_id
+            supplement_dependencies[identity] = list(supplement.candidate_source_dependencies)
+            bundles.append(EvidenceBundle(identity,
+                (EvidenceClaim(identity, 'history_quote', span.text, (span,),
+                 support_status='source_quote', priority=-len(retrieval.hits)-supplement_rank),)))
         retrieval.trace['semantic_candidate_count'] = len(candidates)
+        retrieval.trace['candidate_source_selection'] = source_selection
+        retrieval.trace['supplement_claim_dependencies'] = supplement_dependencies
         retrieval.trace['semantic_selected_source_ids'] = sorted({span.source_id for b in bundles
             if b.bundle_id.startswith('semantic:') for c in b.claims for span in c.spans})
         state = None
@@ -1014,8 +1033,14 @@ class ControlledDialogueSession(DialogueSession):
                 # is allowed to have no persisted source.
                 source_ids = [sid for sid in package.source_ids
                               if sid != source['source_id'] or source_commit['source_status'] == 'committed']
+                # A multi-source candidate may rank a quote resolved in only
+                # one of its sources. Fence all its indexing dependencies, but
+                # only when that supplement actually reached the exact wire.
+                candidate_dependencies = [sid for claim_id, dependencies in
+                    retrieval_trace.get('supplement_claim_dependencies', {}).items()
+                    if claim_id in included for sid in dependencies]
                 current_ids = [source['source_id']] if source_commit['source_status'] == 'committed' else []
-                source_ids = sorted(set(source_ids + current_ids + recent_source_ids))
+                source_ids = sorted(set(source_ids + current_ids + recent_source_ids + candidate_dependencies))
                 task_versions = {}
                 if task and task['status'] == 'available' and not (state or {}).get('not_retained') and any(
                         bundle.task_instance_id == task['payload']['task_instance_id']
