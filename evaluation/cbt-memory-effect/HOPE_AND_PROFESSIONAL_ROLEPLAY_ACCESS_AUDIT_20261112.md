@@ -89,6 +89,21 @@ https://equipcompetency.org/sites/default/files/downloads/2022-08/BA%20competenc
 https://whoequipremote.org/sites/default/files/downloads/2022-08/Problem%20Solving%20competency%20descrip_single%20role%20plays_v1.0__220320.pdf
 ```
 
+The versioned collector `freeze_equip_sources.py` acquires only these six PDFs
+and the official terms HTML. Run it in a genuine hosted Colab checkout, using
+a fresh output directory:
+
+```python
+!python evaluation/cbt-memory-effect/freeze_equip_sources.py --output /content/equip-source-freeze-20261112-v1
+```
+
+It records original bytes, SHA256, byte sizes, retrieval time and exact HTML
+licence-evidence byte ranges. Existing outputs are never replaced. Any failure
+preserves its archive and journal without an automatic retry. All complete
+source files remain assessor-only; the collector creates no benchmark inputs,
+adapted conversations, gold labels or effect scores. A successful source-bank
+freeze therefore precedes the span audit and input/assessor separation below.
+
 ### Observed source inconsistency and exposure
 
 The examined Individual PM+ script's helper instructions and actor prompts
