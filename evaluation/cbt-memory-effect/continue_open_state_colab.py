@@ -63,6 +63,13 @@ def settled(expected):
 def wait_readers(timeout=7200, poll=5):
     deadline = time.monotonic()+timeout
     while time.monotonic() < deadline:
+        # Do not take exclusive setup locks in the gap between the two reader
+        # processes: their loaders intentionally refuse concurrent ownership.
+        if not all((ANS[x]/'completion_summary.json').exists() for x in LABELS):
+            if any((ANS[x]/'failures.jsonl').exists() and (ANS[x]/'failures.jsonl').stat().st_size for x in LABELS):
+                raise RuntimeError('recorded_failure_no_automatic_retry')
+            time.sleep(min(poll,max(0,deadline-time.monotonic())))
+            continue
         try:
             with ExitStack() as stack:
                 for lock in ('.model_setup.lock', '.generation.lock'):
