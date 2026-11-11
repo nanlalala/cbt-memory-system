@@ -41,6 +41,9 @@ HEX = re.compile(r"[0-9a-f]{64}\Z")
 MATERIAL = "invented_controlled_mechanism_not_natural_CBT"
 EVIDENCE_VERSION = "complete-controlled-paper-evidence-v1"
 MAX_EVIDENCE_BYTES = 32_000_000
+FORMAT_VERSION = "open-reader-secondary-format-diagnostic-v1"
+FORMAT_HELPER_SHA256 = "30eb58bd1c5b7d3813e927965062ad7a8df5b415f216393479170c5de676898d"
+FORMAT_DECLARATION_SHA256 = "15e44485d8a4e3e71c32053c20535de94b733e491ca1ab7d7e15846121ca7e1d"
 # These values are previous verified Colab observations, not provisional scores.
 # The new task-state results must still be supplied and validated at execution.
 SOURCE_PILOT = {
@@ -153,6 +156,79 @@ def validate_reader_binding(report, protocol, run, completion, answers):
             "reused_canonical_receipts_from_other_runs": completion.get("reused_canonical_receipts_from_other_runs")}
 
 
+def validate_format_diagnostic(audit, report, protocol, *, expected_score_sha256):
+    """Bind an existing Colab diagnostic without reparsing answers or using gold."""
+    expected = {"version": FORMAT_VERSION, "primary_scores_unchanged": True,
+                "secondary_descriptive_only": True, "clinical_quality_claim": False,
+                "new_model_calls": 0,
+                "declaration_timing": "added_during_generation_before_response_text_or_gold_score_inspection"}
+    if any(audit.get(key) != value for key, value in expected.items()):
+        raise ValueError("declared_secondary_diagnostic_required")
+    binding = audit.get("bindings", {})
+    expected_binding = {
+        "score_sha256": expected_score_sha256,
+        "answers_sha256": report["answers_file_sha256"],
+        "protocol_sha256": report["protocol_file_sha256"],
+        "diagnostic_code_sha256": FORMAT_HELPER_SHA256,
+        "declaration_sha256": FORMAT_DECLARATION_SHA256,
+        "planner_identity_sha256": json_digest(protocol["code_identity"]),
+        "planner_code_sha256": protocol["code_identity"].get("source_files", {}).get(
+            "evaluation/cbt-memory-effect/controlled_open_memory.py"),
+    }
+    if (any(binding.get(key) != value for key, value in expected_binding.items())
+            or not HEX.fullmatch(expected_binding["planner_code_sha256"] or "")
+            or audit.get("rules", {}).get("primary_scores_unchanged") is not True):
+        raise ValueError("secondary_diagnostic_source_binding_mismatch")
+    scored = {(row["case_id"], row["arm"]): row for row in report["per_question"]}
+    rows, seen = audit.get("per_question"), {}
+    if type(rows) is not list or len(rows) != 48:
+        raise ValueError("all_secondary_diagnostic_rows_required")
+    failure_classes = {"correct", "recoverable_format", "incorrect_abstention",
+                       "unsupported_assertion", "wrong_value", "unresolved_format"}
+    for row in rows:
+        key = (row.get("case_id"), row.get("arm"))
+        if key not in scored or key in seen:
+            raise ValueError("duplicate_or_unplanned_secondary_diagnostic_row")
+        primary = scored[key]
+        text = row.get("original_response_text")
+        parsed = row.get("format_diagnostic", {})
+        failure = row.get("diagnostic_failure_class")
+        secondary = row.get("secondary_typed_value_correct")
+        if (type(row.get("strict_correct")) is not bool
+                or row["strict_correct"] != primary["correct"]
+                or type(secondary) is not bool
+                or row.get("primary_reason") != primary["reason"]
+                or row.get("source_family_id") != primary["source_family_id"]
+                or any(row.get(field) != primary[field] for field in ("request_sha256", "response_sha256"))
+                or type(text) is not str
+                or hashlib.sha256(text.encode()).hexdigest() != primary["response_sha256"]
+                or parsed.get("status") not in {"strict_json", "recovered", "unresolved"}
+                or failure not in failure_classes):
+            raise ValueError("secondary_diagnostic_row_identity_mismatch")
+        if (type(parsed.get("value")) not in (int, str, type(None))
+                or (failure == "correct") != primary["correct"]
+                or (failure in {"correct", "recoverable_format"}) != secondary
+                or (failure == "unresolved_format") != (parsed["status"] == "unresolved")):
+            raise ValueError("secondary_diagnostic_category_disagrees")
+        seen[key] = row
+    for arm in ARMS:
+        selected = [row for (_, actual_arm), row in seen.items() if arm == actual_arm]
+        summary = {
+            "planned_rows": 24,
+            "strict_correct": sum(row["strict_correct"] for row in selected),
+            "secondary_typed_value_correct": sum(row["secondary_typed_value_correct"] for row in selected),
+            "diagnostic_failure_class": dict(Counter(row["diagnostic_failure_class"] for row in selected)),
+            "recovered_unknown_count": sum(row["format_diagnostic"]["status"] != "unresolved"
+                                            and row["format_diagnostic"]["value"] is None for row in selected),
+            "diagnostic_status": dict(Counter(row["format_diagnostic"]["status"] for row in selected)),
+        }
+        if audit.get("by_arm", {}).get(arm) != summary:
+            raise ValueError("secondary_diagnostic_summary_disagrees")
+    return {"by_arm": audit["by_arm"], "rows": seen, "rules": audit["rules"],
+            "helper_sha256": FORMAT_HELPER_SHA256, "declaration_sha256": FORMAT_DECLARATION_SHA256,
+            "primary_unchanged": True, "secondary_descriptive_only": True}
+
+
 def export_complete_evidence(args, result):
     """Archive complete original bytes; no count-only replacement for evidence.
 
@@ -182,6 +258,9 @@ def export_complete_evidence(args, result):
     if args.calibration_manifest:
         paths["calibration_manifest"] = args.calibration_manifest
         paths["calibration_audit"] = args.calibration_audit
+    if args.before_format:
+        paths["before_format"] = args.before_format
+        paths["after_format"] = args.after_format
     allowed_extras = {"before_reader_run", "before_reader_completion", "before_answers",
                       "after_reader_run", "after_reader_completion", "after_answers",
                       "reader_global_ledger", "reader_canonical_answers", "reader_cost_summary"}
@@ -206,6 +285,8 @@ def export_complete_evidence(args, result):
               "professional_summary_sha256": args.professional_summary_sha256,
               "calibration_manifest_sha256": args.calibration_manifest_sha256,
               "calibration_audit_sha256": args.calibration_audit_sha256,
+              "before_format_sha256": args.before_format_sha256,
+              "after_format_sha256": args.after_format_sha256,
               "validated_controlled_results": result, "entries": entries,
               "no_reference_content_printed": True, "new_model_calls": 0}
     body = json.dumps(bundle, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
@@ -238,7 +319,7 @@ def import_complete_evidence(bundle_path, expected_sha256, directory):
     if bundle.get("version") != EVIDENCE_VERSION or bundle.get("complete_original_bytes") is not True:
         raise ValueError("complete_original_evidence_required")
     required = {"before_report", "before_protocol", "after_report", "after_protocol"}
-    optional = {"professional_summary", "calibration_manifest", "calibration_audit",
+    optional = {"professional_summary", "calibration_manifest", "calibration_audit", "before_format", "after_format",
                 "before_reader_run", "before_reader_completion", "before_answers",
                 "after_reader_run", "after_reader_completion", "after_answers",
                 "reader_global_ledger", "reader_canonical_answers", "reader_cost_summary"}
@@ -256,7 +337,8 @@ def import_complete_evidence(bundle_path, expected_sha256, directory):
         verified[role] = raw
     if not required.issubset(verified):
         raise ValueError("missing_complete_evidence_file")
-    for role in ("before_report", "after_report", "professional_summary", "calibration_manifest", "calibration_audit"):
+    for role in ("before_report", "after_report", "professional_summary", "calibration_manifest", "calibration_audit",
+                 "before_format", "after_format"):
         if role in verified and hashlib.sha256(verified[role]).hexdigest() != bundle.get(role + "_sha256"):
             raise ValueError("complete_evidence_report_identity_mismatch")
     directory.mkdir(parents=True, exist_ok=False)
@@ -340,6 +422,10 @@ def validate_scored_report(report, protocol):
 def validate_comparison(before, before_protocol, after, after_protocol):
     previous = validate_scored_report(before, before_protocol)
     current = validate_scored_report(after, after_protocol)
+    for key in ("case_file_sha256", "targets_file_sha256"):
+        if (not HEX.fullmatch(before_protocol.get(key, ""))
+                or before_protocol[key] != after_protocol.get(key)):
+            raise ValueError("source_cases_or_fixed_targets_changed_between_versions")
     for key in previous:
         if key[1] == "raw_history_rag":
             fields = ("request_sha256", "response_sha256", "correct", "reason")
@@ -386,6 +472,26 @@ def authenticated_inputs(args):
     if any(before_reader[key] != after_reader[key] for key in ("model", "reader_code_sha256")):
         raise ValueError("reader_model_or_execution_code_changed_between_versions")
     result["reader_bindings"] = {"before": before_reader, "after": after_reader}
+    formats = (args.before_format, args.before_format_sha256, args.after_format, args.after_format_sha256)
+    if any(formats):
+        if not all(formats):
+            raise ValueError("before_and_after_secondary_diagnostics_and_digests_required_together")
+        old_format = validate_format_diagnostic(
+            read_json(args.before_format, args.before_format_sha256), before, before_protocol,
+            expected_score_sha256=args.before_report_sha256)
+        new_format = validate_format_diagnostic(
+            read_json(args.after_format, args.after_format_sha256), after, after_protocol,
+            expected_score_sha256=args.after_report_sha256)
+        if old_format["rules"] != new_format["rules"]:
+            raise ValueError("secondary_recovery_rules_changed_between_versions")
+        for key in old_format["rows"]:
+            if key[1] == "raw_history_rag" and old_format["rows"][key] != new_format["rows"][key]:
+                raise ValueError("unchanged_raw_control_has_changed_secondary_diagnostic")
+        result["secondary_format_diagnostic"] = {
+            "before": old_format["by_arm"], "after": new_format["by_arm"],
+            "helper_sha256": FORMAT_HELPER_SHA256, "declaration_sha256": FORMAT_DECLARATION_SHA256,
+            "declaration_timing": "during_generation_before_response_or_gold_inspection",
+            "original_primary_endpoint": False, "primary_scores_unchanged": True}
     professional = None
     if args.professional_summary:
         if not args.professional_summary_sha256:
@@ -510,9 +616,9 @@ def _table_style(table, widths):
                     run.font.color.rgb = RGBColor(0, 0, 0)
 
 
-def _comparison_table(document, anchor, rows):
+def _comparison_table(document, anchor, rows, headers=None):
     table = document.add_table(rows=1, cols=4)
-    for cell, value in zip(table.rows[0].cells,
+    for cell, value in zip(table.rows[0].cells, headers or
                            ("Task family", "Raw history", "Managed before", "Managed after")):
         cell.text = value
     for values in rows:
@@ -541,6 +647,14 @@ def build_document(args, result, before, after, professional, calibration=None):
             or len(document.inline_shapes) != 3 or paragraphs[0].text != TITLE):
         raise ValueError("source_document_structure_changed")
     raw, old, new = (result[key] for key in ("raw_correct", "managed_before", "managed_after"))
+    diagnostic = result.get("secondary_format_diagnostic")
+    if diagnostic:
+        raw_diagnostic = diagnostic["after"]["raw_history_rag"]
+        old_diagnostic = diagnostic["before"]["managed_memory_rag"]
+        new_diagnostic = diagnostic["after"]["managed_memory_rag"]
+        raw_value = raw_diagnostic["secondary_typed_value_correct"]
+        old_value = old_diagnostic["secondary_typed_value_correct"]
+        new_value = new_diagnostic["secondary_typed_value_correct"]
     next_reference, professional_citations, calibration_citations = 12, None, None
     if professional:
         professional_citations = f"[{next_reference},{next_reference + 1}]"
@@ -549,17 +663,17 @@ def build_document(args, result, before, after, professional, calibration=None):
         calibration_citations = f"[{next_reference},{next_reference + 1}]"
         next_reference += 2
     net = new - raw
-    effect = (f"{net} more correct answers than raw-history retrieval" if net > 0 else
-              "the same number of correct answers as raw-history retrieval" if net == 0 else
-              f"{-net} fewer correct answers than raw-history retrieval")
+    effect = (f"{net} more strictly correct responses than raw-history retrieval" if net > 0 else
+              "the same number of strictly correct responses as raw-history retrieval" if net == 0 else
+              f"{-net} fewer strictly correct responses than raw-history retrieval")
     # Local changes preserve the original author, images, references and styles.
     updates = {
         3: ("This project develops a hierarchical memory system for psychotherapy reflection and care tracking, "
             "using cognitive behavioural therapy (CBT) as its application setting. It combines directly supplied recent "
             "messages with source-linked long-term memory and separates current task state from earlier reports. "
-            f"On 24 controlled task-state questions from four bilingual template families, the revised system answered {_fraction(new)} "
-            f"correctly, compared with {_fraction(raw)} for raw-history retrieval and {_fraction(old)} before the revision. "
-            "The tasks test corrections, cumulative progress, agreement and reported benefit. A separate historical "
+            f"On 24 controlled task-state questions from four bilingual template families, strict response correctness was {_fraction(new)} "
+            f"for the revised system, {_fraction(raw)} for raw-history retrieval and {_fraction(old)} before the revision. "
+            "This endpoint requires both the prescribed JSON format and the correct typed value. A separate historical "
             "MemoryAgentBench comparison improved fact-consolidation accuracy from 52.38% to 60.38%. "
             "CACTUS examples illustrate storage and source-linked recall."),
         11: ("This project makes three contributions. First, it designs a hierarchical memory system for psychotherapy "
@@ -600,16 +714,18 @@ def build_document(args, result, before, after, professional, calibration=None):
              "validator required no additional model calls. These costs belong to separate pilot runs. The controlled "
              "task-state experiment used an open reader on hosted Colab CPU; its versioned execution records are "
              "retained in the experiment source index."),
-        60: (f"The revised state representation produced {effect} on the 24 controlled questions. "
-             "The comparison checks whether the reader uses current targets, cumulative totals, agreement and "
-             "reported benefit consistently. Its raw-history control remained unchanged across versions. "
+        59: "Interpreting response correctness",
+        60: (f"The revised condition produced {effect} on the 24 controlled questions. "
+             "This primary endpoint combines answer-value correctness with response-format compliance; "
+             "its difference alone is not a count of factual memory errors. The raw-history control remained "
+             "unchanged across versions. "
              "The separate historical fact-consolidation comparison produced 64 additional correct answers, "
              "with most of that gain arising in multi-hop questions."),
         66: ("The controlled task-state set contains 24 variants of four related templates, so it supports a mechanism "
              "comparison rather than an independent population estimate. The MemoryAgentBench material also contains "
              "related variants and was used during development. The CACTUS pilots test quotation recall with explicit "
              "locator cues; they do not measure natural CBT follow-up quality."),
-        67: ("The current task-state answers are factual JSON outputs. CBT response quality and user effort require "
+        67: ("The current task-state answers are structured JSON outputs. CBT response quality and user effort require "
              "separate evaluation through professionally grounded response tasks, blinded review and user testing."),
         69: ("The next evaluation should retain the same histories, recent context, model and budgets while testing "
              "natural follow-up from professional CBT dialogue. It should measure correct use of necessary earlier "
@@ -617,12 +733,24 @@ def build_document(args, result, before, after, professional, calibration=None):
         72: ("This project presents a hierarchical memory system for psychotherapy reflection and care tracking. "
              "It combines directly supplied recent conversation with source-linked long-term memory and separates "
              "goals, agreement, reported practice and outcome. "
-             f"The revised system answered {new}/24 controlled task-state questions correctly versus {raw}/24 for "
+             f"Strict response correctness was {new}/24 on the controlled task-state questions versus {raw}/24 for "
              f"raw-history retrieval and {old}/24 before the revision. The historical fact-consolidation comparison "
              "also showed an 8.00 percentage-point gain. The CACTUS examples demonstrate storage and original-source "
-             "recall. Together, these findings connect memory organisation to specific factual requirements of "
-             "continued reflection and follow-up."),
+             "recall. These measurements distinguish structured-response compliance and source-linked recall "
+             "within the wider evaluation of reflection and follow-up."),
     }
+    if diagnostic:
+        updates[3] = updates[3].replace(
+            "A separate historical ",
+            f"A conservative secondary diagnostic recovered correct typed values in {new_value}/24 revised "
+            f"and {raw_value}/24 raw responses. A separate historical ")
+        updates[60] += (f" The secondary diagnostic found {new_value}/24 correct typed values for the revised "
+                        f"condition, {old_value}/24 before revision and {raw_value}/24 for raw retrieval. "
+                        "Recoverable formatting, resolved wrong values, unsupported assertions, incorrect "
+                        "abstention and unresolved output are reported separately.")
+        updates[72] += (f" The conservative secondary value diagnostic scored {new_value}/24 for the revised "
+                        f"condition and {raw_value}/24 for raw retrieval; it remains descriptive and does not "
+                        "replace the strict primary endpoint.")
     for index, value in updates.items():
         _text(paragraphs[index], value)
     # Make the overview compact and avoid repeating result paragraphs in cells.
@@ -635,7 +763,7 @@ def build_document(args, result, before, after, professional, calibration=None):
         ("PersonaMem", "589 paired profile questions", "Full management versus raw retrieval", "Released option score"),
         ("CACTUS initial pilot [10,11]", "One completed quotation probe", "Recent-only and shared raw/managed output", "Complete quote and source ID"),
         ("CACTUS later pilot", "Three related development probes", "Recent-only, raw and managed", "Original and common-validator recall"),
-        ("Controlled task state", "24 bilingual variants; four templates", "Raw control and two managed versions", "Strict factual answer accuracy"),
+        ("Controlled task state", "24 bilingual variants; four templates", "Raw control and two managed versions", "Strict response correctness"),
     ]
     if professional:
         overview_rows.append(("CBT-DP professional references", str(professional["counts"]["reference_exercises"]) + " practice exercises",
@@ -662,7 +790,14 @@ def build_document(args, result, before, after, professional, calibration=None):
         "Raw retrieval preserves the original reports; managed memory additionally supplies state derived from "
         "those permitted reports. The revised rules recognise supported English task reports alongside Chinese "
         "reports. Reference values are fixed separately before generation; exact answer value and JSON type "
-        "determine correctness. The raw condition is unchanged in the before-and-after comparison.", paragraphs[43])
+        "determine strict primary correctness. The raw condition is unchanged in the before-and-after comparison.", paragraphs[43])
+    if diagnostic:
+        _paragraph_before(method_anchor,
+            "A separate, descriptive format diagnostic was declared after generation began but before any response "
+            "text or reference-score inspection. It conservatively recovers one unambiguous answer JSON object and "
+            "normalises only canonical integer strings and the exact unknown marker. Conflicting or unparseable "
+            "responses remain unresolved. This addition does not change the original primary score; it separates "
+            "recoverable formatting from incorrect or unsupported values.", paragraphs[43])
     if professional or calibration:
         _paragraph_before(method_anchor, "Professional CBT quality references", paragraphs[42])
     if professional:
@@ -685,12 +820,13 @@ def build_document(args, result, before, after, professional, calibration=None):
     result_anchor = paragraphs[56]
     _paragraph_before(result_anchor, "Controlled task state results", paragraphs[52])
     _paragraph_before(result_anchor,
-        f"The revised managed condition answered {_fraction(new)} questions correctly, compared with "
+        f"Strict response correctness was {_fraction(new)} for the revised managed condition, compared with "
         f"{_fraction(raw)} for raw-history retrieval and {_fraction(old)} for the earlier managed condition "
         "(Table 5). All versions use the same 24 questions and fixed reader settings.", paragraphs[53])
     caption = _paragraph_before(result_anchor,
-        "Table 5. Correct factual answers on the controlled task-state cases. Each family contains six related "
-        "Chinese- and English-source variants. Raw answers are identical across versions.", paragraphs[55])
+        "Table 5. Strict response correctness on the controlled task-state cases, requiring the prescribed JSON "
+        "format and correct typed value. Each family contains six related language variants. Raw answers are "
+        "identical across versions.", paragraphs[55])
     caption.paragraph_format.keep_with_next = True
     rows = [(family["label"], f"{family['raw']}/6", f"{family['before']}/6", f"{family['after']}/6")
             for family in result["families"]]
@@ -700,10 +836,35 @@ def build_document(args, result, before, after, professional, calibration=None):
     losses = result["paired_outcomes"].get("raw_win", 0)
     ties = result["paired_outcomes"].get("tie", 0)
     _paragraph_before(result_anchor,
-        f"Against raw retrieval, the revised condition won {wins} paired questions, lost {losses} and tied {ties}. "
+        f"On the strict primary endpoint, the revised condition won {wins} paired questions, lost {losses} "
+        f"and tied {ties} against raw retrieval. "
         f"The revision changed {result['changed_request_rows']} managed request rows; the other requests and the "
         "raw control were preserved. The result isolates these task-state mechanisms on constructed cases; "
         "it does not provide a professional rating of free-form CBT replies.", paragraphs[53])
+    if diagnostic:
+        _paragraph_before(result_anchor,
+            f"The secondary value diagnostic scored {raw_value}/24 for raw retrieval, {old_value}/24 for the "
+            f"earlier managed condition and {new_value}/24 after revision (Table 6). The error categories retain "
+            "every primary failure. Recoverable formatting is not counted as a factual error, and unresolved "
+            "formatting is not assumed to contain either a correct value or a factual memory error.", paragraphs[53])
+        secondary_caption = _paragraph_before(result_anchor,
+            "Table 6. Conservative secondary format diagnostic. Value correctness includes strict successes and "
+            "recoverable-format answers. The five error rows partition the original primary failures; they are "
+            "descriptive categories, not a new primary endpoint or clinical judgment.", paragraphs[55])
+        secondary_caption.paragraph_format.keep_with_next = True
+        ds = (raw_diagnostic, old_diagnostic, new_diagnostic)
+        diagnostic_rows = [("Correct typed value after conservative parsing",)
+                           + tuple(str(value["secondary_typed_value_correct"]) + "/24" for value in ds)]
+        labels = {"recoverable_format": "Recoverable formatting",
+                  "wrong_value": "Resolved wrong value",
+                  "unsupported_assertion": "Unsupported assertion",
+                  "incorrect_abstention": "Incorrect abstention",
+                  "unresolved_format": "Unresolved formatting"}
+        for key, label in labels.items():
+            diagnostic_rows.append((label,) + tuple(
+                str(value["diagnostic_failure_class"].get(key, 0)) for value in ds))
+        _comparison_table(document, result_anchor, diagnostic_rows,
+                          headers=("Diagnostic metric", "Raw history", "Managed before", "Managed after"))
     # Preserve numbering and simple diagrams; prevent existing orphan headings.
     for name in ("Title", "Heading 1", "Heading 2"):
         document.styles[name].font.color.rgb = RGBColor(0, 0, 0)
@@ -767,6 +928,15 @@ def build_document(args, result, before, after, professional, calibration=None):
             "Calibration source manifest SHA256: " + args.calibration_manifest_sha256,
             "Calibration schema audit SHA256: " + args.calibration_audit_sha256,
         ])
+    if diagnostic:
+        index_values.extend([
+            "Secondary format diagnostic: declared during generation, before response-text or reference-score "
+            "inspection; descriptive only; original primary unchanged.",
+            "Secondary diagnostic helper SHA256: " + FORMAT_HELPER_SHA256,
+            "Secondary declaration SHA256: " + FORMAT_DECLARATION_SHA256,
+            "Before format diagnostic SHA256: " + args.before_format_sha256,
+            "After format diagnostic SHA256: " + args.after_format_sha256,
+        ])
     for value in index_values:
         paragraph = document.add_paragraph(style="Normal")
         paragraph.add_run(value)
@@ -792,6 +962,8 @@ def build_document(args, result, before, after, professional, calibration=None):
              "professional_summary_sha256": args.professional_summary_sha256,
              "calibration_manifest_sha256": args.calibration_manifest_sha256,
              "calibration_audit_sha256": args.calibration_audit_sha256,
+             "before_format_sha256": args.before_format_sha256,
+             "after_format_sha256": args.after_format_sha256,
              "clinical_quality_claim": False, "new_human_reviews": 0,
              "new_model_calls_by_authoring_script": 0,
              "render_and_visual_review_required_before_publish": True,
@@ -823,6 +995,10 @@ def main():
     parser.add_argument("--calibration-manifest-sha256")
     parser.add_argument("--calibration-audit")
     parser.add_argument("--calibration-audit-sha256")
+    parser.add_argument("--before-format")
+    parser.add_argument("--before-format-sha256")
+    parser.add_argument("--after-format")
+    parser.add_argument("--after-format-sha256")
     parser.add_argument("--output")
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--export-evidence")
@@ -847,10 +1023,12 @@ def main():
                                                 args.evidence_directory)
         for role in ("before_report", "before_protocol", "after_report", "after_protocol", "professional_summary",
                      "calibration_manifest", "calibration_audit", "before_reader_run", "before_reader_completion",
-                     "before_answers", "after_reader_run", "after_reader_completion", "after_answers"):
+                     "before_answers", "after_reader_run", "after_reader_completion", "after_answers",
+                     "before_format", "after_format"):
             if role in paths:
                 setattr(args, role, paths[role])
-        for role in ("before_report", "after_report", "professional_summary", "calibration_manifest", "calibration_audit"):
+        for role in ("before_report", "after_report", "professional_summary", "calibration_manifest", "calibration_audit",
+                     "before_format", "after_format"):
             setattr(args, role + "_sha256", bundle.get(role + "_sha256"))
     for name in ("before_report", "before_report_sha256", "before_protocol",
                  "after_report", "after_report_sha256", "after_protocol", "before_reader_run", "before_reader_completion",

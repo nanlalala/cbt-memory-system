@@ -27,6 +27,7 @@ def fixture():
                 "raw_and_managed_share_original_source_ranking": True,
                 "recent_sources_do_not_consume_raw_retrieval_slots": True,
                 "independent_human_review": False, "clinical_quality_claim": False,
+                "case_file_sha256": "c" * 64, "targets_file_sha256": "e" * 64,
                 "arms": list(M.ARMS)}
     rows, pairs = [], []
     for kind in M.FAMILIES:
@@ -159,6 +160,89 @@ class PaperRevisionContractTests(unittest.TestCase):
                                                    if k != "record_sha256"})
         with self.assertRaisesRegex(ValueError, "receipt_or_score_binding"):
             M.validate_reader_binding(report, protocol, run, completion, answers)
+
+    def format_fixture(self):
+        report, protocol, _run, _completion, answers = self.reader_fixture()
+        protocol["code_identity"] = {"source_files": {
+            "evaluation/cbt-memory-effect/controlled_open_memory.py": "c" * 64}}
+        rows = []
+        for scored, answer in zip(report["per_question"], answers):
+            rows.append({"case_id": scored["case_id"], "arm": scored["arm"],
+                         "source_family_id": scored["source_family_id"],
+                         "strict_correct": True, "secondary_typed_value_correct": True,
+                         "format_diagnostic": {"status": "strict_json", "value": 1,
+                                               "reason": "unique_goal_independent_json", "normalization": None},
+                         "primary_reason": "correct", "diagnostic_failure_class": "correct",
+                         "request_sha256": scored["request_sha256"],
+                         "response_sha256": scored["response_sha256"],
+                         "original_response_text": answer["response_text"]})
+        audit = {"version": M.FORMAT_VERSION, "primary_scores_unchanged": True,
+                 "secondary_descriptive_only": True, "clinical_quality_claim": False,
+                 "new_model_calls": 0,
+                 "declaration_timing": "added_during_generation_before_response_text_or_gold_score_inspection",
+                 "rules": {"primary_scores_unchanged": True}, "per_question": rows,
+                 "bindings": {"score_sha256": "a" * 64,
+                              "answers_sha256": report["answers_file_sha256"],
+                              "protocol_sha256": report["protocol_file_sha256"],
+                              "diagnostic_code_sha256": M.FORMAT_HELPER_SHA256,
+                              "declaration_sha256": M.FORMAT_DECLARATION_SHA256,
+                              "planner_identity_sha256": M.json_digest(protocol["code_identity"]),
+                              "planner_code_sha256": "c" * 64},
+                 "by_arm": {arm: {"planned_rows": 24, "strict_correct": 24,
+                                  "secondary_typed_value_correct": 24,
+                                  "diagnostic_failure_class": {"correct": 24},
+                                  "recovered_unknown_count": 0,
+                                  "diagnostic_status": {"strict_json": 24}}
+                            for arm in M.ARMS}}
+        return audit, report, protocol
+
+    def test_format_diagnostic_is_bound_to_unchanged_primary_helper_and_declaration(self):
+        audit, report, protocol = self.format_fixture()
+        value = M.validate_format_diagnostic(audit, report, protocol, expected_score_sha256="a" * 64)
+        self.assertTrue(value["primary_unchanged"])
+        for field in ("score_sha256", "diagnostic_code_sha256", "declaration_sha256"):
+            changed = copy.deepcopy(audit); changed["bindings"][field] = "f" * 64
+            with self.assertRaisesRegex(ValueError, "source_binding"):
+                M.validate_format_diagnostic(changed, report, protocol, expected_score_sha256="a" * 64)
+
+    def test_format_recovery_retains_primary_failure_instead_of_rescoring_primary(self):
+        audit, report, protocol = self.format_fixture()
+        row = audit["per_question"][0]
+        text = 'Result: {"answer":1}'
+        response_sha = hashlib.sha256(text.encode()).hexdigest()
+        report["per_question"][0].update(correct=False, reason="malformed_output", response_sha256=response_sha)
+        row.update(strict_correct=False, secondary_typed_value_correct=True,
+                   diagnostic_failure_class="recoverable_format", primary_reason="malformed_output",
+                   response_sha256=response_sha, original_response_text=text,
+                   format_diagnostic={"status": "recovered", "value": 1,
+                                      "normalization": None, "reason": "unique_goal_independent_json"})
+        audit["by_arm"][M.ARMS[0]].update(strict_correct=23,
+            diagnostic_failure_class={"correct": 23, "recoverable_format": 1},
+            diagnostic_status={"strict_json": 23, "recovered": 1})
+        value = M.validate_format_diagnostic(audit, report, protocol, expected_score_sha256="a" * 64)
+        self.assertEqual(value["by_arm"][M.ARMS[0]]["strict_correct"], 23)
+        self.assertEqual(value["by_arm"][M.ARMS[0]]["secondary_typed_value_correct"], 24)
+        self.assertFalse(report["per_question"][0]["correct"])
+        row["diagnostic_failure_class"] = "wrong_value"
+        with self.assertRaisesRegex(ValueError, "category_disagrees"):
+            M.validate_format_diagnostic(audit, report, protocol, expected_score_sha256="a" * 64)
+
+    def test_secondary_original_text_and_count_changes_rejected(self):
+        audit, report, protocol = self.format_fixture()
+        audit["per_question"][0]["original_response_text"] = "INVENTED_TAMPERING"
+        with self.assertRaisesRegex(ValueError, "row_identity"):
+            M.validate_format_diagnostic(audit, report, protocol, expected_score_sha256="a" * 64)
+        audit, report, protocol = self.format_fixture()
+        audit["by_arm"][M.ARMS[0]]["secondary_typed_value_correct"] = 23
+        with self.assertRaisesRegex(ValueError, "summary_disagrees"):
+            M.validate_format_diagnostic(audit, report, protocol, expected_score_sha256="a" * 64)
+
+    def test_case_and_target_changes_cannot_support_before_after_claim(self):
+        report, protocol = fixture()
+        for field in ("case_file_sha256", "targets_file_sha256"):
+            after_protocol = copy.deepcopy(protocol); after_protocol[field] = "f" * 64
+            with self.assertRaisesRegex(ValueError, "source_cases_or_fixed_targets_changed"):
+                M.validate_comparison(report, protocol, report, after_protocol)
 
     def evidence_fixture(self):
         report, protocol = fixture()
