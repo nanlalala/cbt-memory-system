@@ -331,6 +331,37 @@ def _implicit_task_short_form(text: str) -> bool:
     return not re.sub(r"[\s,，。.!！?？;；:'’\-]", "", remaining)
 
 
+def _cumulative_apposition_bounds(text: str, start: int, end: int, label: str):
+    """Bind 'I completed X, cumulative total N times' as one assertion.
+
+    Only an adjacent comma-separated total can inherit an explicit first-person
+    completion subject. Other clauses, plans, questions and third-party reports
+    cannot donate their task identity or completion predicate to the total.
+    """
+    left, right = _scoped_clause_bounds(text, start, end)
+    if not left or text[left - 1] not in ",，":
+        return None
+    tail = text[left:right]
+    amounts = list(_QUANTITY.finditer(tail))
+    if len(amounts) != 1:
+        return None
+    marker = _QUANTITY.sub("", tail).strip(" \t:：.")
+    if not re.fullmatch(r"(?:cumulative(?:\s+total)?|total|so\s+far|altogether)(?:\s+(?:is|of))?",
+                        marker, re.I):
+        return None
+    head_end, head_start = left - 1, left - 1
+    while head_start and text[head_start - 1] not in ",，。.;；!?！？\n":
+        head_start -= 1
+    head = text[head_start:head_end].strip()
+    if not re.fullmatch(r"(?:I|we)\s+(?:(?:have|had)\s+)?(?:completed|did|finished)\s+(?:the\s+)?"
+                        + re.escape(label), head, re.I):
+        return None
+    assertion = text[head_start:right]
+    if _NEGATION.search(assertion) or _AMBIGUOUS.search(assertion) or _asks_task_question(assertion):
+        return None
+    return head_start, right
+
+
 def _claim_for_object(source: Mapping[str, Any], binding: Mapping[str, Any], label: str,
                       kind: str, value: Any, field: str | None, *, contextual: bool) -> bool:
     claim = binding["claim"]
@@ -349,6 +380,11 @@ def _claim_for_object(source: Mapping[str, Any], binding: Mapping[str, Any], lab
         if kind == "choice" and not _choice_predicate_supported(text, start, end, value):
             continue
         clause = _clause(text, start, end)
+        apposition = (_cumulative_apposition_bounds(text, start, end, label)
+                      if (kind == "quantity" and field == "count") or (kind == "choice" and value == "cumulative")
+                      else None)
+        if apposition:
+            clause = text[apposition[0]:apposition[1]]
         explicit_subject = label in clause
         correction_reference = ((re.search(r"而是|更正|改成|纠正|instead|correct", clause, re.I)
                                  or re.search(r"(?:而是|instead)\s*$", text[:start], re.I))
@@ -572,6 +608,11 @@ def validate_task_event(event: Mapping[str, Any], *, sources: Mapping[str, Any],
         if value not in {"unknown", "helpful", "unhelpful", "mixed"} or not supported("choice", value):
             raise ValueError("outcome choice lacks explicit support")
     elif kind == "corrected":
+        # A future/proposed correction has not changed the user's current
+        # report. Quantity support alone must not turn it into a completed edit.
+        if re.search(r"打算|准备|希望|如果|假如|假设|\b(?:will|would|could|should|may|might|shall|plan|intend|hope|want|going\s+to)\b",
+                     source["text"], re.I) or _asks_task_question(source["text"]):
+            raise ValueError("correction must be an asserted current correction")
         _string(payload.get("target_event_id"), "target_event_id")
         changes = payload.get("changes")
         if not isinstance(changes, dict) or not changes or set(changes) - {"target_count", "count", "participation", "outcome", "acceptance"}:
@@ -587,7 +628,7 @@ def validate_task_event(event: Mapping[str, Any], *, sources: Mapping[str, Any],
                            "acceptance": {"proposed", "agreed", "declined"}}
                 if value not in options[field] or not supported("choice", value):
                     raise ValueError("corrected choice lacks source support")
-        if not re.search(r"更正|改成|不是|纠正|说错|\b(?:correct|correction|actually|not)\b", source["text"], re.I):
+        if not re.search(r"更正|改成|不是|纠正|说错|\b(?:correct(?:ed|ion|ing)?|actually|not)\b", source["text"], re.I):
             raise ValueError("correction must be explicit")
     return data
 
@@ -632,6 +673,11 @@ def _source_claim_witness(event: Mapping[str, Any], source: Mapping[str, Any],
             if not verify_claim_binding(text, narrow["start"], narrow["end"], claim):
                 continue
             if _claim_for_object(source, narrow, label, kind, value, field, contextual=contextual):
+                apposition = (_cumulative_apposition_bounds(text, narrow["start"], narrow["end"], label)
+                              if (kind == "quantity" and field == "count") or (kind == "choice" and value == "cumulative")
+                              else None)
+                if apposition:
+                    return apposition
                 return _full_clause_bounds(text, narrow["start"], narrow["end"])
     return None
 
