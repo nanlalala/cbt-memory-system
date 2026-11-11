@@ -245,6 +245,35 @@ class OpenReaderTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "foreign_controlled"):
                 r._gate_module()
 
+    def test_cli_accepts_official_protocol_without_optional_fixture_field(self):
+        folder = PATH.parent
+        sys.path.insert(0, str(folder))
+        import controlled_open_memory as planner
+        prepared = self.root / "official-cli-fixture"
+        planner.prepare(prepared, fixture_only=True, case_limit=1)
+        protocol, rows, request_hash = r._requests(prepared)
+        self.assertNotIn("fixture_only", protocol)
+        gates = planner.make_gates(prepared)
+        proxy = SimpleNamespace(make_gates=lambda _folder: gates)
+        argv = ["run", "--prepared-dir", "/content/fixture-prepared",
+                "--model-root", "/content/fixture-model", "--output", "/content/fixture-output"]
+        result = {"run_protocol_sha256": "fixture", "logical_completed": 2, "complete": True}
+        with patch.object(r, "require_colab"), patch.object(r, "_gate_module", return_value=proxy), \
+                patch.object(r, "_requests", return_value=(protocol, rows, request_hash)), \
+                patch.object(r, "_locked", return_value=nullcontext()), \
+                patch.object(r, "_global_state", return_value=({}, {})), \
+                patch.object(r, "_load_cached_model", return_value=(Model(), Tokenizer(), {"setup_id": "fixture", "setup_seconds": 0})) as load, \
+                patch.object(r, "run_open_reader", return_value=result) as reader, patch.object(r, "_append"):
+            self.assertEqual(r.main(argv), result)
+            load.assert_called_once(); reader.assert_called_once()
+        # An explicit fixture marker still cannot enter the real CLI.
+        with patch.object(r, "require_colab"), patch.object(r, "_gate_module", return_value=proxy), \
+                patch.object(r, "_requests", return_value=({**protocol, "fixture_only": True}, rows, request_hash)), \
+                patch.object(r, "_load_cached_model") as load:
+            with self.assertRaisesRegex(ValueError, "nonfixture"):
+                r.main(argv)
+            load.assert_not_called()
+
     def test_offline_reload_checks_exact_bytes_and_preserves_old_receipt(self):
         snapshot = self.root / "cache" / r.MODEL_REVISION
         snapshot.mkdir(parents=True)

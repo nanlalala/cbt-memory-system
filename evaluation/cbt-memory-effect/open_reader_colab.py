@@ -549,7 +549,10 @@ def main(argv=None):
         raise ValueError("finite_invocation_generation_cap_required")
     planner = _gate_module()
     protocol, rows, _ = _requests(args.prepared_dir.resolve())
-    if protocol.get("fixture_only") is not False:
+    # The official controlled planner predates an explicit fixture_only field.
+    # Match run_open_reader: absence is valid, while an explicit fixture marker
+    # cannot enter the real CLI. Hosted guard and authoritative gates still run.
+    if protocol.get("fixture_only") is not None and protocol["fixture_only"] is not False:
         raise ValueError("real_cli_requires_nonfixture_preparation")
     gates = planner.make_gates(args.prepared_dir)
     for row in rows:
