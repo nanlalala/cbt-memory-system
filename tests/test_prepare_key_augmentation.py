@@ -159,6 +159,58 @@ class KeyAugmentationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "fixtures"):
                     K.prepare(folder, Path(folder) / "new", product_repo=ROOT, encoder_factory=FakeEncoder)
 
+    def test_memoization_reduces_physical_work_and_preserves_all_nine_fixture_wires(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); old = self.fixture(root, extra_turns=7)
+            plain = K.prepare(old, root / "plain", product_repo=ROOT, fixture_only=True,
+                              encoder_factory=FakeEncoder)
+            cached = K.prepare(old, root / "memoized", product_repo=ROOT, fixture_only=True,
+                               encoder_factory=FakeEncoder, memoize_embeddings=True)
+            a = K.base.read_rows(root / "plain/traces.jsonl")
+            b = K.base.read_rows(root / "memoized/traces.jsonl")
+            for old_row, new_row in zip(a, b):
+                for arm in old_row["contexts"]:
+                    self.assertEqual(old_row["contexts"][arm], new_row["contexts"][arm])
+            self.assertEqual(plain["local_embedding_work"]["texts_attempted"],
+                             cached["local_embedding_work"]["texts_attempted"])
+            self.assertLess(cached["physical_embedding_work"]["physical_encode_texts_attempted"],
+                            plain["physical_embedding_work"]["physical_encode_texts_attempted"])
+            self.assertGreater(cached["physical_embedding_work"]["cache_hit_texts"], 0)
+            self.assertFalse(plain["embedding_cache"]["enabled"])
+            self.assertTrue(cached["embedding_cache"]["enabled"])
+            self.assertIsNone(cached["reference_comparison"]["all_nine_wire_hashes_and_source_orders_equal"])
+
+    def test_reference_comparison_checks_all_wire_hashes_and_source_orders(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); old = self.fixture(root, extra_turns=7)
+            K.prepare(old, root / "plain", product_repo=ROOT, fixture_only=True, encoder_factory=FakeEncoder)
+            rows = K.base.read_rows(root / "plain/traces.jsonl")
+            reference = root / "fixture-v1-reference"; reference.mkdir()
+            protocol = {"version": "source-key-augmentation-development-v1", "fixture_only": True,
+                "code_sha256": {str(Path(K.__file__).resolve()): K.base.file_hash(K.__file__)},
+                "source_checkpoint_hashes": {str(old / "protocol.json"): K.base.file_hash(old / "protocol.json")}}
+            protocol["protocol_sha256"] = K.base.digest(protocol)
+            (reference / "protocol.json").write_text(json.dumps(protocol))
+            (reference / "traces.jsonl").write_text("".join(json.dumps(row) + "\n" for row in rows))
+            result = K.compare_reference(reference, rows)
+            self.assertTrue(result["all_nine_wire_hashes_and_source_orders_equal"])
+            self.assertEqual(len(result["comparisons"]), 9)
+            spoofed = deepcopy(rows); context = next(iter(spoofed[0]["contexts"].values()))
+            context["request_sha256"] = "spoofed-fixture-hash"
+            with self.assertRaisesRegex(ValueError, "canonical wire"):
+                K.compare_reference(reference, spoofed)
+            changed = deepcopy(rows); context = next(iter(changed[0]["contexts"].values()))
+            context["request_payload"]["messages"][0]["content"] += " A changed fixture instruction."
+            context["messages"] = context["request_payload"]["messages"]
+            context["serialized_request"] = K.assembly.canonical(context["request_payload"])
+            context["outbound_chars"] = len(context["serialized_request"])
+            context["request_sha256"] = K.hashlib.sha256(context["serialized_request"].encode()).hexdigest()
+            self.assertFalse(K.compare_reference(reference, changed)["all_nine_wire_hashes_and_source_orders_equal"])
+            dependency = old / "protocol.json"
+            dependency.write_text("changed fixture dependency")
+            with self.assertRaisesRegex(ValueError, "dependency changed"):
+                K.compare_reference(reference, rows)
+
 
 if __name__ == "__main__":
     unittest.main()

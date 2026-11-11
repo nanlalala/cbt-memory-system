@@ -22,8 +22,9 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import prepare_context_revision_v3 as base
 import context_assembly_v3 as assembly
+import memoized_embedding
 
-VERSION = "source-key-augmentation-development-v1"
+VERSION = "source-key-augmentation-development-v2"
 KEY_SEPARATOR = "\n[Unconfirmed indexing description]\n"
 POLICY = {"candidate_binding": "one_distinct_original_user_source_only",
     "candidate_order": "memory_id_ascending", "candidate_identity_deduplication": "once_per_memory_id",
@@ -186,11 +187,67 @@ def truncation_report(encoder, keys):
     return result
 
 
-def prepare(old_run, output, *, product_repo, fixture_only=False, encoder_factory=None):
+def physical_work(encoder, memoizer):
+    if memoizer is not None:
+        return memoizer.statistics()
+    work = encoder.statistics()
+    return {"physical_encode_calls_attempted": work["calls_attempted"],
+        "physical_encode_calls_completed": work["calls_completed"],
+        "physical_encode_texts_attempted": work["texts_attempted"],
+        "physical_encode_texts_completed": work["texts_completed"],
+        "physical_encode_seconds_sum": work["local_embedding_seconds_sum"],
+        "cache_hit_texts": 0, "cached_entries": 0}
+
+
+def compare_reference(reference_output, rows):
+    """Compare all nine complete wire hashes and source orders, without gold."""
+    if reference_output is None:
+        return {"status": "not_checked", "all_nine_wire_hashes_and_source_orders_equal": None}
+    root = Path(reference_output).resolve(strict=True)
+    protocol = base.read_json(root / "protocol.json")
+    if protocol.get("protocol_sha256") != base.digest({k:v for k,v in protocol.items() if k != "protocol_sha256"}):
+        raise ValueError("reference protocol checksum mismatch")
+    if protocol.get("version") != "source-key-augmentation-development-v1":
+        raise ValueError("unchanged v1 reference output required")
+    for field in ("code_sha256", "source_checkpoint_hashes"):
+        hashes = protocol.get(field)
+        if not isinstance(hashes, dict) or not hashes:
+            raise ValueError("reference code and source checkpoint hashes required")
+        for path, expected in hashes.items():
+            if not isinstance(path, str) or base.file_hash(path) != expected:
+                raise ValueError("reference code or checkpoint dependency changed")
+    prior = base.read_rows(root / "traces.jsonl")
+    before = {(row["case_id"], arm): context for row in prior for arm, context in row["contexts"].items()}
+    current = {(row["case_id"], arm): context for row in rows for arm, context in row["contexts"].items()}
+    if len(before) != 9 or set(before) != set(current):
+        raise ValueError("the same nine reference case/condition payloads are required")
+    for context in [*before.values(), *current.values()]:
+        payload = context["request_payload"]
+        wire = assembly.canonical(payload)
+        actual_hash = hashlib.sha256(wire.encode()).hexdigest()
+        if (context["request_sha256"] != actual_hash or context["serialized_request"] != wire or
+                context["outbound_chars"] != len(wire) or payload["messages"] != context["messages"]):
+            raise ValueError("reference/current context differs from its complete canonical wire")
+    comparisons = [{"case_id": key[0], "condition": key[1],
+        "wire_hash_equal": current[key]["request_sha256"] == before[key]["request_sha256"],
+        "recent_source_order_equal": current[key]["recent_source_ids"] == before[key]["recent_source_ids"],
+        "retrieved_source_order_equal": current[key]["retrieved_source_ids"] == before[key]["retrieved_source_ids"]}
+        for key in sorted(current)]
+    return {"status": "checked", "reference_protocol_sha256": protocol["protocol_sha256"],
+        "reference_files_sha256": {str(root/name):base.file_hash(root/name) for name in ("protocol.json", "traces.jsonl")},
+        "all_nine_wire_hashes_and_source_orders_equal": all(all(row[field] for field in
+            ("wire_hash_equal", "recent_source_order_equal", "retrieved_source_order_equal")) for row in comparisons),
+        "comparisons": comparisons}
+
+
+def prepare(old_run, output, *, product_repo, fixture_only=False, encoder_factory=None,
+            memoize_embeddings=False, reference_output=None):
     if not fixture_only:
         base.require_colab()
     if encoder_factory is not None and not fixture_only:
         raise ValueError("test encoder injection is restricted to fixtures")
+    if type(memoize_embeddings) is not bool:
+        raise ValueError("explicit boolean memoization policy required")
     old_run = Path(old_run).resolve(strict=True); output = Path(output).absolute()
     if output.exists() or output.is_symlink() or output.is_relative_to(old_run):
         raise ValueError("new independent development directory required")
@@ -199,6 +256,9 @@ def prepare(old_run, output, *, product_repo, fixture_only=False, encoder_factor
     started = time.perf_counter()
     model = (encoder_factory() if encoder_factory else importlib.import_module(product.MemoryRetriever.__module__).MultilingualE5Encoder(
         model_name="intfloat/multilingual-e5-small"))
+    memoizer = memoized_embedding.MemoizedEmbedding(model) if memoize_embeddings else None
+    if memoizer is not None:
+        model = memoizer
     encoder = base.TrackedEncoder(model)
     model_load_seconds = time.perf_counter() - started
     rows = []
@@ -215,6 +275,7 @@ def prepare(old_run, output, *, product_repo, fixture_only=False, encoder_factor
                 raise ValueError("source control snapshot changed between paired probes")
             query = case.get("retrieval_query", case["input"])
             work_before = encoder.statistics()
+            physical_before = physical_work(encoder, memoizer)
             raw_rank, raw_trace = rank_keys(original_keys, query, product=product, encoder=encoder)
             augmented_rank, augmented_trace = rank_keys(augmented_keys, query, product=product, encoder=encoder)
             candidate_rank, candidate_trace = base.candidate_ranks(durable, product, sources, query, user, encoder=encoder)
@@ -238,20 +299,31 @@ def prepare(old_run, output, *, product_repo, fixture_only=False, encoder_factor
                 "raw_key_ranking": raw_trace, "augmented_key_ranking": augmented_trace,
                 "candidate_index_trace": candidate_trace, "rrf_ranking": first["fusion"],
                 "contexts": contexts, "local_embedding_work": {key: value - work_before[key] for key, value in encoder.statistics().items()}})
+            rows[-1]["physical_embedding_work"] = {key:value-physical_before[key]
+                for key,value in physical_work(encoder, memoizer).items()}
     if checkpoint_hashes != {path: base.file_hash(path) for path in checkpoint_hashes}:
         raise ValueError("original checkpoint changed")
+    reference_comparison = compare_reference(reference_output, rows)
+    cache_config = {"enabled": memoize_embeddings, "version": memoized_embedding.VERSION,
+        "scope": "new_in_memory_cache_per_prepare_invocation_no_disk_persistence",
+        "key": "pinned_model_identity_plus_is_query_plus_exact_text",
+        "vectors": "original_dtype_deep_copied_on_storage_and_return",
+        "cache_hits_are_physical_encode_calls": False}
     protocol = {"version": VERSION, "fixture_only": fixture_only, "development_only": True,
         "not_send_ready": True, "old_protocol_sha256": old_protocol["protocol_sha256"],
         "policy": POLICY, "source_checkpoint_hashes": checkpoint_hashes,
         "source_family_id": cases[0]["source_family_id"], "selected_cases": [case["case_id"] for case in cases],
         "encoder_model_identity": encoder.model_identity, "same_encoder_for_every_condition": True,
         "model_load_seconds": model_load_seconds, "local_embedding_work": encoder.statistics(),
+        "embedding_cache": cache_config, "physical_embedding_work": physical_work(encoder, memoizer),
+        "reference_comparison": reference_comparison,
         "key_manifest": key_manifest, "index_truncation": truncation,
         "actual_provider_calls": 0, "secret_access": False, "gold_read": False,
         "original_checkpoint_unchanged": True,
         "code_sha256": {str(Path(__file__).resolve()): base.file_hash(__file__),
             str(Path(assembly.__file__).resolve()): base.file_hash(assembly.__file__),
-            str(Path(base.__file__).resolve()): base.file_hash(base.__file__)},
+            str(Path(base.__file__).resolve()): base.file_hash(base.__file__),
+            str(Path(memoized_embedding.__file__).resolve()):base.file_hash(memoized_embedding.__file__)},
         "product_code_sha256": old_protocol["code_sha256"],
         "holdout_policy": "current family and all previously inspected or tuned source families are development; all three probes stay in one family partition; freeze before evaluating new families"}
     protocol["protocol_sha256"] = base.digest(protocol)
@@ -262,6 +334,8 @@ def prepare(old_run, output, *, product_repo, fixture_only=False, encoder_factor
         "eligible_source_count": len(sources), "accepted_index_candidates": len(key_manifest["accepted"]),
         "excluded_index_candidates": len(key_manifest["excluded"]), "model_load_seconds": model_load_seconds,
         "local_embedding_work": encoder.statistics(),
+        "embedding_cache": cache_config, "physical_embedding_work": physical_work(encoder, memoizer),
+        "reference_comparison": reference_comparison,
         "by_case": [{"case_id": row["case_id"], "raw_augmented_same_rank":
             [hit["source_id"] for hit in row["raw_key_ranking"]["ranking"]] == [hit["source_id"] for hit in row["augmented_key_ranking"]["ranking"]],
             "conditions": {arm: {"outbound_chars": context["outbound_chars"],
@@ -279,8 +353,11 @@ def main():
     parser.add_argument("--old-run", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--product-repo", required=True, type=Path)
+    parser.add_argument("--memoize-embeddings", action="store_true", default=False)
+    parser.add_argument("--reference-output", type=Path, help="unchanged v1 output for all nine wire/source-order checks")
     args = parser.parse_args()
-    print(json.dumps(prepare(args.old_run, args.output, product_repo=args.product_repo), sort_keys=True, allow_nan=False))
+    print(json.dumps(prepare(args.old_run, args.output, product_repo=args.product_repo,
+        memoize_embeddings=args.memoize_embeddings, reference_output=args.reference_output), sort_keys=True, allow_nan=False))
 
 
 if __name__ == "__main__":
