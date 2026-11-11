@@ -68,3 +68,61 @@ permits only exact pinned official Hugging Face artifact paths and their officia
 resolve-cache equivalents; an unrecognized redirect stops acquisition.
 Tiny invented test fixtures verify parsing, null handling, old-schema rejection,
 exposure propagation and the runtime guard without obtaining the real dataset.
+
+## Actual hosted Colab acquisition
+
+The original hosted Colab runtime successfully executed the published collector
+at code revision `76fdfa1`. The source bank is now frozen at
+`/content/therapyjudgebench-v2-source-freeze-20261112`. All five pinned official
+files were acquired and all release-identity and schema checks passed. Complete
+source files, clinical labels, schema audit and exposure groups remain
+assessor-only. This acquisition made **zero new model calls** and commissioned
+**zero new human assessments**.
+
+The acquired data verified **116 dialogues, 18 patient-profile groups, eight
+therapist-model configurations and 993 nonmissing CTRS aspect ratings**. The
+four safety categories have positive counts **0, 26, 4, 49**, with 111 labelled
+dialogues and the five specified all-null records. Per-dimension nonmissing and
+null counts are preserved in `assessor_only/schema_audit.json`; the labels were
+not filled or reinterpreted.
+
+| Frozen artifact | SHA256 |
+| --- | --- |
+| `source_bank_manifest.json` | `c85f1a454169fcd818a3d3ad2937c205eae651458c0dd91c40a0854ad2be7a04` |
+| `assessor_only/schema_audit.json` | `5d883c2ba82907a4322d884ffa1f557f7f97381971039ea7b40562a87a8f5e0e` |
+| `assessor_only/profile_exposure_groups.json` | `476698d307ef39cda133d92f352b41b6317e73c0749f59932ca1f740289420c0` |
+
+This is a completed acquisition of **published clinician-rated quality sources**.
+It is separate from the CPU reader experiment on controlled state-management
+cases. Neither acquisition nor those controlled cases establish that a clinician
+rated this project's generated responses. A subsequent assessor-calibration run
+must freeze its selection and prompt before reading evaluation labels, and must
+report its actual completed calls and results separately.
+
+## Other candidates checked
+
+**CareBench-CBT / Hierarchical Therapy Memory (HTM).** The primary paper,
+*Can LLMs Move Beyond Short Exchanges to Realistic Therapy Conversations?*, by
+Zhengqing Yuan and colleagues, is available in cached OpenReview full text at
+<https://openreview.net/pdf?id=3Bdl1wL1S3>. It reports 256 complete CBT sessions,
+7,442 turns and 21 licensed clinicians from three outpatient providers. These
+are paper claims; no corresponding dataset archive or supplementary asset was
+obtained, and same-client multi-visit boundaries have not been verified. The
+live official forum/PDF route presented a verification challenge during access
+checks; no alternate route was used to bypass it. Although the paper header
+states ICLR 2026, the acceptance record has not been independently verified.
+Its HTM Table 2 is explicitly captioned **projected performance**; those figures
+are not a measured reproduction or evidence of gains in this project. This
+candidate remains pending an accessible, authorized official release asset.
+
+**KokoroChat** (<https://github.com/UEC-InabaLab/KokoroChat>) releases human
+counselling role-plays with ordered messages, but its checked primary materials
+do not establish CBT-specific session labels or licensed CBT qualifications.
+It is not eligible as the requested professional CBT main experiment.
+
+**CBT-Audio** (<https://huggingface.co/datasets/CodyWho/cbt-audio>) publishes
+patient-turn distress labels and context from educational CBT videos. It does
+not provide the verified independent professional therapist response-quality
+reference needed here. Original video rights remain separate; overlapping
+RealCBT-derived content must not be used as a route around the withdrawal of
+RealCBT transcripts. It is not an eligible substitute for the main experiment.
