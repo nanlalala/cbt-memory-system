@@ -47,6 +47,48 @@ class ControlledDialogueTests(unittest.TestCase):
     def send(self, s, text, i, **kwargs):
         return s.send_message(text, input_id='input-' + str(i), as_of=TIMES[min(i, 3)], **kwargs)
 
+    def test_recent_messages_are_direct_context_with_current_input_once(self):
+        provider = OfflineProvider(); s = self.session(provider=provider)
+        self.send(s, '昨晚我因为面试感到紧张。', 0)
+        self.send(s, '我说的就是这件事。', 1)
+        messages = [call for call in provider.calls if call['purpose'] == 'response'][-1]['messages']
+        turns = [m for m in messages if m['role'] != 'system']
+        self.assertEqual([m['role'] for m in turns], ['user', 'assistant', 'user'])
+        self.assertEqual(turns[0]['content'], '昨晚我因为面试感到紧张。')
+        self.assertEqual(turns[-1]['content'], '我说的就是这件事。')
+        self.assertEqual(sum(m['content'] == '我说的就是这件事。' for m in messages), 1)
+
+    def test_recent_context_obeys_external_permission(self):
+        provider = OfflineProvider(); s = self.session(provider=provider)
+        self.send(s, 'PRIVATE CONTEXT', 0, permissions={'save': True, 'long_term_use': True,
+                  'response_external': False, 'extraction_external': False})
+        self.send(s, 'What next?', 1)
+        messages = [call for call in provider.calls if call['purpose'] == 'response'][-1]['messages']
+        self.assertNotIn('PRIVATE CONTEXT', json.dumps(messages))
+
+    def test_deleted_source_and_dependent_recent_reply_do_not_return(self):
+        provider = OfflineProvider(); s = self.session(provider=provider)
+        self.send(s, '私密的面试细节。', 0)
+        s.delete_content('source', 'source:input-0')
+        self.send(s, '现在聊别的。', 1)
+        messages = [call for call in provider.calls if call['purpose'] == 'response'][-1]['messages']
+        self.assertNotIn('私密的面试细节。', json.dumps(messages, ensure_ascii=False))
+        self.assertFalse(any(m['role'] == 'assistant' for m in messages))
+
+    def test_recent_context_withdrawal_during_call_discards_reply(self):
+        class WithHook(OfflineProvider):
+            hook = None
+            def __call__(self, **kwargs):
+                result = super().__call__(**kwargs)
+                if kwargs['purpose'] == 'response' and self.hook:
+                    self.hook()
+                return result
+        provider = WithHook(); s = self.session(provider=provider)
+        self.send(s, '昨天的面试。', 0)
+        provider.hook = lambda: s.delete_content('source', 'source:input-0')
+        reply = self.send(s, '继续说这个。', 1)
+        self.assertEqual(reply['answer_status'], 'stale_discarded')
+
     def test_source_first_acceptance_progress_pause_outcome_axes(self):
         s = self.session()
         a = self.send(s, '我同意每周做两次想法记录。', 0)

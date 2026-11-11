@@ -96,6 +96,7 @@ class PrototypeLimits:
     max_response_tokens: int = 4096
     max_worker_jobs_per_turn: int = 1
     max_session_turns: int = 24
+    max_recent_messages: int = 6
 
     def __post_init__(self):
         if any(type(v) is not int or v < 1 for v in asdict(self).values()):
@@ -207,10 +208,36 @@ class BoundedMemoryWorker:
 
 class ControlledDialogueSession(DialogueSession):
     """Source-first product contract, with explicit approved file persistence."""
+    def _recent_context(self, *, current_source_id, as_of):
+        """Direct conversation context, revalidated against live source controls."""
+        recent = []
+        for turn in self._turns:
+            if turn.turn_id == current_source_id:
+                continue
+            dependencies = ([turn.turn_id] if turn.role == 'user' else
+                            self._recent_response_sources.get(turn.turn_id, []))
+            if not dependencies:
+                continue
+            sources = [self.durable.get_source(self.user_id, sid, as_of=as_of)
+                       for sid in dependencies]
+            if any(source is None or source['permissions']['response_external'] is not True
+                   for source in sources):
+                continue
+            # A partially withdrawn source cannot reappear through a generated reply.
+            if turn.role == 'assistant' and any('█' in source['text'] for source in sources):
+                continue
+            content = sources[0]['text'] if turn.role == 'user' else turn.text
+            recent.append(({'role': turn.role, 'content': content}, dependencies))
+        recent = recent[-self.prototype_limits.max_recent_messages:]
+        while recent and recent[0][0]['role'] == 'assistant':
+            recent.pop(0)
+        return recent
+
     def __init__(self, store: SQLiteMemoryStore, *, approved_root, user_id,
                  run_id='controlled-v2', provider=None, limits=None, durable_limits=None,
                  knowledge=None, permissions=None, timezone_name='UTC', background=True,
                  session_id=None):
+        self._recent_response_sources = {}
         self.prototype_limits = limits or PrototypeLimits()
         self.durable_limits = durable_limits or DurableLimits()
         if self.prototype_limits.max_worker_jobs_per_turn > self.durable_limits.max_batch_size:
@@ -930,6 +957,7 @@ class ControlledDialogueSession(DialogueSession):
         _, paused_subjects = self._paused_source_ids(stamp)
         topic_paused = subject in paused_subjects
         selection = self.knowledge.retrieve(text, task_kind='homework_followup' if task else 'general', external=self.provider is not None)
+        recent_context = self._recent_context(current_source_id=source['source_id'], as_of=stamp)
         base = [{'role': 'system', 'content': SYSTEM + '\nKnowledge status: ' + selection.status}, {'role': 'user', 'content': text}]
         # Knowledge is a separate data section and is never converted into a
         # user's memory. The adapter checks actual source/page identities.
@@ -948,8 +976,19 @@ class ControlledDialogueSession(DialogueSession):
                 if request_metadata['max_tokens'] != self.prototype_limits.max_response_tokens:
                     raise OutboundBudgetError('provider output ceiling differs from frozen product protocol')
                 outbound_limit = min(outbound_limit, getattr(self.provider, 'max_prompt_chars', outbound_limit))
-            package = build_outbound_messages(base, bundles, max_outbound_chars=outbound_limit,
-                max_response_tokens=self.prototype_limits.max_response_tokens, request_metadata=request_metadata, usage=None)
+            while True:
+                contextual_base = base[:-1] + [message for message, _ in recent_context] + base[-1:]
+                try:
+                    package = build_outbound_messages(contextual_base, bundles, max_outbound_chars=outbound_limit,
+                        max_response_tokens=self.prototype_limits.max_response_tokens, request_metadata=request_metadata, usage=None)
+                    break
+                except OutboundBudgetError:
+                    if not recent_context:
+                        raise
+                    recent_context.pop(0)
+                    while recent_context and recent_context[0][0]['role'] == 'assistant':
+                        recent_context.pop(0)
+            recent_source_ids = [sid for _, dependencies in recent_context for sid in dependencies]
             included, dropped = list(package.included_claim_ids), package.dropped_claims
             knowledge_ids = [item['chunk_id'] for item in selection.items]
             if refusal is not None or topic_paused:
@@ -976,7 +1015,7 @@ class ControlledDialogueSession(DialogueSession):
                 source_ids = [sid for sid in package.source_ids
                               if sid != source['source_id'] or source_commit['source_status'] == 'committed']
                 current_ids = [source['source_id']] if source_commit['source_status'] == 'committed' else []
-                source_ids = sorted(set(source_ids + current_ids))
+                source_ids = sorted(set(source_ids + current_ids + recent_source_ids))
                 task_versions = {}
                 if task and task['status'] == 'available' and not (state or {}).get('not_retained') and any(
                         bundle.task_instance_id == task['payload']['task_instance_id']
@@ -1032,7 +1071,12 @@ class ControlledDialogueSession(DialogueSession):
             'provider_model': output.provider_model if output else '', 'safety_bypass': False,
             'response_retained': permission['save'] is True, 'protocol_hash': self.protocol['protocol_hash']}
         if permission['save'] is True and answer_status in {'succeeded', 'offline_software_demo', 'local_preference_control'}:
+            if answer_status == 'succeeded':
+                self._recent_response_sources['assistant:' + iid] = source_ids
             self._turns = [*self._turns, ConversationTurn('assistant:' + iid, 'assistant', response_text, stamp)][-self.max_session_turns:]
+            retained_turn_ids = {turn.turn_id for turn in self._turns}
+            self._recent_response_sources = {key: value for key, value in self._recent_response_sources.items()
+                                            if key in retained_turn_ids}
             self._last_reply = deepcopy(reply)
         else:
             # No private input, inferred pause, or generated paraphrase enters
