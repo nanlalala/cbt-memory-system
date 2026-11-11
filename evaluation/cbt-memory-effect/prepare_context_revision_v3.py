@@ -15,6 +15,7 @@ import hashlib
 import importlib
 import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import sqlite3
@@ -92,7 +93,15 @@ class TrackedEncoder:
             self.document_texts_attempted += len(texts)
         started = time.perf_counter()
         try:
-            result = self.encoder.encode(texts, is_query=is_query)
+            encoded = self.encoder.encode(texts, is_query=is_query)
+            # Product encoders commonly return NumPy float32 arrays. Normalize
+            # at this boundary so scores and all downstream JSON traces contain
+            # native finite Python floats, without changing retrieval policy.
+            result = [[float(component) for component in vector] for vector in encoded]
+            if len(result) != len(texts) or any(not vector for vector in result):
+                raise ValueError("encoder returned missing or empty embedding vectors")
+            if any(not math.isfinite(component) for vector in result for component in vector):
+                raise ValueError("encoder returned nonfinite embedding values")
             self.calls_completed += 1
             self.texts_completed += len(texts)
             return result

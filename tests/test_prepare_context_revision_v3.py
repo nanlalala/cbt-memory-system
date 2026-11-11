@@ -135,6 +135,45 @@ class CheckpointDryRunTests(unittest.TestCase):
             self.assertTrue(all(row["candidate_index_trace"]["ranked_index_hits"] for row in rows))
             self.assertTrue(all(row["not_send_ready"] for row in rows))
 
+    def test_decimal_or_numpy_float32_vectors_produce_native_serializable_traces(self):
+        from decimal import Decimal
+        try:
+            import numpy as np
+            scalar = np.float32
+        except ImportError:
+            scalar = Decimal
+        class ScalarEncoder:
+            model_identity = {"repo_id": "fixture-scalar", "revision": "fixture-pinned-only"}
+            def encode(self, texts, *, is_query):
+                return [[scalar("1.0"), scalar("0.0")] for _ in texts]
+        tracked = M.TrackedEncoder(ScalarEncoder())
+        vectors = tracked.encode(["fixture"], is_query=True)
+        self.assertTrue(all(type(component) is float for vector in vectors for component in vector))
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); old = self.fixture(root)
+            result = M.prepare(old, root / "scalar-fixture", product_repo=ROOT, fixture_only=True,
+                encoder_name="multilingual-e5-small", encoder_factory=ScalarEncoder)
+            json.dumps(result, allow_nan=False)
+            for name in ("protocol.json", "context_rank_pack_traces.jsonl", "summary.json"):
+                path = root / "scalar-fixture" / name
+                values = M.read_rows(path) if path.suffix == ".jsonl" else [M.read_json(path)]
+                for value in values:
+                    json.dumps(value, allow_nan=False)
+            self.assertEqual(result["prepared_cases"], 3)
+            self.assertEqual(result["actual_provider_calls"], 0)
+
+    def test_nonfinite_encoder_vectors_fail_before_completed_encoding_or_output(self):
+        class InvalidEncoder:
+            model_identity = {"repo_id": "fixture-invalid"}
+            def encode(self, texts, *, is_query):
+                return [[float("nan"), 0.0] for _ in texts]
+        tracked = M.TrackedEncoder(InvalidEncoder())
+        with self.assertRaisesRegex(ValueError, "nonfinite"):
+            tracked.encode(["fixture"], is_query=True)
+        self.assertEqual(tracked.calls_attempted, 1)
+        self.assertEqual(tracked.calls_completed, 0)
+        self.assertEqual(tracked.texts_completed, 0)
+
     def test_encoder_loading_failure_is_not_silently_replaced_with_lexical(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder); old = self.fixture(root)
