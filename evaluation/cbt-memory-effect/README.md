@@ -1,5 +1,11 @@
 # CBT dialogue memory measurement
 
+For the new opt-in source-bound retrieval optimization and independent automatic
+quality/calibration workflow, see [Automatic evaluation v2](AUTOMATIC_EVALUATION_V2.md).
+It reuses published expert labels and requires no newly recruited human raters.
+The frozen quotation-recall experiment documented below retains its original
+protocol and results; the new modules do not replace or relabel that experiment.
+
 This directory contains a separately versioned research replay, not a clinical
 trial or a replacement for the live dialogue entry point. The first experiment
 asks whether memory conditions recover the correct original Client message and
