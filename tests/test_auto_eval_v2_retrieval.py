@@ -96,10 +96,11 @@ def test_role_has_no_ranking_bonus_and_is_preserved():
     assert result["trace"]["source_role_preference"] is False
 
 
-def test_adjacent_duplicate_chunks_do_not_consume_both_slots():
+def test_identical_text_from_distinct_original_events_is_not_merged():
     rows = [source("a", 0, "same utterance"), source("b", 1, "same   utterance"), source("c", 2, "useful other utterance")]
     result = run(rows, ["a", "b", "c"], top_k=2)
-    assert result["selected_source_ids"] == ["a", "c"]
+    assert result["selected_source_ids"] == ["a", "b"]
+    assert len(result["older_evidence"]) == 2
 
 
 def test_neighbor_requires_literal_original_adjacency_and_budget():

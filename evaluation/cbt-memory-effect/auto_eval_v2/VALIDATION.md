@@ -8,7 +8,8 @@ the code-validation run in the isolated Linux cloud workspace.
 Coverage includes:
 
 - Source-bound multi-channel evidence recovery, unchanged original roles/text,
-  exact recent six, same-set raw request identity, and ASCII-escaped full budget.
+  exact recent six, same-set raw request identity, ASCII-escaped full budget,
+  and distinct original events retained even when their wording is identical.
 - Future/deleted/use-denied/external-denied evidence, missing reference
   provenance, stale facts even alongside corrected facts, duplicate fact votes,
   strict quotation/source scoring and fixed missing-output denominators.

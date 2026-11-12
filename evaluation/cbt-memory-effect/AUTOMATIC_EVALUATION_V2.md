@@ -26,8 +26,10 @@ answers and their extraction/index costs belong to the managed condition.
   assistant suggestion nor an inferred summary becomes user agreement.
 - There is no role-based ranking bonus. Stable source keys replace job-UUID
   tie breaks. Equal selected source sets restore the raw order and request.
-- Adjacent duplicate fragments do not occupy multiple slots. Eligible adjacent
-  original context can be added when the frozen budget permits it.
+- Duplicate pointers to one source vote once per channel. Distinct original
+  messages remain distinct even when their text matches, preserving repeated
+  attempts and confirmations. Eligible adjacent original context can be added
+  when the frozen budget permits it.
 - Budget checks cover the returned complete ASCII-escaped canonical JSON request, including
   provider options. Use its exact `serialized_request` at a separately admitted
   send boundary, or recheck the actual final serialization before sending.

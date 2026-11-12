@@ -202,12 +202,9 @@ def select_evidence(sources, raw_ranking, index_rankings, current_input, *, top_
         def append(sid, neighbor_of=None):
             if sid in selected or sid in recent_set or sid not in eligible or len(selected) >= top_k:
                 return False
-            row = by_id[sid]
-            if any(by_id[other]["role"] == row["role"] and
-                   by_id[other]["content"].split() == row["content"].split() and
-                   abs(by_id[other]["source_order"] - row["source_order"]) <= 2 for other in selected):
-                if record: trace["packing_rejections"].append({"source_id": sid, "reason": "redundant_adjacent_literal"})
-                return False
+            # Distinct original messages can describe repeated attempts or
+            # confirmations, even with identical wording. Deduplicate pointers
+            # by source ID, never erase separate events by text similarity.
             candidate = [_source_view(by_id[x], clock_mode) for x in [*selected, sid]]
             request = render_request(recent, candidate, current_input, system=system, request_options=request_options)
             if request["request_chars"] > max_request_chars:
