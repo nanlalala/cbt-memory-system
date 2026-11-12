@@ -33,7 +33,8 @@ MAX_FILES = 3000
 ROOT_FILES = {
     "study_protocol.json", "main_freeze.json", "generation_ledger.jsonl", "load_protocol.json",
     "model_files.json", "model_load_receipt.json", "model_load_events.jsonl",
-    "prepare_before.log", "prepare_after.log", "source_gate_audit_before.log", "source_gate_audit_after.log",
+    "prepare_before.log", "prepare_after.log", "render_before.log", "render_after.log",
+    "source_gate_audit_before.log", "source_gate_audit_after.log",
 }
 SUBTREES = {"pilot_prepared", "pilot_answers", "source_prepared", "prepared", "source_gate_audits",
             "answers_before", "answers_after", "reports"}

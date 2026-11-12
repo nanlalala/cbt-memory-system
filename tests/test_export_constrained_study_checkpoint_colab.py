@@ -111,6 +111,11 @@ class ExportMetadataFixtures(unittest.TestCase):
             r.safe_member("study/bootstrap.py")
         self.assertEqual(str(r.safe_member("recovery/bootstrap.py", recovery=True)), "recovery/bootstrap.py")
 
+    def test_full_stage_render_logs_are_explicit_root_artifacts(self):
+        self.assertTrue({"render_before.log", "render_after.log"}.issubset(r.ROOT_FILES))
+        self.assertNotIn("unknown.log", r.ROOT_FILES)
+        self.assertNotIn("config.json", r.ROOT_FILES)
+
     def test_optional_v3_transport_evidence_is_explicitly_allowlisted(self):
         paths = {str(path) for path in r.OPTIONAL_RECOVERY}
         self.assertTrue({
