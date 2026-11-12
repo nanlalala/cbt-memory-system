@@ -85,7 +85,7 @@ def payload(messages, purpose):
 
 def code_hashes():
     files = [Path(__file__), HERE/"formal_sources.py", ROOT/"modules/agent-integration/cbt_context.py", ROOT/"modules/agent-integration/cbt_counselor_policy.py",
-        ROOT/"modules/agent-integration/evidence_bundles.py", ROOT/"modules/agent-integration/cbt_projection_contract.py", ROOT/"modules/agent-integration/cbt_retrieval.py",
+        ROOT/"modules/agent-integration/evidence_bundles.py", ROOT/"modules/agent-integration/cbt_projection_contract.py", ROOT/"modules/agent-integration/cbt_retrieval.py", ROOT/"modules/agent-integration/cbt_runtime_guard.py",
         ROOT/"evaluation/end-to-end-dialogue/run_three_arm.py"]
     files += [ROOT/"evaluation/cbt-memory-effect/architecture_retest"/name
               for name in ("journal.py","transport.py","retrieval.py","projections.py")]

@@ -84,6 +84,8 @@ def strict_result(text,expected):
 def prepare_one(case,directory,*,fixture_only=False):
     if not fixture_only:
         require_hosted()
+        from cbt_runtime_guard import assert_repository_runtime
+        assert_repository_runtime(ROOT)
     config=replay.ReplayConfig(max_outbound_chars=MAX_CHARS,max_response_tokens=MAX_OUTPUT,
                               max_history_turns=64,maximum_response_calls=3)
     replay.validate_case(case,config)
@@ -200,6 +202,8 @@ def prepare_one(case,directory,*,fixture_only=False):
 
 def prepare(cases_path,targets_path,output):
     require_hosted()
+    from cbt_runtime_guard import assert_repository_runtime
+    assert_repository_runtime(ROOT)
     output=Path(output).resolve()
     if not output.is_relative_to("/content"):
         raise ValueError("hosted /content output required")
@@ -239,6 +243,8 @@ def prepare(cases_path,targets_path,output):
 
 def load(folder):
     require_hosted()
+    from cbt_runtime_guard import assert_repository_runtime
+    assert_repository_runtime(ROOT)
     folder=Path(folder).resolve()
     protocol=json.loads((folder/"protocol.json").read_text())
     cases=json.loads((folder/"cases.json").read_text())

@@ -24,6 +24,22 @@ model. All old protocols, costs, failures and outputs remain intact.
 
 ## Hosted entry point
 
+Start from a fresh hosted runtime when switching checkouts or changing executable
+code. A matching file on disk does not establish which module objects the kernel
+already loaded. Entry points now reject every loaded repository module whose
+origin belongs to another checkout, even when its source bytes match.
+
+If reusing an idle kernel, first join every worker and finish all outstanding
+requests. Clear **all** repository-owned modules and old checkout paths, including
+generic names such as `colab_provider`, `durable_memory`, `controlled_dialogue`,
+`controlled_replay_adapter` and `run_three_arm`, together with package parents.
+Identify ownership by the repository's `modules` and `evaluation` directories;
+filtering only names or paths starting with `/content/cbt` is insufficient.
+Reimport the pinned checkout and run the origin guard before preparation or send
+admission. The guard never purges modules automatically while workers run. For
+in-place code changes, prefer restarting the runtime, since origin equality alone
+cannot prove that existing objects were reloaded.
+
 Use the live kernel's already approved DeepSeek transport. Preparation freezes
 full rosters and finite caps before execution. The controller reuses an existing
 run only after checking its frozen code and artifacts.
@@ -49,6 +65,24 @@ default root is `/content/cbt-v4-general`; controller progress is written as
 receipts, failure traces and scores. No automatic provider retry occurs. Unknown
 sends block continuation. Four workers stop admission after failure and drain
 already admitted calls into their own journal records.
+
+The natural CBT continuation, original professional seven-case cohort and
+historical CACTUS quotation endpoint use the separate pinned-checkout controller
+below. Its own source SHA is frozen in `controller_manifest.json` and checked
+before resume. Existing independent target receipts are accepted only when their
+source protocol has the same real/fixture mode and their complete request bytes
+match. They remain distinct from newly sent requests.
+
+```python
+cbt = runpy.run_path(str(REPO / 'evaluation/architecture-rerun/cbt_hosted_controller.py'))
+NEW_ROOT = '/content/cbt-v4-repair-v2'
+inherited = {'professional7': '/content/cbt-v4-cbt-full/professional7_memory'}
+cbt['prepare_all'](REPO, NEW_ROOT, inherited_memory_roots=inherited)
+cbt['run_all'](REPO, deepseek_transport, independent_judge_transport, NEW_ROOT,
+               stage='professional7', inherited_memory_roots=inherited)
+cbt['run_all'](REPO, deepseek_transport, independent_judge_transport, NEW_ROOT,
+               stage='all', inherited_memory_roots=inherited)
+```
 
 ## MemoryAgentBench
 

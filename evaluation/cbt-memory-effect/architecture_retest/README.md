@@ -68,6 +68,28 @@ the frozen necessary facts. Counts keep planned and scored answer denominators.
 These semantic verdicts are automatic assessments. R1 ordinal scores are
 reported separately from assertion error rates and fact coverage.
 
+Version 2 rejects invalid target candidates individually, preserving every
+original proposed ID and its validation status. Exact-source binding never
+rewrites an unknown source ID, altered quotation or abbreviated span. Only
+retained candidates proceed to the separate semantic support/relevance check.
+Reports include proposed, binding-retained and verified counts, per-case partial
+or unavailable status and the retention fraction. Coverage concerns the verified
+retained model-proposed targets; it is not complete necessary-fact gold.
+Unavailable direct-metric targets do not prevent the three answer conditions or
+independent R1–R5 assessment. Empty answer exports preserve the planned quality
+grid and perform zero quality calls.
+
+A repair uses a separate new run directory. The optional
+`memory_assessment.prepare(..., inherited_folder=original_memory_run)` freezes
+unchanged completed pre-answer `fact_targets` receipts with their original
+protocol, exact request wire hashes, returned models and raw responses. Exact
+matching requests read those recorded receipts without resending. Inherited
+receipts stay outside the new paid-intent journal and reduce its remaining
+technical cap. Fixture receipts cannot enter a real run. Reports separately
+count inherited requests/usage and new attempts/received usage, avoiding double
+counting old tokens as new spending. Raw target
+requests are never repeated after answer generation.
+
 The independent memory-assessment ceiling is five calls per case, or 3,000.
 Its complete-request character cap is separately frozen at 96,000 to accommodate
 full source history, targets and the actual answer. Known source-only request
@@ -106,6 +128,21 @@ natural CBT follow-up. Its cap is three sends per eligible probe.
 Freeze all code and inputs before preparing a run. The notebook supplies existing
 approved credentials inside the hosted kernel without printing or exporting
 them. The following functions contain no credential lookup.
+
+The complete orchestration entry point is now versioned in the repository:
+
+```python
+import runpy
+cbt = runpy.run_path(str(checkout / "evaluation/architecture-rerun/cbt_hosted_controller.py"))
+cbt["prepare_all"](checkout, new_run_root, inherited_memory_roots=inherited)
+cbt["run_all"](checkout, answer_transport, judge_transport, new_run_root,
+               stage="all", inherited_memory_roots=inherited)
+```
+
+Here `inherited` is an explicit cohort-to-original-memory-directory mapping, or
+an empty dictionary for a fresh cohort. The controller freezes and validates its
+own code SHA, checks repository module origins before source work, and preserves
+the source protocol's real/fixture gate. The lower-level interfaces are:
 
 ```python
 import sys

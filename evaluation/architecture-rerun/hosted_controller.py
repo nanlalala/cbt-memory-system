@@ -18,9 +18,14 @@ def _entry(repo,name):
 
 
 def _guard(repo):
-    sys.path.insert(0,str(Path(repo)/"evaluation/cbt-memory-effect"))
+    repo=Path(repo).resolve()
+    sys.path.insert(0,str(repo/"modules/agent-integration"))
+    from cbt_runtime_guard import assert_repository_runtime
+    assert_repository_runtime(repo)
+    sys.path.insert(0,str(repo/"evaluation/cbt-memory-effect"))
     from architecture_retest.transport import require_hosted
     require_hosted()
+    return assert_repository_runtime(repo)
 
 
 def prepare_cohort(repo,cohort,*,root="/content/cbt-v4-general",data="/content/cbt-v4-data",

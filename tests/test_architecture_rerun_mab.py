@@ -15,6 +15,58 @@ from objective_datasets import parse_mab_rows
 
 
 class ArchitectureMabTest(unittest.TestCase):
+    def packet(self):
+        body={"model":runner.MODEL,"messages":[{"role":"system","content":"Invented policy."},
+            {"role":"user","content":"Invented source 数据。 What was reported?"}],"temperature":0,
+            "max_tokens":runner.OUTPUT_TOKENS,"thinking":{"type":"disabled"}}
+        wire=json.dumps(body)
+        return {"case_id":"invented","arm":"no_rag","task":"invented","request":body,"serialized_request":wire,
+                "request_sha256":runner.hashlib.sha256(wire.encode()).hexdigest(),"wire_chars":len(wire)}
+
+    def test_exact_wire_survives_actual_canonical_write_read_and_reaches_transport(self):
+        packet=self.packet()
+        wire=packet["serialized_request"]
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary)
+            runner.write_new(folder/"requests.jsonl",runner.canonical(packet)+"\n")
+            runner.write_new(folder/"references.jsonl",runner.canonical({"case_id":"invented"})+"\n")
+            runner.write_new(folder/"source_inventory.jsonl",runner.canonical({"history":"invented"})+"\n")
+            persisted=runner.rows(folder/"requests.jsonl")[0]
+            self.assertNotEqual(json.dumps(persisted["request"]),wire)
+            protocol={"version":runner.VERSION,"code_sha256":runner.code_hashes(),"planned_arm_rows":1,
+                "files_sha256":{name:runner.file_hash(folder/name) for name in runner.GENERATION_FILES}}
+            protocol["protocol_sha256"]=runner.digest(protocol)
+            runner.write_new(folder/"protocol.json",runner.canonical(protocol)+"\n")
+            _,loaded=runner.load(folder)
+            self.assertEqual(json.dumps(loaded[0]["request"]),wire)
+            captured=[]
+            def transport(request):
+                actual=json.dumps(request,allow_nan=False)
+                captured.append(actual)
+                return {"text":"invented value","provider_model":runner.RETURNED_MODEL,"finish_reason":"stop",
+                        "wire_sha256":runner.hashlib.sha256(actual.encode()).hexdigest(),"usage":{}}
+            runner._supplied_transport(loaded[0]["request"],transport)
+            self.assertEqual(captured,[wire])
+            loaded[0]["request"]["messages"][-1]["content"]="tampered"
+            with self.assertRaisesRegex(ValueError,"semantic payload"):
+                runner.request_from_wire(loaded[0])
+
+    def test_legacy_recovery_requires_original_wire_hash_and_zero_paid_journal(self):
+        original=self.packet()
+        legacy=json.loads(runner.canonical({k:v for k,v in original.items() if k!="serialized_request"}))
+        recovered=runner.recover_v1_wire(legacy)
+        self.assertEqual(recovered["serialized_request"],original["serialized_request"])
+        self.assertEqual(recovered["request_sha256"],original["request_sha256"])
+        legacy["request_sha256"]="0"*64
+        with self.assertRaises(ValueError):
+            runner.recover_v1_wire(legacy)
+        with tempfile.TemporaryDirectory() as temporary:
+            folder=Path(temporary)
+            runner._assert_no_paid_journal(folder)
+            (folder/"journal.jsonl").write_text('{"event":"intent"}\n')
+            with self.assertRaisesRegex(ValueError,"zero paid journal"):
+                runner._assert_no_paid_journal(folder)
+
     def test_processed_fact_fields_and_source_roles_reach_the_new_renderer(self):
         context = "The capital of Elar is Oldtown.\nThe capital of Elar is Newtown.\n"
         context += "The country of Newtown is Terra.\n"
@@ -25,6 +77,15 @@ class ArchitectureMabTest(unittest.TestCase):
             backend="lexical", thinking_mode="disabled", short_turns=16, top_k=12,
             short_chars=6000, long_chars=12000, max_context_chars=24000, max_response_tokens=128)
         packets, _ = runner.prepare_case(cases[0], runner.HistoryRanker(settings))
+        self.assertTrue(runner.inherited_message_audit(packets)["all_actual_system_prompts_match"])
+        altered=json.loads(json.dumps(packets))
+        altered[0]["request"]["messages"][0]["content"]="obsolete cached role"
+        with self.assertRaisesRegex(ValueError,"complete shared role"):
+            runner.inherited_message_audit(altered)
+        altered=json.loads(json.dumps(packets))
+        altered[1]["request"]["messages"][-1]["content"]="different recent context"
+        with self.assertRaisesRegex(ValueError,"recent/current"):
+            runner.inherited_message_audit(altered)
         by_arm = {p["arm"]:p for p in packets}
         raw = json.loads(by_arm["raw_history_rag"]["request"]["messages"][-2]["content"].split("\n",1)[1])
         managed = json.loads(by_arm["managed_memory_rag"]["request"]["messages"][-2]["content"].split("\n",1)[1])

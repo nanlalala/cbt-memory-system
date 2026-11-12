@@ -45,6 +45,7 @@ def code_hashes():
         ROOT/"modules/agent-integration/cbt_retrieval.py",
         ROOT/"modules/agent-integration/cbt_context.py",
         ROOT/"modules/agent-integration/cbt_counselor_policy.py",
+        ROOT/"modules/agent-integration/cbt_runtime_guard.py",
         ROOT/"modules/agent-integration/evidence_bundles.py"]
     return {str(p.relative_to(ROOT)):sha256(p.read_bytes()).hexdigest() for p in files}
 
@@ -322,14 +323,17 @@ def _case(case,folder,journal,dense,assessor=None):
     sources=source_views(case)
     items=[]
     failures=[]
+    targets_available=False
     if assessor is not None:
         try:
             assessor.freeze_targets(case,sources)
+            targets_available=True
         except ValueError as exc:
-            atomic(dest/"completed.json",{"case_id":case["case_id"],
-                "all_arms_preparation_failure":"independent_target_validation_failed",
-                "error_type":type(exc).__name__})
-            return
+            failures.append({"stage":"independent_target_preparation","reason":type(exc).__name__})
+            assessor.record_unavailable(case,exc)
+            atomic(dest/"target_preparation_failure.json",{"case_id":case["case_id"],
+                "status":"unavailable","reason":"independent_target_validation_failed",
+                "error_type":type(exc).__name__,"validation_error":str(exc),"answers_may_proceed":True})
     try:
         _api()
         from cbt_projection import extraction_messages, projection_candidates, verification_messages, supported_projections
@@ -365,7 +369,7 @@ def _case(case,folder,journal,dense,assessor=None):
                 "provider_model":receipt["provider_model"],"usage":receipt["usage"]}
         atomic(dest/(arm+".answer.json"),answer)
         answers.append(answer)
-        if assessor is not None:
+        if assessor is not None and targets_available:
             try:
                 assessor.score_answer(case,sources,answer,row["trace"]["source_ids"])
             except ValueError as exc:
@@ -486,7 +490,8 @@ def export_quality(folder,judge_identity,output,*,maximum_attempts,fixture_only=
         for arm in ARMS:
             answer=answers.get((case["case_id"],arm))
             if answer is None:
-                mapping.append({"case_id":case["case_id"],"arm":arm,"packet_id":None,"status":"not_received"})
+                mapping.append({"case_id":case["case_id"],"source_family":case["source_family_id"],
+                                "arm":arm,"packet_id":None,"status":"not_received"})
                 continue
             opaque="response-"+digest([case["case_id"],arm])[:32]
             packets.append({"case_id":opaque,"source_family":case["source_family_id"],"answer_model_family":"deepseek",

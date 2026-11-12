@@ -16,6 +16,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import sys
 import time
 
@@ -33,7 +35,9 @@ from score_objective_comparison import deterministic_score
 from v3_response_diagnostics import score_supplemental
 from followup_transport import ResponseFailure, generate_response
 
-VERSION = "cbt-v4-general-memoryagentbench-v1"
+VERSION = "cbt-v4-general-memoryagentbench-v2"
+LEGACY_VERSION = "cbt-v4-general-memoryagentbench-v1"
+LEGACY_REVISIONS = ("fe47b4709fd1d0899a2691f20b73ee3c97b6e47b", "b3d561fe9290d49b257a4074c025b27a5358c97a")
 MODEL = "deepseek-v4.1-flash"
 RETURNED_MODEL = "deepseek-v4-1-flash-260910"
 ENDPOINT = "https://tokendance.space/gateway/v1"
@@ -50,6 +54,75 @@ def canonical(value):
 
 def digest(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def strict_json(text):
+    def unique(pairs):
+        result={}
+        for key,value in pairs:
+            if key in result:
+                raise ValueError("duplicate persisted JSON key")
+            result[key]=value
+        return result
+    return json.loads(text,object_pairs_hook=unique,
+        parse_constant=lambda _:(_ for _ in ()).throw(ValueError("nonfinite persisted JSON")))
+
+
+def request_from_wire(row):
+    """Recover insertion order from the retained wire, never canonical metadata."""
+    wire=row.get("serialized_request")
+    if not isinstance(wire,str):
+        raise ValueError("v2 requires an explicit complete serialized request")
+    request=strict_json(wire)
+    if (request!=row["request"] or json.dumps(request,allow_nan=False)!=wire or
+        hashlib.sha256(wire.encode()).hexdigest()!=row["request_sha256"] or
+        len(wire)!=row["wire_chars"] or len(wire)>MAX_CHARS):
+        raise ValueError("prepared serialized wire or semantic payload identity changed")
+    return request
+
+
+def recover_v1_wire(row):
+    """Recover the fixed v1 encoder order and require its ORIGINAL frozen hash."""
+    source=row["request"]
+    if set(source)!={"model","messages","temperature","max_tokens","thinking"}:
+        raise ValueError("unexpected v1 request fields")
+    if any(set(m)!={"role","content"} for m in source["messages"]):
+        raise ValueError("unexpected v1 message fields")
+    body={"model":source["model"],"messages":[{"role":m["role"],"content":m["content"]} for m in source["messages"]],
+          "temperature":source["temperature"],"max_tokens":source["max_tokens"],"thinking":{"type":source["thinking"].get("type")}}
+    if (body!=source or source["model"]!=MODEL or source["temperature"]!=0 or
+        type(source["temperature"]) is not int or type(source["max_tokens"]) is not int or
+        source["max_tokens"]!=OUTPUT_TOKENS or source["thinking"]!={"type":"disabled"}):
+        raise ValueError("legacy model or decoding settings differ")
+    wire=json.dumps(body,allow_nan=False)
+    recovered={**row,"serialized_request":wire,"request":body}
+    request_from_wire(recovered)  # Checks the old hash/size; never guesses a new body.
+    return recovered
+
+
+def inherited_message_audit(requests):
+    from cbt_context import CBT_POLICY
+    expected=CBT_POLICY+"\n"+old.MAB_SYSTEM_PROMPT.replace("You answer a synthetic closed-world memory benchmark.",
+        "FACTUAL RECALL TASK: Answer this synthetic closed-world benchmark question.")
+    current={}
+    for row in requests:
+        messages=row["request"]["messages"]
+        if ([m["role"] for m in messages]!=["system","user","user"] or messages[0]["content"]!=expected):
+            raise ValueError("legacy actual messages do not contain the current complete shared role")
+        qid=row["case_id"]
+        if qid in current and current[qid]!=messages[-1]["content"]:
+            raise ValueError("legacy common recent/current context differs across arms")
+        current[qid]=messages[-1]["content"]
+        if row["arm"]=="no_rag":
+            prefix="SOURCED MEMORY DATA ONLY.\n"
+            memory=messages[-2]["content"]
+            if not memory.startswith(prefix):
+                raise ValueError("legacy no_rag reference format differs")
+            block=strict_json(memory[len(prefix):])
+            if block!={"representation":"raw","source_reports":[]}:
+                raise ValueError("legacy no_rag unexpectedly contains older memory")
+    return {"all_actual_system_prompts_match":True,"common_recent_current_matches_across_arms":True,
+            "no_rag_older_memory_empty":True,"shared_system_sha256":hashlib.sha256(expected.encode()).hexdigest()}
 
 
 def file_hash(path):
@@ -81,13 +154,13 @@ def rows(path):
     body = path.read_bytes()
     if body and not body.endswith(b"\n"):
         raise ValueError("incomplete journal retained for reconciliation")
-    return [json.loads(line) for line in body.splitlines() if line]
+    return [strict_json(line) for line in body.split(b"\n") if line.strip()]
 
 
 def code_hashes():
     files = set(old._code_hashes())
     files.update({str(Path(__file__).relative_to(ROOT)),
-        "modules/agent-integration/cbt_context.py", "modules/agent-integration/cbt_counselor_policy.py", "modules/agent-integration/evidence_bundles.py",
+        "modules/agent-integration/cbt_context.py", "modules/agent-integration/cbt_counselor_policy.py", "modules/agent-integration/cbt_runtime_guard.py", "modules/agent-integration/evidence_bundles.py",
         "evaluation/objective-memory/v3_fact_versions.py", "evaluation/objective-memory/v4_source_retrieval.py",
         "evaluation/dialogue-benefit/followup_transport.py",
         "evaluation/cbt-memory-effect/architecture_retest/transport.py"})
@@ -156,7 +229,8 @@ def prepare_case(case, ranker, prepared_history=None):
         if len(wire) > MAX_CHARS:
             raise ValueError("actual complete wire exceeds prepared request budget")
         output.append({"case_id":case["case_id"], "group_id":case["group_id"], "task":case["task"],
-            "arm":arm, "request":body, "request_sha256":hashlib.sha256(wire.encode()).hexdigest(),
+            "arm":arm, "request":body, "serialized_request":wire,
+            "request_sha256":hashlib.sha256(wire.encode()).hexdigest(),
             "wire_chars":len(wire), "trace":{
                 "assembly":getattr(package, "trace", None), "recent_source_ids":[d.document_id for d in recent],
                 "selected_source_ids":selected_ids, "retrieval":retrieval_trace,
@@ -167,6 +241,8 @@ def prepare_case(case, ranker, prepared_history=None):
 
 def prepare(data_dir, run_dir):
     old.require_colab()
+    from cbt_runtime_guard import assert_repository_runtime
+    assert_repository_runtime(ROOT)
     paths = download_registered_dataset("memoryagentbench_conflict", data_dir)
     cases, refs = load_dataset_cases("memoryagentbench_conflict", paths["data"])
     tasks = Counter(case["task"] for case in cases)
@@ -210,8 +286,8 @@ def prepare(data_dir, run_dir):
 
 def load(run_dir):
     run_dir = Path(run_dir)
-    protocol = json.loads((run_dir/"protocol.json").read_text())
-    if protocol["protocol_sha256"] != digest({k:v for k,v in protocol.items() if k!="protocol_sha256"}):
+    protocol = strict_json((run_dir/"protocol.json").read_text())
+    if protocol.get("version")!=VERSION or protocol["protocol_sha256"] != digest({k:v for k,v in protocol.items() if k!="protocol_sha256"}):
         raise ValueError("protocol checksum mismatch")
     if protocol["code_sha256"] != code_hashes():
         raise ValueError("prepared executable changed")
@@ -221,11 +297,115 @@ def load(run_dir):
     if len(requests) != protocol["planned_arm_rows"]:
         raise ValueError("prepared arm roster changed")
     for row in requests:
-        wire = json.dumps(row["request"])
-        if (hashlib.sha256(wire.encode()).hexdigest() != row["request_sha256"] or
-                row["wire_chars"] != len(wire) or len(wire) > MAX_CHARS):
-            raise ValueError("prepared wire identity changed")
+        row["request"]=request_from_wire(row)
+        if recover_v1_wire(row)["serialized_request"]!=row["serialized_request"]:
+            raise ValueError("wire differs from the frozen transport encoder")
     return protocol, requests
+
+
+def _assert_no_paid_journal(run_dir):
+    for name in ("journal.jsonl","intents.jsonl","outcomes.jsonl"):
+        path=Path(run_dir)/name
+        if path.is_symlink() or (path.exists() and path.stat().st_size):
+            raise ValueError("migration is restricted to source-only preparation with zero paid journal records")
+
+
+def _legacy_code_identity(protocol,revision):
+    if revision not in LEGACY_REVISIONS:
+        raise ValueError("legacy source revision must be one of the explicitly reviewed commits")
+    current=code_hashes()
+    expected_names=set(current)
+    if revision==LEGACY_REVISIONS[0]:
+        expected_names.remove("modules/agent-integration/cbt_runtime_guard.py")
+    if set(protocol.get("code_sha256",{}))!=expected_names:
+        raise ValueError("legacy executable inventory differs from its reviewed revision")
+    allowed={"evaluation/architecture-rerun/mab_full.py","modules/agent-integration/cbt_runtime_guard.py"}
+    changed={}
+    for name,expected in protocol["code_sha256"].items():
+        raw=subprocess.run(["git","-C",str(ROOT),"show",revision+":"+name],
+            check=True,capture_output=True).stdout
+        if hashlib.sha256(raw).hexdigest()!=expected:
+            raise ValueError("legacy frozen code does not match the reviewed git source")
+        if current.get(name)!=expected:
+            if name not in allowed:
+                raise ValueError("a retrieval, projection, policy or source dependency changed; migration is not allowed")
+            changed[name]={"old_sha256":expected,"new_sha256":current[name]}
+    for name in set(current)-set(protocol["code_sha256"]):
+        if name not in allowed:
+            raise ValueError("an unreviewed dependency was introduced")
+        changed[name]={"old_sha256":None,"new_sha256":current[name]}
+    return changed
+
+
+def migrate_prepared_v1(source_run_dir,run_dir,*,source_revision,expected_protocol_sha256):
+    """Audit and reuse an unsent v1 roster in a distinct v2 run directory.
+
+    This recovers the ORIGINAL intended wire and requires every old wire hash
+    to match. It performs no retrieval, extraction, generation or source rewrite.
+    Only this script's serialization/admission guard and its pure guard helper
+    may differ from the explicitly reviewed legacy source revision.
+    """
+    old.require_colab()
+    from cbt_runtime_guard import assert_repository_runtime
+    assert_repository_runtime(ROOT)
+    source,run_dir=Path(source_run_dir).resolve(),Path(run_dir).resolve()
+    if (source==run_dir or not run_dir.is_relative_to("/content") or
+        source.is_relative_to(run_dir) or run_dir.is_relative_to(source)):
+        raise ValueError("a distinct new hosted /content migration directory is required")
+    _assert_no_paid_journal(source)
+    protocol=strict_json((source/"protocol.json").read_text())
+    if (protocol.get("version")!=LEGACY_VERSION or protocol.get("protocol_sha256")!=expected_protocol_sha256 or
+        protocol.get("protocol_sha256")!=digest({k:v for k,v in protocol.items() if k!="protocol_sha256"})):
+        raise ValueError("legacy protocol version, caller binding or checksum differs")
+    if set(protocol.get("files_sha256",{}))!=set(GENERATION_FILES):
+        raise ValueError("legacy source artifact inventory differs")
+    for name,expected in protocol["files_sha256"].items():
+        if (source/name).is_symlink() or file_hash(source/name)!=expected:
+            raise ValueError("legacy prepared source artifacts changed")
+    code_changes=_legacy_code_identity(protocol,source_revision)
+    if (protocol.get("dataset")!=dataset_spec("memoryagentbench_conflict") or protocol.get("arms")!=list(ARMS) or
+        protocol.get("planned_questions")!=800 or protocol.get("planned_arm_rows")!=2400 or
+        protocol.get("model")!=MODEL or protocol.get("required_returned_model")!=RETURNED_MODEL or
+        protocol.get("api_base")!=ENDPOINT or protocol.get("max_output_tokens")!=OUTPUT_TOKENS or
+        protocol.get("max_complete_request_chars")!=MAX_CHARS or protocol.get("maximum_workers")!=WORKERS or
+        protocol.get("retriever")!=RETRIEVER_VERSION or protocol.get("projection_verifier")!=PARSER_VERSION):
+        raise ValueError("legacy source cohort, arms, decoding or algorithm settings differ")
+    requests=[recover_v1_wire(row) for row in rows(source/"requests.jsonl")]
+    message_audit=inherited_message_audit(requests)
+    ids=protocol.get("case_ids",[])
+    expected_grid={(qid,arm) for qid in ids for arm in ARMS}
+    if (len(ids)!=800 or len(set(ids))!=800 or len(requests)!=2400 or
+        {(r["case_id"],r["arm"]) for r in requests}!=expected_grid or len(expected_grid)!=2400):
+        raise ValueError("legacy full 800-question three-arm grid differs")
+    if (len(protocol.get("tasks",{}))!=8 or any(n!=100 for n in protocol["tasks"].values()) or
+        Counter(r["task"] for r in requests)!={k:v*3 for k,v in protocol["tasks"].items()}):
+        raise ValueError("legacy eight original task strata differ")
+    references=rows(source/"references.jsonl")
+    if len(references)!=800 or {r["case_id"] for r in references}!=set(ids):
+        raise ValueError("legacy independent scoring-reference roster differs")
+    unique=len({r["request_sha256"] for r in requests})
+    if unique!=protocol.get("maximum_provider_attempts"):
+        raise ValueError("legacy unique-wire cap differs")
+    migration={"kind":"source_only_v1_exact_wire_recovery","source_run":str(source),"source_revision":source_revision,
+        "source_protocol_sha256":protocol["protocol_sha256"],"source_protocol_file_sha256":file_hash(source/"protocol.json"),
+        "source_files_sha256":protocol["files_sha256"],"reviewed_code_changes":code_changes,
+        "actual_message_audit":message_audit,
+        "original_semantic_payloads_retained":True,"original_wire_hashes_recovered_and_retained":True,
+        "source_inventory_and_references_copied_byte_exact":True,"retrieval_rerun":False,
+        "new_model_calls":0,"paid_journal_records_before_migration":0}
+    run_dir.mkdir(parents=True,exist_ok=False)
+    write_new(run_dir/"requests.jsonl","".join(canonical(row)+"\n" for row in requests))
+    for name in ("references.jsonl","source_inventory.jsonl"):
+        shutil.copyfile(source/name,run_dir/name)
+    updated={k:v for k,v in protocol.items() if k!="protocol_sha256"}
+    updated.update(version=VERSION,code_sha256=code_hashes(),migration=migration,
+        files_sha256={name:file_hash(run_dir/name) for name in GENERATION_FILES})
+    updated["protocol_sha256"]=digest(updated)
+    write_new(run_dir/"protocol.json",canonical(updated)+"\n")
+    load(run_dir)  # Require the persisted v2 round trip before reporting readiness.
+    _assert_no_paid_journal(source)
+    return {"version":VERSION,"planned_questions":800,"planned_arm_rows":2400,
+            "maximum_provider_attempts":unique,"protocol_sha256":updated["protocol_sha256"],"migration":migration}
 
 
 def ledger_state(run_dir, requests):
@@ -240,6 +420,9 @@ def ledger_state(run_dir, requests):
             raise ValueError("journal protocol binding changed")
         if row["event"] == "intent" and row.get("request") != allowed[key]["request"]:
             raise ValueError("journal request payload changed")
+        if (row["event"]=="intent" and "serialized_request" in allowed[key] and
+            row.get("serialized_request")!=allowed[key]["serialized_request"]):
+            raise ValueError("journal serialized wire changed")
         if row["event"] == "received" and (row.get("provider_model") != RETURNED_MODEL or
                 row.get("finish_reason") != "stop" or not isinstance(row.get("hypothesis"),str) or
                 not row["hypothesis"].strip()):
@@ -268,6 +451,8 @@ def _supplied_transport(request,transport):
 
 def generate(run_dir, max_new_calls, *, key=None, transport=None):
     old.require_colab()
+    from cbt_runtime_guard import assert_repository_runtime
+    assert_repository_runtime(ROOT)
     run_dir = Path(run_dir)
     with (run_dir/".send.lock").open("a+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -303,6 +488,7 @@ def generate(run_dir, max_new_calls, *, key=None, transport=None):
                         raise ValueError("frozen unique request ceiling exhausted")
                     common = {"request_sha256":identity,"protocol_sha256":protocol["protocol_sha256"]}
                     append(run_dir/"journal.jsonl", {**common,"event":"intent","request":row["request"],
+                        **({"serialized_request":row["serialized_request"]} if "serialized_request" in row else {}),
                         "utc":datetime.now(timezone.utc).isoformat()})
                     intents[identity] = common
                     future = (pool.submit(_supplied_transport,row["request"],transport) if transport is not None else
@@ -376,13 +562,19 @@ def score(run_dir):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage",choices=["prepare","generate","score","status"])
+    parser.add_argument("stage",choices=["prepare","migrate-v1","generate","score","status"])
     parser.add_argument("--run-dir",type=Path,required=True)
     parser.add_argument("--data-dir",type=Path)
     parser.add_argument("--max-new-calls",type=int)
+    parser.add_argument("--source-run-dir",type=Path)
+    parser.add_argument("--source-revision",choices=LEGACY_REVISIONS)
+    parser.add_argument("--expected-protocol-sha256")
     args = parser.parse_args()
     if args.stage == "prepare":
         result = prepare(args.data_dir,args.run_dir)
+    elif args.stage == "migrate-v1":
+        result = migrate_prepared_v1(args.source_run_dir,args.run_dir,source_revision=args.source_revision,
+                                     expected_protocol_sha256=args.expected_protocol_sha256)
     elif args.stage == "generate":
         result = generate(args.run_dir,args.max_new_calls)
     elif args.stage == "score":

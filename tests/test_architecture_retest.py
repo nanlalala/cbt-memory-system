@@ -151,6 +151,148 @@ class RetestContract(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"fixture assessor"):
                 memory_assessment.Assessor(folder,object(),max_new_calls=1,fixture_only=True)
 
+    def test_repaired_targets_reuse_exact_raw_receipt_and_drop_only_invalid_candidate(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root)
+            source=root/"invented.json"
+            source.write_text(json.dumps(cactus_materials.invented_fixture_rows()))
+            natural=root/"natural"
+            runner.prepare(source,natural,family_limit=1,fixture_only=True)
+            case=json.loads((natural/"cases.json").read_text())[0]
+            sources=runner.source_views(case)
+            sid=sources[0]["source_id"]
+            quote=sources[0]["content"]
+            proposed={"targets":[
+                {"id":"valid","kind":"required","proposition":"A source-bound invented fact.",
+                 "evidence":[{"source_id":sid,"quote":quote}]},
+                {"id":"invalid","kind":"required","proposition":"An unbound invented candidate.",
+                 "evidence":[{"source_id":"input","quote":"not a history source"}]}]}
+            identity={"provider":"fixture","model":"judge-request","returned_model":"judge-receipt","model_family":"qwen"}
+            class Transport:
+                fixture_only=True
+                def __init__(self,old=False):self.identity=identity;self.old=old
+                def __call__(self,body):
+                    if self.old:value=proposed
+                    else:
+                        if body["messages"][0]["content"]!=memory_assessment.VERIFY:
+                            raise AssertionError("raw target request must be reused, never resent")
+                        data=json.loads(body["messages"][-1]["content"])
+                        if [t["id"] for t in data["targets"]]!=["valid"]:
+                            raise AssertionError("invalid target entered semantic verification")
+                        value={"verdicts":[{"item_id":"valid","supported":True,"reason":"fixture supported"}]}
+                    return dict(text=json.dumps(value),provider_model=identity["returned_model"],finish_reason="stop",
+                        usage={"total_tokens":3},wire_sha256=sha256(json.dumps(body).encode()).hexdigest())
+            old=root/"original"
+            old_protocol=memory_assessment.prepare(natural,old,identity,fixture_only=True)
+            old_journal=Journal(old,old_protocol,Transport(old=True),1)
+            body={"model":identity["model"],"messages":p.request(memory_assessment.TARGETS,{"history":sources,"input":case["input"]}),
+                "temperature":0,"max_tokens":4096,"thinking":{"type":"disabled"}}
+            original_receipt=old_journal.call(case,"fact_targets",body)
+            original_files={name:(old/name).read_bytes() for name in ("protocol.json","cases.json","intents.jsonl","outcomes.jsonl")}
+            repaired=root/"repaired"
+            protocol=memory_assessment.prepare(natural,repaired,identity,fixture_only=True,inherited_folder=old)
+            self.assertEqual(protocol["inherited_received_attempts"],1)
+            self.assertEqual(protocol["maximum_attempts"],14)
+            assessor=memory_assessment.Assessor(repaired,Transport(),max_new_calls=1,fixture_only=True)
+            frozen=assessor.freeze_targets(case,sources)
+            self.assertEqual([t["id"] for t in frozen["targets"]],["valid"])
+            self.assertEqual(frozen["target_request_key"],original_receipt["key"])
+            self.assertEqual(frozen["target_receipt_origin"],"inherited_recorded_cache")
+            self.assertEqual(frozen["target_preparation_status"],"partial")
+            self.assertEqual(frozen["proposed_count"],2)
+            self.assertEqual(frozen["binding_statuses"][1]["reason"],"unknown_or_current_input_source_id")
+            self.assertEqual(assessor.journal.new_calls,1)
+            report=assessor.summarize()
+            self.assertEqual(report["literal_binding_retention_fraction"],.5)
+            accounting=report["request_accounting"]
+            self.assertEqual(accounting["inherited_received_requests"],1)
+            self.assertEqual(accounting["new_attempts"],1)
+            self.assertEqual(accounting["inherited_usage"]["total_tokens"],3)
+            self.assertEqual(accounting["new_received_usage"]["total_tokens"],3)
+            self.assertTrue(all((old/name).read_bytes()==data for name,data in original_files.items()))
+
+    def test_inherited_receipts_cannot_cross_fixture_and_real_modes(self):
+        from architecture_retest.memory_receipts import collect
+        identity={"provider":"fixture","model":"judge-request","returned_model":"judge-receipt","model_family":"qwen"}
+        for old_fixture in (True,False):
+            with self.subTest(old_fixture=old_fixture),tempfile.TemporaryDirectory() as root:
+                root=Path(root)
+                protocol={"fixture_only":old_fixture,"provider":identity,"cases_sha256":digest([])}
+                protocol["protocol_sha256"]=digest(protocol)
+                atomic(root/"protocol.json",protocol)
+                atomic(root/"cases.json",[])
+                with self.assertRaisesRegex(ValueError,"fixture mode"):
+                    collect(root,digest([]),identity,{},fixture_only=not old_fixture)
+
+    def test_rejected_nonstring_target_ids_survive_summary_as_raw_values(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root)
+            case={"case_id":"invented","source_family_id":"fixture-family"}
+            atomic(root/"cases.json",[case])
+            raw_ids=[["not","a","string"],{"not":"a string"},7]
+            value={"targets":[{"id":raw_id,"kind":"required","proposition":"An invalid candidate.",
+                "evidence":[{"source_id":"s","quote":"one"}]} for raw_id in raw_ids]}
+            retained,statuses=memory_assessment.bind_target_candidates(value,[{"source_id":"s","content":"one"}])
+            self.assertEqual(retained,[])
+            dest=root/"assessor_only/invented";dest.mkdir(parents=True)
+            atomic(dest/"target_candidates.json",{"binding_statuses":statuses,"proposed_count":3,
+                "literal_binding_retained_count":0,"binding_rejected_count":3})
+            assessor=memory_assessment.Assessor.__new__(memory_assessment.Assessor)
+            assessor.folder=root
+            report=assessor.summarize()
+            self.assertEqual([s["target_id"] for s in report["target_preparation"][0]["candidate_statuses"]],raw_ids)
+            self.assertTrue(all(s["semantic_status"]=="not_eligible" for s in report["target_preparation"][0]["candidate_statuses"]))
+
+    def test_no_valid_targets_still_allows_all_three_answer_conditions(self):
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root)
+            source=root/"invented.json"
+            source.write_text(json.dumps(cactus_materials.invented_fixture_rows()))
+            natural=root/"natural"
+            runner.prepare(source,natural,family_limit=1,fixture_only=True)
+            identity={"provider":"fixture","model":"judge-request","returned_model":"judge-receipt","model_family":"qwen"}
+            memory_assessment.prepare(natural,root/"assessment",identity,fixture_only=True)
+            class Transport:
+                fixture_only=True
+                def __init__(self,identity):self.identity=identity
+                def __call__(self,body):
+                    system=body["messages"][0]["content"]
+                    if system==memory_assessment.TARGETS:
+                        text=json.dumps({"targets":[{"id":"bad","kind":"required","proposition":"An invalid fixture target.",
+                            "evidence":[{"source_id":"not-in-history","quote":"unknown"}]}]})
+                    elif system.startswith("Extract only reusable"):text='{"items":[]}'
+                    elif self.identity==identity:raise AssertionError("no valid target requires no verification or scoring call")
+                    else:text="A natural fixture continuation."
+                    return dict(text=text,provider_model=self.identity["returned_model"],finish_reason="stop",
+                        usage={"total_tokens":3},wire_sha256=sha256(json.dumps(body).encode()).hexdigest())
+            summary=runner.run(natural,Transport(runner.IDENTITY),max_new_calls=15,workers=2,dense=FakeDense(),fixture_only=True,
+                assessment_folder=root/"assessment",assessment_transport=Transport(identity),assessment_max_new_calls=15)
+            self.assertTrue(all(arm["received"]==3 for arm in summary["arms"].values()))
+            assessment=json.loads((root/"assessment/summary.json").read_text())
+            self.assertEqual(assessment["target_unavailable_cases"],3)
+            self.assertEqual(assessment["proposed_targets"],3)
+            self.assertEqual(assessment["binding_rejected_targets"],3)
+            result=runner.export_quality(natural,identity,root/"quality",maximum_attempts=10,fixture_only=True)
+            self.assertEqual(result["planned_primary"],9)
+
+    def test_empty_quality_terminal_failure_keeps_planned_grid_without_calls(self):
+        from architecture_retest import judge
+        with tempfile.TemporaryDirectory() as root:
+            root=Path(root)
+            source=root/"invented.json"
+            source.write_text(json.dumps(cactus_materials.invented_fixture_rows()))
+            runner.prepare(source,root/"natural",family_limit=1,fixture_only=True)
+            identity={"provider":"fixture","model":"judge-request","returned_model":"judge-receipt","model_family":"qwen"}
+            result=runner.export_quality(root/"natural",identity,root/"quality",maximum_attempts=10,fixture_only=True)
+            self.assertEqual(result["status"],"no_received_answers")
+            class NeverSend:
+                fixture_only=True
+                def __init__(self):self.identity=identity
+                def __call__(self,body):raise AssertionError("empty quality roster must not send")
+            summary=judge.run(root/"quality",NeverSend(),max_new_calls=0,fixture_only=True)
+            self.assertEqual(summary["planned_primary"],9)
+            self.assertEqual(summary["reviewed_primary"],0)
+
     def test_recovered_pool_preserves_actual_dates_and_excludes_old_gold(self):
         with tempfile.TemporaryDirectory() as root:
             folder=Path(root)/"pool"

@@ -3,12 +3,31 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import fcntl
 from hashlib import sha256
+import importlib.util
 import json
+import math
 import os
 from pathlib import Path
 import threading
 import time
-from auto_eval_v2.run_colab import strict_json
+
+
+def document_json(text):
+    """Parse a complete persisted document without model-response size rules."""
+    def unique(pairs):
+        value={}
+        for key,item in pairs:
+            if key in value:
+                raise ValueError("duplicate JSON key")
+            value[key]=item
+        return value
+    def finite_float(raw):
+        value=float(raw)
+        if not math.isfinite(value):
+            raise ValueError("nonfinite JSON number")
+        return value
+    return json.loads(text,object_pairs_hook=unique,parse_float=finite_float,
+        parse_constant=lambda _:(_ for _ in ()).throw(ValueError("nonfinite JSON")))
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
@@ -35,14 +54,18 @@ def atomic(path, value):
 
 
 def rows(path):
+    path=Path(path)
     if not path.exists():
         return []
     if path.is_symlink():
         raise ValueError("symlinked journal")
-    raw = path.read_text()
+    raw = path.read_bytes().decode("utf-8",errors="strict")
     if raw and not raw.endswith("\n"):
         raise ValueError("incomplete journal retained for inspection")
-    return [strict_json(line) for line in raw.splitlines() if line]
+    # JSON strings may legally contain U+2028, U+2029 and U+0085. Python's
+    # splitlines() treats those as line breaks and silently breaks a valid
+    # large source row into incomplete JSON fragments. JSONL uses physical LF.
+    return [document_json(line) for line in raw.split("\n") if line.strip(" \t\r")]
 
 
 @contextmanager
@@ -67,8 +90,31 @@ class InvalidReceipt(RuntimeError):
     pass
 
 
+def _hosted_runtime_present():
+    """Recognize the actual host without treating local fixtures as hosted."""
+    if not os.environ.get("COLAB_RELEASE_TAG") or not Path("/content").is_dir():
+        return False
+    try:
+        return importlib.util.find_spec("google.colab") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def _guard_hosted_runtime():
+    if not _hosted_runtime_present():
+        return
+    import sys
+    root = Path(__file__).resolve().parents[3]
+    sys.path.insert(0, str(root / "modules/agent-integration"))
+    from cbt_runtime_guard import assert_repository_runtime
+    assert_repository_runtime(root)
+
+
 class Journal:
     def __init__(self, folder, protocol, transport, max_new_calls):
+        # Check actual loaded origins before reading or admitting any intent.
+        # Never purge active modules or reinterpret an old receipt as a new send.
+        _guard_hosted_runtime()
         self.folder, self.protocol, self.transport = folder, protocol, transport
         self.max_new_calls, self.new_calls = max_new_calls, 0
         self.mutex, self.dense_mutex, self.stop = threading.RLock(), threading.Lock(), threading.Event()

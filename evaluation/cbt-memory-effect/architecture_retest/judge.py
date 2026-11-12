@@ -14,8 +14,10 @@ def prepare(packets,identity,folder,*,maximum_attempts,fixture_only=False):
         require_hosted()
     if set(identity)!={"provider","model","returned_model","model_family"}:
         raise ValueError("explicit requested and returned judge identity required")
+    if identity["model_family"].casefold()=="deepseek":
+        raise ValueError("independent quality judge must differ from the answer-model family")
     narrow={k:identity[k] for k in ("provider","model","model_family")}
-    plan=quality.plan_quality(packets,narrow,repeat_fraction=0.1,seed=20261113)
+    plan=quality.plan_quality(packets,narrow,repeat_fraction=0.1,seed=20261113) if packets else []
     for row in plan:
         row["payload"]={"model":identity["model"],"messages":row["messages"],"temperature":0,
                         "max_tokens":2048,"thinking":{"type":"disabled"}}
@@ -34,6 +36,7 @@ def prepare(packets,identity,folder,*,maximum_attempts,fixture_only=False):
     atomic(folder/"plan.json",plan)
     atomic(folder/"protocol.json",protocol)
     return {"planned_primary":len(packets),"planned_including_repeats":len(plan),
+            "status":"ready" if packets else "no_received_answers",
             "maximum_attempts":maximum_attempts,"request_limits":{"answer":48000,"preparation":48000},"protocol_sha256":protocol["protocol_sha256"]}
 
 

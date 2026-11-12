@@ -37,7 +37,8 @@ def code_hashes():
         legacy.SNAPSHOT, ROOT / "evaluation/cbt-memory-effect/architecture_retest/journal.py",
         ROOT / "evaluation/cbt-memory-effect/architecture_retest/transport.py",
         ROOT / "evaluation/cbt-memory-effect/auto_eval_v2/run_colab.py",
-        ROOT / "modules/agent-integration/cbt_counselor_policy.py"]
+        ROOT / "modules/agent-integration/cbt_counselor_policy.py",
+        ROOT / "modules/agent-integration/cbt_runtime_guard.py"]
     return {str(p.relative_to(ROOT)): file_hash(p) for p in paths}
 
 
