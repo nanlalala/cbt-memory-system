@@ -1,0 +1,17 @@
+from pathlib import Path
+import os,sys,json,hashlib,subprocess,time,importlib.util
+assert os.environ.get('COLAB_RELEASE_TAG') and importlib.util.find_spec('google.colab') is not None
+r=Path('/content/cbt-gpu-v7-main-preparation-20261112-v1');r.mkdir(exist_ok=False);stage=Path('/content/cbt-qwen7b-gpu-v7-code/evaluation/cbt-memory-effect/gguf_state_comparison_v7_colab.py');assert hashlib.sha256(stage.read_bytes()).hexdigest()=='217c800599b06ba427c3ae0d8051bb2a39fe5ff9e494fa1810cf1b2778f76f6d'
+g=Path('/content/cbt-qwen7b-gpu-reader-gate-20261112-v7');refs={}
+for side in ('before','after'):
+ candidates=[Path('/content/cbt-open-state-prepared-'+side+'-20261112-v2'),Path('/content/cbt-unconstrained-state-study-20261112-v3/source_prepared')/side];p=next((p for p in candidates if (p/'protocol.json').is_file() and (p/'requests.jsonl').is_file()),None);assert p is not None,side;d=json.loads((p/'protocol.json').read_text());assert hashlib.sha256((p/'requests.jsonl').read_bytes()).hexdigest()==d['requests_file_sha256'];refs[side]=str(p)
+expected={'gate_protocol.json':'6607ebce18664e4d61630b99fd3d70c213f2e4b0eef1fd5b5437bd633ce2eca8','gate_results.json':'037540e71ca388bc88c8c8faccd9a0825fad49065e57cf3e39659082409b2e20','all_eight_authentication_receipt.json':'d73835d33b9e940865458f1e10cbda3af6fec629b8ce633894419e46f4e6015b'}
+for n,h in expected.items():assert hashlib.sha256((g/n).read_bytes()).hexdigest()==h
+d=json.loads((g/'gate_results.json').read_text());assert d['gate_passed'] and d['typed_correct']==8 and d['schema_valid']==8
+env=dict(os.environ);runtime=json.loads((g/'runtime_manifest.json').read_text());env['LD_LIBRARY_PATH']=runtime['child_ld_library_path'];env['PYTHONPATH']=runtime['site_packages']+':'+str(stage.parent);base=[sys.executable,'-u',str(stage),'--study-root','/content/cbt-qwen7b-gpu-state-study-20261112-v7']
+commands=[('initialize',base+['initialize','--gate-root',str(g),'--expected-gate-protocol-sha256',expected['gate_protocol.json'],'--expected-gate-report-sha256',expected['gate_results.json'],'--expected-gate-authentication-sha256',expected['all_eight_authentication_receipt.json']]),('freeze-main',base+['freeze-main','--before-checkout','/content/cbt-open-state-before-20261112-v2','--before-reference',refs['before'],'--after-checkout','/content/cbt-open-state-after-20261112-v2','--after-reference',refs['after']])]
+(r/'intent.json').open('x').write(json.dumps({'source_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'references':refs,'commands':commands,'automatic_retry':False,'model_generations':0,'at_unix':time.time()}))
+for name,argv in commands:
+ t=time.monotonic();f=(r/(name+'.log')).open('xb');p=subprocess.run(argv,env=env,stdout=f,stderr=subprocess.STDOUT,timeout=600);f.close();receipt={'phase':name,'returncode':p.returncode,'seconds':time.monotonic()-t,'model_generations':0};(r/(name+'-completion.json')).open('x').write(json.dumps(receipt));print(json.dumps(receipt),flush=True)
+ if p.returncode:sys.exit(p.returncode)
+p=Path('/content/cbt-qwen7b-gpu-state-study-20261112-v7/main_freeze.json');d=json.loads(p.read_text());print(json.dumps({'stage':'all96_prepared_frozen_no_main_generation','main_unique_payloads':d['main_unique_payloads'],'main_freeze_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'model_generations':0}),flush=True)
