@@ -1,0 +1,19 @@
+flowchart TD
+    S["Retained sources and supported projections"] --> R["Query-aware readout"]
+    U["Recent dialogue and current concern"] --> R
+    R --> A["Permission, cutoff and version checks"]
+    A --> B["Control priority, relevance rank and full budget"]
+    B --> M["Policy, dialogue, reference data, current input"]
+    B --> T["External audit trace"]
+    M --> G["Recheck source and object dependencies"]
+    G --> P["Generation and receipt"]
+    P --> T
+    style S fill:#FFFFFF,stroke:#267360,color:#18221E
+    style U fill:#FFFFFF,stroke:#267360,color:#18221E
+    style R fill:#FFFFFF,stroke:#267360,color:#18221E
+    style A fill:#FFFFFF,stroke:#267360,color:#18221E
+    style B fill:#FFFFFF,stroke:#267360,color:#18221E
+    style M fill:#FFFFFF,stroke:#267360,color:#18221E
+    style T fill:#FFFFFF,stroke:#267360,color:#18221E
+    style G fill:#FFFFFF,stroke:#267360,color:#18221E
+    style P fill:#FFFFFF,stroke:#267360,color:#18221E

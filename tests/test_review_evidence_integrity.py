@@ -203,7 +203,7 @@ class SemanticPointerIntegrationTests(unittest.TestCase):
             provider = RecordingProvider(source, pointer)
             session = ControlledDialogueSession.open(Path(folder)/'memory.sqlite', approved_root=folder,
                 user_id='fictional-review', provider=provider, background=False,
-                limits=PrototypeLimits(max_outbound_chars=4000))
+                limits=PrototypeLimits(max_outbound_chars=6000))
             try:
                 first = session.send_message(source, input_id='source', as_of='2026-11-04T09:00:00Z')
                 self.assertEqual(first['source_commit']['source_status'], 'committed')

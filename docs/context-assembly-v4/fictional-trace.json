@@ -1,0 +1,43 @@
+{
+  "assembly_version": "cbt-context-v4",
+  "representation": "processed_with_evidence",
+  "included_item_ids": [
+    "task-1994161fe6004e49891412c22dd269ce:engagement",
+    "task-1994161fe6004e49891412c22dd269ce:acceptance",
+    "task-1994161fe6004e49891412c22dd269ce:reported_count",
+    "task-1994161fe6004e49891412c22dd269ce:target_count",
+    "plan:task:task-1994161fe6004e49891412c22dd269ce",
+    "history:source:fictional-0:full",
+    "history:source:fictional-1:full"
+  ],
+  "omitted_items": {
+    "task-1994161fe6004e49891412c22dd269ce:outcome": "insufficient_current_source_support"
+  },
+  "source_ids": [
+    "source:fictional-0",
+    "source:fictional-1",
+    "source:fictional-2",
+    "source:fictional-3"
+  ],
+  "recent_source_ids": [
+    "source:fictional-2"
+  ],
+  "selected_source_ids": null,
+  "source_hashes": {
+    "source:fictional-0": "6ab424d274194c4a87268e7b785c529ab27ee4646a2444e3da04e4c69c41f3cb",
+    "source:fictional-1": "d82b6da843acfa9d996da0138119ff05574cef766680029711846e3c5c344799",
+    "source:fictional-2": "6896c28e0285cca99fc1fd9381e5dbe869980e38f0ba93c2490387c2b593d74f",
+    "source:fictional-3": "e056c7198d8e007d12715f90654fd6c3471765a163d1a4bd2e60781ee4b74dd4"
+  },
+  "item_versions": {
+    "plan:task:task-1994161fe6004e49891412c22dd269ce": 1
+  },
+  "item_retrieval_ranks": {
+    "plan:task:task-1994161fe6004e49891412c22dd269ce": 0
+  },
+  "expected_object_versions": {},
+  "request_sha256": "4537b43c2ab231346ac2d9d20a97b030f506d4db7d33c37d89261db52c575e8b",
+  "request_chars": 10571,
+  "request_tokens": null,
+  "provider_usage": null
+}

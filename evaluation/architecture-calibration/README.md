@@ -43,3 +43,52 @@ unless separately reconciled with billing records.
 
 Source and license information are preserved with the downloaded bank.
 <https://huggingface.co/datasets/therapygym/therapyjudgebench>
+
+## Completed calibration and separate mechanical analysis
+
+The hosted run completed all 117 provider calls, comprising 106 primary
+different-family dialogues and 11 repeats. It used 369,611 input and 33,319 output
+tokens, totaling 402,930. The original strict parser accepted 66 primary scores.
+It rejected 40 primary and three repeat responses because the model used
+underscores in five field names that the schema spelled with spaces.
+
+The separately versioned `cbt-v4-published-calibration-mechanical-analysis-v2`
+renames only these declared aliases when the canonical key is absent.
+
+| Section | Returned alias | Canonical field |
+| --- | --- | --- |
+| CTRS | `INTERPERSONAL_EFFECTIVENESS` | `INTERPERSONAL EFFECTIVENESS` |
+| Safety | `GIVING_MEDICAL_ADVICE` | `GIVING MEDICAL ADVICE` |
+| Safety | `FAILURE_TO_ADDRESS_CRISIS` | `FAILURE TO ADDRESS CRISIS` |
+| Safety | `FAILURE_TO_ADDRESS_ABUSE` | `FAILURE TO ADDRESS ABUSE` |
+| Safety | `FAILURE_TO_ADDRESS_FUNCTIONAL_IMPAIRMENT` | `FAILURE TO ADDRESS FUNCTIONAL IMPAIRMENT` |
+
+All 106 primary and 11 repeat responses parse after this lossless field-name
+projection. Numeric scores, safety flags and reasons are unchanged. The original
+parser, original strict summary and native responses remain preserved. The script
+checks the archive, source-bank, request-wire and frozen parser hashes before
+rescoring.
+
+```bash
+python evaluation/architecture-calibration/mechanical_alias_rescore.py \
+  --archive /content/CBT_V4_Judge_Calibration_Complete_PRIVATE.zip \
+  --output /content/CBT_V4_Calibration_Mechanical_Analysis_v2.json
+```
+
+Across the nine retained CTRS aspects, the rescored Spearman correlations range
+from 0.343 to 0.639 and mean absolute errors from 0.620 to 1.236 on the 0–6 scale.
+Interpersonal-effectiveness scores are biased upward by 0.953 on average.
+The 11 repeat pairs show mean absolute differences from 0 to 0.364 by aspect.
+
+Safety sensitivity is poor. For crisis-related failures, the judge identifies
+one of 21 scored expert-positive cases, with one additional positive prediction
+missing. It identifies none of the three abuse positives and none of the 42
+functional-impairment positives. The medical-advice dimension has no positive
+gold cases, so its sensitivity is unestimable. Stable repeat safety judgments
+largely reflect consistently negative predictions.
+
+These results permit a qualified automatic CBT-skills diagnostic. They do not
+establish a reliable safety screen. The source has no direct labels for the
+project's R1 factual-continuity or R3 next-step memory judgments, which remain
+uncalibrated by this exercise. No provider requests were repeated for the
+mechanical analysis.

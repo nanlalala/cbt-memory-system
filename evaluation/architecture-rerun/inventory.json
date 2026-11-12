@@ -1,0 +1,257 @@
+{
+  "version": "architecture-rerun-inventory-v1",
+  "execution_location": "genuine hosted Colab for full data preparation and all model calls",
+  "answer_model": {
+    "requested": "deepseek-v4.1-flash",
+    "required_returned": "deepseek-v4-1-flash-260910",
+    "temperature": 0,
+    "thinking": "disabled"
+  },
+  "cohorts": [
+    {
+      "key": "memoryagentbench_conflict",
+      "questions": 800,
+      "planned_answer_rows": 2400,
+      "source": {
+        "enabled": true,
+        "dataset_repository": "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench",
+        "data_revision": "7ea066982b140a19337e17e60d45d4076e042faf",
+        "code_repository": "https://github.com/HUST-AI-HYZ/MemoryAgentBench",
+        "code_revision": "538026089d1a8a8eff05121d0db89b388f360eba",
+        "license": "MIT",
+        "license_evidence": "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench/blob/7ea066982b140a19337e17e60d45d4076e042faf/README.md",
+        "split": "Conflict_Resolution",
+        "eligible_source_pattern": "^factconsolidation_(sh|mh)_(6k|32k|64k|262k)$",
+        "official_metric": "substring_exact_match",
+        "independence_unit": "conservative_entire_factconsolidation_family",
+        "interpretation": "Exploratory conflict-resolution benchmark. Multiple questions and context-length variants are not independent users; no CBT or clinical labels.",
+        "files": {
+          "data": {
+            "path": "data/Conflict_Resolution-00000-of-00001.parquet",
+            "url": "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench/resolve/7ea066982b140a19337e17e60d45d4076e042faf/data/Conflict_Resolution-00000-of-00001.parquet",
+            "bytes": 1491588,
+            "sha256": "24d5c3f09ce0ce15625cb9f8a98f44f0d864ca6c94d7b4ad04eb697ca3a5ff45"
+          }
+        }
+      },
+      "runner": "evaluation/architecture-rerun/mab_full.py",
+      "source_family_count": 1,
+      "primary_scoring": "existing released substring match plus strict response diagnostic",
+      "readout": "syntactic source-bound latest fact projection through shared product cbt_context",
+      "status": "runner implemented; hosted execution pending",
+      "new_generation_arms": [
+        "no_rag",
+        "raw_history_rag",
+        "managed_memory_rag"
+      ]
+    },
+    {
+      "key": "longmemeval_s_cleaned",
+      "questions": 500,
+      "planned_answer_rows": 1500,
+      "source": {
+        "role": "locked_external_test",
+        "adapter": "longmemeval",
+        "variant": "S_full_cleaned_histories_not_oracle",
+        "source": "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/98d7416c24c778c2fee6e6f3006e7a073259d48f/longmemeval_s_cleaned.json",
+        "revision": "98d7416c24c778c2fee6e6f3006e7a073259d48f",
+        "sha256": "d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442",
+        "bytes": 277383467,
+        "expected_released_examples": 500,
+        "expected_eligible_examples": 500,
+        "planned_response_calls": 1500,
+        "expected_abstention_examples": 30,
+        "exclude_categories": [],
+        "grouping": "connected_components_of_shared_session_ids_or_identical_session_histories",
+        "metadata_verified_on": "2026-10-21",
+        "metadata_source": "https://huggingface.co/api/datasets/xiaowu0162/longmemeval-cleaned/tree/98d7416c24c778c2fee6e6f3006e7a073259d48f?recursive=false&expand=false",
+        "metadata_verification": "Official immutable-revision API LFS oid/size; full file intentionally not downloaded to the local machine",
+        "development_exposure": {
+          "group_ids": [],
+          "example_ids": [],
+          "session_ids": [],
+          "exposure_review_complete": false,
+          "interpretation": "Audit all prior LongMemEval question/history use before declaring this an independent locked test; oracle and S can share question identities."
+        }
+      },
+      "source_preparation_entrypoint": "evaluation/architecture-rerun/formal_sources.py",
+      "primary_scoring": {
+        "upstream_repository": "https://github.com/xiaowu0162/LongMemEval",
+        "upstream_revision": "9e0b455f4ef0e2ab8f2e582289761153549043fc",
+        "evaluator": "Exact pinned upstream per-type reference prompts; DeepSeek adaptation with strict yes/no parsing, not the paper official model score",
+        "pin_status": "upstream_source_and_exact_prompt_snapshot_pinned_adapter_regression_covered",
+        "nonreference_judge_model": true,
+        "upstream_source_sha256": "ecce9c4c79dc89d99534ac17b383a5cbb5b9f0c69ee98adaf0684742e3d95251",
+        "prompt_snapshot_sha256": "a4527c60a6396311dbf7faabd93e4ab8977f9f592979aabd5d3722d2b6f9a43d"
+      },
+      "old_generation_arms": [
+        "none",
+        "short_term",
+        "short_plus_structured_candidate"
+      ],
+      "new_generation_arms": [
+        "no_rag",
+        "raw_history_rag",
+        "managed_memory_rag"
+      ],
+      "readout": "shared product cbt_context; dated source-supported semantic projections with cross-chunk historical version groups",
+      "status": "full source, generation and independent reference-judge runners implemented; hosted execution pending",
+      "original_planned_answer_rows": 1500,
+      "runner": "evaluation/architecture-rerun/formal_full.py",
+      "reference_judge": "evaluation/architecture-rerun/formal_judge.py",
+      "bound": "2 times frozen chronological source chunks plus 3 times all original eligible questions; no automatic retries"
+    },
+    {
+      "key": "locomo10",
+      "questions": 1540,
+      "planned_answer_rows": 4620,
+      "source": {
+        "role": "exploratory",
+        "adapter": "locomo",
+        "variant": "complete_released_conversations",
+        "source": "https://raw.githubusercontent.com/snap-research/locomo/3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376/data/locomo10.json",
+        "revision": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+        "sha256": "79fa87e90f04081343b8c8debecb80a9a6842b76a7aa537dc9fdf651ea698ff4",
+        "bytes": 2805274,
+        "expected_released_examples": 1986,
+        "expected_eligible_examples": 1540,
+        "planned_response_calls": 4620,
+        "expected_groups": 10,
+        "exclude_categories": [
+          "5"
+        ],
+        "grouping": "conversation_id",
+        "development_exposure": {
+          "exposure_definition": "Question/answer/history inspection for model or prompt development; checksum/schema-only validation is not performance tuning",
+          "source": "evaluation/end-to-end-dialogue/pilot_20261019_scores.csv",
+          "source_sha256": "a752d6132b9636a29d983e72627adf27dc54a0c6b431a60606011db8d2d7feca",
+          "question_count": 20,
+          "group_ids": [
+            "locomo:conv-26",
+            "locomo:conv-41",
+            "locomo:conv-42",
+            "locomo:conv-43",
+            "locomo:conv-44",
+            "locomo:conv-47",
+            "locomo:conv-48",
+            "locomo:conv-49",
+            "locomo:conv-50"
+          ],
+          "example_ids": [],
+          "session_ids": [],
+          "exposure_review_complete": true,
+          "interpretation": "Removing only the 20 QA is insufficient: nine conversations have development exposure. The full LoCoMo result remains exploratory."
+        }
+      },
+      "source_preparation_entrypoint": "evaluation/architecture-rerun/formal_sources.py",
+      "primary_scoring": {
+        "upstream_repository": "https://github.com/snap-research/locomo",
+        "upstream_revision": "3eb6f2c585f5e1699204e3c3bdf7adc5c28cb376",
+        "evaluator": "task_eval/evaluation.py",
+        "category_5_policy": "Excluded from ordinary answer correctness; adversarial_answer is a distractor, never a gold answer"
+      },
+      "old_generation_arms": [
+        "none",
+        "short_term",
+        "short_plus_structured_candidate"
+      ],
+      "new_generation_arms": [
+        "no_rag",
+        "raw_history_rag",
+        "managed_memory_rag"
+      ],
+      "readout": "shared product cbt_context; dated source-supported semantic projections with cross-chunk historical version groups",
+      "status": "full source, generation and independent reference-judge runners implemented; hosted execution pending",
+      "original_planned_answer_rows": 4620,
+      "runner": "evaluation/architecture-rerun/formal_full.py",
+      "reference_judge": "evaluation/architecture-rerun/formal_judge.py",
+      "bound": "2 times frozen chronological source chunks plus 3 times all original eligible questions; no automatic retries"
+    },
+    {
+      "key": "cbt_audio_professional_seven",
+      "questions": 7,
+      "planned_main_answer_rows": 14,
+      "source_archive": {
+        "library_file_id": "libfile_fde3_f-8405da77793c8191b101b1af3f0e5f35_7e9d829b317c8191a098e8015cc46514",
+        "version": 2,
+        "sha256": "0ba8f8750952443106ec104039ddd9ba6164644f1038328f1fb76cfb83d18aa2",
+        "nested_member": "colab_original/CBT_Professional_Seven_Family_Complete_20261112_PRIVATE_v2.zip",
+        "generation_members": [
+          "content/cbt-professional-prospective-seven-20261112-v1/batch_01/generation_cases.json",
+          "content/cbt-professional-prospective-seven-20261112-v1/batch_02/generation_cases.json"
+        ]
+      },
+      "primary_scoring": "independent R1-R5 with source evidence; R1/R3 primary",
+      "status": "exact source archive and members recovered; hosted preparation pending"
+    },
+    {
+      "key": "controlled_care_tracking_24",
+      "questions": 24,
+      "source_archive": {
+        "library_file_id": "libfile_fde3_f-2e2f77bf890c8191b4a01eaeaff0a967_7e9d829b317c8191a098e8015cc46514",
+        "version": 0,
+        "sha256": "97eeddf2737dadeffcfe49c6592783c8e131caab7dc28efe66095bb71d829b9d",
+        "generation_members": [
+          "content/cbt-qwen7b-gpu-state-study-20261112-v9/source_prepared/before/generation_cases.json",
+          "content/cbt-qwen7b-gpu-state-study-20261112-v9/source_prepared/after/generation_cases.json"
+        ]
+      },
+      "source_type": "constructed development variants from four families",
+      "status": "full24-case dated product replay and strict scorer implemented; hosted execution pending",
+      "planned_answer_rows": 72,
+      "new_generation_arms": [
+        "no_rag",
+        "raw_history_rag",
+        "managed_memory_rag"
+      ],
+      "runner": "evaluation/architecture-rerun/controlled.py",
+      "primary_scoring": "unchanged original strict single-key JSON value/type comparison; new DeepSeek execution",
+      "readout": "actual dated product task projector and shared current renderer",
+      "budget_change": {
+        "legacy_complete_request_chars": 6000,
+        "new_common_complete_request_chars": 24000,
+        "reason": "complete researched CBT counselor role; source-only old-budget preflight recorded per case",
+        "retained_recent": 6,
+        "retained_source_cap": 9,
+        "retained_output_tokens": 64
+      }
+    },
+    {
+      "key": "cactus",
+      "planned_source_families": 200,
+      "planned_natural_prefixes": 600,
+      "old_quote_probe_eligible": 590,
+      "source": "evaluation/cbt-memory-effect/cactus_materials.py",
+      "task_boundary": "natural continuation and historical quotation recall separately scored",
+      "runner": "evaluation/cbt-memory-effect/architecture_retest/",
+      "status": "new architecture runner under implementation"
+    }
+  ],
+  "excluded": {
+    "personamem_v1": "previously excluded management-benefit claim remains excluded by user direction"
+  },
+  "judge_identity": {
+    "historical_R1_R5": "same DeepSeek family, not independent across families",
+    "new_protocol_requirement": "different answer/judge family, frozen before held-out calibration",
+    "new_model": "root runtime probe supports qwen3.5-plus; pending calibration and exact receipt binding"
+  },
+  "completion_rule": "each cohort reports planned rows, received rows, terminal failures and pending rows; an inventory or three-item pilot does not complete a dataset rerun",
+  "old_calls_not_new_authorization": true,
+  "formal_arm_decision": {
+    "latest_user_override": "only three conditions; same complete CBT role and ordinary recent conversation in every condition",
+    "new_arms": [
+      "no_rag",
+      "raw_history_rag",
+      "managed_memory_rag"
+    ],
+    "formal_answer_rows": 6120,
+    "questions": 2040,
+    "earlier_results": "preserved; no fourth old arm or representation ablation added"
+  },
+  "shared_policy": {
+    "module": "modules/agent-integration/cbt_counselor_policy.py",
+    "version": "cbt-counselor-policy-v1",
+    "all_generation_arms_identical": true,
+    "benchmark_output_format": "same benchmark-specific factual answer instruction in all arms"
+  }
+}

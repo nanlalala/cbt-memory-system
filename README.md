@@ -14,7 +14,31 @@ Goals, homework and changing self-reports are the intended use cases. The curren
 implementation provides stronger evidence for reliable memory control than for
 user benefit. Better CBT dialogue and treatment outcomes remain unestablished.
 
-## Controlled memory v2
+## CBT context assembly v4
+
+The default dialogue path now sends source-supported processed memory through
+the shared [CBT context assembly module](docs/context-assembly-v4/README.md).
+It distinguishes reported experiences, task proposals and acceptance, historical
+state, tentative formulations, and proposed next steps. A separate support check
+assesses semantic paraphrases before readout; it does not establish user approval.
+
+The actual request order is fixed policy, admitted recent conversation, an
+application-inserted user-role memory reference block, and the current question.
+An external trace records the complete request, budgets, selected and omitted
+items, versions and provider usage. Corrections, deletion and paused use are
+checked before selection, sending and publication.
+
+[New architecture replications](evaluation/architecture-rerun/README.md) preserve
+the original question rosters and historical results. The
+[CBT memory study](evaluation/cbt-memory-effect/architecture_retest/README.md)
+uses three conditions: no RAG, original-history RAG, and managed memory. All
+conditions share the CBT psychological counselor role, behavior rules, recent
+conversation, model and request ceiling. Answers remain DeepSeek. Independent model judgments and
+[published-label calibration](evaluation/architecture-calibration/README.md) are
+reported with their measured limitations. New effectiveness results are pending
+the authenticated full runs.
+
+## Earlier controlled memory v2
 
 The new [controlled implementation](docs/cbt-memory-implementation-contract-v2.md)
 adds source-first commits, separate retention/use/transmission permissions,

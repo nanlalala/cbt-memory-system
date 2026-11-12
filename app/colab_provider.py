@@ -126,6 +126,7 @@ class ColabChatProvider:
     """
 
     requires_colab = True
+    supports_cbt_projection = True
     __slots__ = (
         "__key", "_settings", "_api_base", "_max_calls", "_max_prompt_chars",
         "_max_requested_output_tokens", "_calls_attempted", "_output_reserved",
@@ -308,8 +309,8 @@ class ColabChatProvider:
         model/settings and requested output ceiling; authentication headers are
         never included. The send method reconstructs and checks this again.
         """
-        if type(purpose) is not str or purpose not in {"response", "extraction"}:
-            raise ValueError("purpose must be response or extraction")
+        if type(purpose) is not str or purpose not in {"response", "extraction", "projection", "verification"}:
+            raise ValueError("purpose must be response, extraction, projection or verification")
         if (not isinstance(messages, (list, tuple)) or not messages or len(messages) > 128
                 or any(not isinstance(message, dict)
                        or set(message) != {"role", "content"}
