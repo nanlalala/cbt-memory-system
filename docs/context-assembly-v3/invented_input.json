@@ -1,0 +1,71 @@
+{
+  "sources": [
+    {
+      "source_id": "s0",
+      "source_order": 0,
+      "role": "user",
+      "content": "I agreed to practise a thought record seven times.",
+      "subject_id": "invented:one",
+      "retained": true,
+      "use_allowed": true,
+      "external_allowed": true
+    },
+    {
+      "source_id": "s1",
+      "source_order": 1,
+      "role": "user",
+      "content": "Please change that target to two times. I have not started yet.",
+      "subject_id": "invented:one",
+      "retained": true,
+      "use_allowed": true,
+      "external_allowed": true
+    }
+  ],
+  "selected_ids": [
+    "s0",
+    "s1"
+  ],
+  "memories": [
+    {
+      "memory_id": "target",
+      "version": 2,
+      "subject_id": "invented:one",
+      "active": true,
+      "deleted": false,
+      "valid_at_cutoff": true,
+      "superseded_by": null,
+      "support": "verified_projection",
+      "verifier_revision": "invented-rule-v1",
+      "epistemic_status": "supported_state",
+      "summary": "The user revised the thought-record target from seven to two practices and reported not starting.",
+      "source_ids": [
+        "s0",
+        "s1"
+      ],
+      "evidence": [
+        {
+          "source_id": "s0",
+          "start": 0,
+          "end": 50,
+          "text": "I agreed to practise a thought record seven times."
+        },
+        {
+          "source_id": "s1",
+          "start": 0,
+          "end": 63,
+          "text": "Please change that target to two times. I have not started yet."
+        }
+      ]
+    }
+  ],
+  "recent": [],
+  "current_input": "What did I agree to, and what have I completed?",
+  "subject_id": "invented:one",
+  "cutoff_order": 1,
+  "max_request_chars": 6000,
+  "request_options": {
+    "model": "example-model",
+    "max_tokens": 256
+  },
+  "verifier_revision": "invented-rule-v1"
+}
