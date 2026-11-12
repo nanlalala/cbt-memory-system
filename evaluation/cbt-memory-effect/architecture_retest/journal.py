@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import threading
 import time
-from . import projections as projection
+from auto_eval_v2.run_colab import strict_json
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
@@ -42,7 +42,7 @@ def rows(path):
     raw = path.read_text()
     if raw and not raw.endswith("\n"):
         raise ValueError("incomplete journal retained for inspection")
-    return [projection.strict_json(line) for line in raw.splitlines() if line]
+    return [strict_json(line) for line in raw.splitlines() if line]
 
 
 @contextmanager
