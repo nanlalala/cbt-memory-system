@@ -17,10 +17,11 @@ class RuntimeOriginError(RuntimeError):
 
 
 def repository_root(path: str | Path) -> Path | None:
-    """Find the nearest ancestor with this project's two directory markers."""
+    """Find this project's markers, avoiding generic third-party directories."""
     candidate = Path(path).expanduser().resolve()
     for root in (candidate, *candidate.parents):
-        if (root / 'modules').is_dir() and (root / 'evaluation').is_dir():
+        if ((root / 'modules/agent-integration').is_dir() and
+                (root / 'evaluation/cbt-memory-effect').is_dir()):
             return root
     return None
 
@@ -35,7 +36,7 @@ def assert_repository_runtime(expected_root: str | Path, *, loaded_modules: Mapp
     """
     expected = Path(expected_root).expanduser().resolve()
     if repository_root(expected) != expected:
-        raise ValueError('expected runtime root must contain modules and evaluation directories')
+        raise ValueError('expected runtime root must contain modules/agent-integration and evaluation/cbt-memory-effect')
     snapshot = dict(sys.modules if loaded_modules is None else loaded_modules)
     checked, mismatches = {}, []
     for name, module in sorted(snapshot.items()):

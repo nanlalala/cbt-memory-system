@@ -33,12 +33,23 @@ If reusing an idle kernel, first join every worker and finish all outstanding
 requests. Clear **all** repository-owned modules and old checkout paths, including
 generic names such as `colab_provider`, `durable_memory`, `controlled_dialogue`,
 `controlled_replay_adapter` and `run_three_arm`, together with package parents.
-Identify ownership by the repository's `modules` and `evaluation` directories;
-filtering only names or paths starting with `/content/cbt` is insufficient.
+Identify ownership by the project-specific `modules/agent-integration` and
+`evaluation/cbt-memory-effect` directories; generic dependency directories named
+`modules` and `evaluation` do not establish project ownership.
+Filtering only names or paths starting with `/content/cbt` is insufficient.
 Reimport the pinned checkout and run the origin guard before preparation or send
 admission. The guard never purges modules automatically while workers run. For
 in-place code changes, prefer restarting the runtime, since origin equality alone
 cannot prove that existing objects were reloaded.
+
+When other frozen jobs are still active, `hosted_relay.py` and
+`hosted_worker.py` run a clean Python child in the same genuine hosted Colab VM.
+The parent retains the approved provider transports and credentials. A private
+Unix socket preserves exact request bytes and receipts, with immutable per-job
+call caps and no retry or response cache. Helpers are copied outside the selected
+clean checkout and recorded with their hashes. Source-only preparation has a
+separate zero-call job. The scientific protocol and its selected checkout remain
+unchanged, including when grading a completed older generation run.
 
 Use the live kernel's already approved DeepSeek transport. Preparation freezes
 full rosters and finite caps before execution. The controller reuses an existing

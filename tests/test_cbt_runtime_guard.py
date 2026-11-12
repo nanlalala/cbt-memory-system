@@ -13,8 +13,8 @@ from cbt_runtime_guard import RuntimeOriginError, assert_repository_runtime, rep
 
 
 def marked_repository(path):
-    (path / 'modules').mkdir(parents=True)
-    (path / 'evaluation').mkdir()
+    (path / 'modules/agent-integration').mkdir(parents=True)
+    (path / 'evaluation/cbt-memory-effect').mkdir(parents=True)
     source = path / 'modules' / 'same.py'
     source.write_text('IDENTICAL = True\n')
     return source
@@ -28,6 +28,25 @@ def module_at(path):
 
 
 class RuntimeOriginTests(unittest.TestCase):
+    def test_third_party_generic_modules_and_evaluation_directories_are_not_project_markers(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            current = marked_repository(root / 'current')
+            dependency = root / 'site-packages/sentence_transformers/base'
+            (dependency / 'modules').mkdir(parents=True)
+            (dependency / 'evaluation').mkdir()
+            foreign_looking_source = dependency / 'modules/fixture.py'
+            foreign_looking_source.write_text('THIRD_PARTY = True\n')
+            namespace = ModuleType('dependency_namespace')
+            namespace.__path__ = [str(dependency / 'evaluation')]
+            result = assert_repository_runtime(root / 'current', loaded_modules={
+                'project': module_at(current),
+                'sentence_transformers.base.modules.fixture': module_at(foreign_looking_source),
+                'sentence_transformers.base.evaluation': namespace,
+            })
+            self.assertIsNone(repository_root(foreign_looking_source))
+            self.assertEqual(result['checked_module_count'], 1)
+
     def test_current_checkout_and_unrelated_dependencies_are_allowed(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
