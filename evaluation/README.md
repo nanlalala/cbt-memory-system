@@ -4,13 +4,11 @@ The main question is whether manageable long-term memory improves cross-session
 tracking compared with retrieval over the **same raw history**. More historical
 information, reliable state changes and helpful dialogue are distinct findings.
 
-The [final evaluation protocol](../docs/validation-next.md) is the single source
-for the next comparison, task definitions, analysis and remaining work.
+The [architecture migration matrix](ARCHITECTURE_MIGRATION_20261113.md) identifies which evaluations need new answers and which components can be reused. The [previous evaluation protocol](../docs/validation-next.md) records the earlier task definitions.
 
 The separate [four-visit dialogue-benefit workflow](dialogue-benefit/README.md)
 implements a nonclinical feasibility protocol, source-bound independent review
-and participant-level analysis. Its task materials remain drafts with zero
-independent human reference validators. The
+and participant-level analysis. Its optional participant-study materials remain drafts. The current CBT response-quality study uses independent automatic scoring and released expert labels for the calibration dimensions those labels support. The
 [evidence checkpoint](../docs/evidence-status-20261105.md) records actual pilot
 results and missing full runs; [CBT process/outcome requirements](../docs/cbt-process-outcome-evidence.md)
 separate appropriate responses, learning and patient benefit. No human study has
@@ -21,7 +19,7 @@ started.
 | External memory tasks | Selected MemoryAgentBench conflict tasks and PersonaMem-v1 choices, scored against released answers by deterministic rules | Current-fact and preference performance; new adapters/comparison pending |
 | End-to-end memory control | Goals, homework, state, correction, expiry, deletion/isolation; expected-state event replay and source traces | Software/continuity compliance; synthesized interventions are not clinical gold |
 | User value | Real participants complete a four-visit fictional workflow; completion, time, errors, correction and confirmation effort | Usefulness and usability; not conducted yet |
-| Open-ended response quality | Independent blinded review; model-assisted ratings as a supplementary diagnostic | No model score substitutes for users or CBT-qualified reviewers |
+| Open-ended response quality | Independent blinded model ratings, R1 to R5, with primary analyses of R1 and R3 | Report dimensions separately as automatic assessments |
 | Knowledge retrieval and safety | Evidence Recall@k/MRR, citation support, risk/access and role-boundary checks, reported separately | Retrieval and safeguards do not establish treatment efficacy |
 
 The primary paired comparison is **raw-history RAG versus managed-memory RAG**;
