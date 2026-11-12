@@ -1,6 +1,6 @@
 # Memory readout and context assembly
 
-Status: experimental renderer and invented integration example. No new model-effect result. PR41 remains unchanged. The general semantic memory extractor, support verifier and hosted answer transport are not connected to this renderer yet.
+Hosted DeepSeek replication completed for the three fictional development cases. The source-grounded task projection adapter also runs on a frozen, dated controlled replay. The general semantic extractor and the held-out natural CBT comparison remain separate work.
 
 ## Three separate objects
 
@@ -30,8 +30,24 @@ Before sends: recover existing hosted journals, reconcile unknown intents, verif
 
 The three `*.request.json` files are actual renderer outputs. `*.trace.json` files are external audit records. `invented_input.json` is a fictional thought-record correction, not a clinical case or natural CBT result. Run the renderer with those arguments and an explicit `arm`. The `model` field is a placeholder and is not an executed model identity.
 
-Validation on 2026-11-13: 96 fixture regressions passed (91 inherited plus five new assembly tests). No real inference, model loading, Secret access or paid calls occurred during this development.
+The original renderer-only validation passed 96 regression checks. Later model runs have their own requests, budgets and receipts below.
 
-## Cloud recovery observation
+## Earlier cloud recovery observation
 
 The genuine hosted notebook was opened read-only. Its UI showed Connect rather than an active runtime. Saved output showed the independent retrospective judge completed 69 attempts (66 assessments, three technical failures); a separate state study's last saved monitor showed 31 published / 32 admitted and no final score. These are saved outputs, not current filesystem verification. Do not retry an unresolved generation solely from this snapshot.
+
+## Hosted model replications
+
+Three fictional questions cover a corrected practice target, a requested pause and a proposal without agreement. Selected sources and recent history were fixed in each matched set. The Qwen2.5-1.5B check scored 2/3 in every condition and missed the pause in each. All nine [development outcomes](qwen_pilot_observed.json) are retained.
+
+The [DeepSeek replication](deepseek_pilot_results.json) used the same nine messages arrays, a 6,000-character ceiling, temperature zero, thinking disabled and 64 output tokens per request. All nine intents matched individual completed receipts for `deepseek-v4-1-flash-260910` with `finish_reason=stop`. The frozen plan digest was `29f1f3215d9b42d1b8a1692406b8e77e5b5141185e10e088da9a9225ed81694f`.
+
+| Representation | Correct / planned | Input tokens | Output tokens |
+|---|---:|---:|---:|
+| Original statements | 3/3 | 526 | 15 |
+| Authored processed summary | 3/3 | 484 | 15 |
+| Summary with evidence | 3/3 | 701 | 15 |
+
+All three DeepSeek conditions returned 2 for the latest target, true for the pause and false for agreement to the proposal. These questions use authored summaries and fixed sources. They do not estimate retrieval gains or generalisation to open-ended CBT follow-up. Currency charges were not measured.
+
+In the separate dated replay adapter, the actual controlled product projects the agreement, pause, target count and reported count. `auto_eval_v2/dated_task_readout.py` binds each supported field to the selected source spans and product version before rendering. `tests/test_auto_eval_v2_dated_readout.py` replays three authored dated events through the real store and product rules. No model is called on this path. The adapter excludes state claims for ordinal-only CACTUS sources.
