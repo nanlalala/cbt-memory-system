@@ -92,6 +92,65 @@ def bytes_snapshot(folder):
         for path in folder.rglob("*") if path.is_file()}
 
 
+def second_zero_fixture(base):
+    first = zero_fixture(base/"first")
+    first_proof = proof(first)
+    second = zero_fixture(base/"second")
+    second["sources"], second["restoration"] = first["sources"], first["restoration"]
+    second["first"] = first
+    for filename in ("entry.json", "status.json"):
+        path = second["previous"]/filename
+        value = json.loads(path.read_text())
+        value.update(version="hosted-non-mab-restored-connection-v2", nonce=driver.SECOND_PREFLIGHT_NONCE,
+            selected_commit=driver.SECOND_PREFLIGHT_COMMIT, sources=second["sources"],
+            source_restoration=second["restoration"], preflight_predecessor=first_proof)
+        write_json(path, value)
+    events, preparation = [], {}
+    for folder in second["workers"]:
+        path = folder/"execution_manifest.json"
+        manifest = json.loads(path.read_text())
+        cohort = manifest["cohort"]
+        manifest.update(nonce=driver.SECOND_PREFLIGHT_NONCE, selected_commit=driver.SECOND_PREFLIGHT_COMMIT,
+            job_id=driver.SECOND_PREFLIGHT_NONCE+":"+manifest["phase"], source=second["sources"][cohort])
+        write_json(path, manifest)
+        process = json.loads((folder/"process.json").read_text())
+        process["manifest_sha256"] = sha256(path.read_bytes()).hexdigest()
+        write_json(folder/"process.json", process)
+        if cohort=="locomo1540":
+            (folder/"error.json").unlink()
+            write_json(folder/"complete.json", {"maximum_attempts":1638, "planned_answers":4620,
+                "inherited_answer_rows":2978, "inherited_received_receipts":3315,
+                "inherited_preparation_receipts":337, "maximum_independent_judge_calls":5082})
+        preparation[cohort] = json.loads((folder/"complete.json").read_text())
+        events.append({"event":"register", "fixture_only":False, "job_id":manifest["job_id"],
+                       "limits":dict(manifest["relay_limits"])})
+    second["events"] = events
+    second["event_file"].write_text("".join(json.dumps(event)+"\n" for event in events))
+    status_path = second["previous"]/"status.json"
+    status = json.loads(status_path.read_text())
+    status["error_type"] = "ValueError"
+    status["relay"] = {"jobs":{row["job_id"]:{model:{"maximum":0, "admitted":0} for model in row["limits"]} for row in events}}
+    write_json(status_path, status)
+    preparation["longmemeval500"] = {"status":"retained_source_unavailable", "model_calls":0, "paid_execution_authorized":False}
+    write_json(second["previous"]/"source_preparation.json", preparation)
+    original = Path(second["sources"]["locomo1540"]["reader"])
+    inherited = second["previous"]/"studies/locomo1540/inherited"
+    original.mkdir(parents=True)
+    inherited.mkdir(parents=True)
+    for name, row in (("intents.jsonl", {"inert_historical":"intent"}),
+                      ("outcomes.jsonl", {"inert_historical":"received"})):
+        data = (json.dumps(row)+"\n").encode()
+        (original/name).write_bytes(data)
+        (inherited/name).write_bytes(data)
+    return second
+
+
+def second_proof(fixture):
+    with patch.object(driver, "PREVIOUS_RECOVERED_ROOT", str(fixture["first"]["previous"])):
+        return driver._zero_call_preflight_proof(fixture["previous"], {},
+            expected_nonce=driver.SECOND_PREFLIGHT_NONCE, sources=fixture["sources"], restoration=fixture["restoration"])
+
+
 class ZeroPaidRestartProofTests(unittest.TestCase):
     def test_exact_zero_source_only_failure_is_proven_without_writing_old_files(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -241,6 +300,86 @@ class ZeroPaidRestartProofTests(unittest.TestCase):
                 self.assertEqual(value["nonce"], "retained-v2")
                 self.assertEqual(value["repeat_run_action"], "report_existing_invocation_only")
                 previous.assert_not_called(); checkout.assert_not_called(); load.assert_not_called()
+
+    def test_v1_v2_zero_call_chain_preserves_originals_and_inherited_paid_ledgers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = second_zero_fixture(Path(tmp))
+            before_first, before_second = bytes_snapshot(fixture["first"]["previous"]), bytes_snapshot(fixture["previous"])
+            with patch.object(driver, "_load_recovered_transports") as load:
+                verified = second_proof(fixture)
+            self.assertEqual(verified["previous_nonce"], driver.SECOND_PREFLIGHT_NONCE)
+            self.assertEqual(verified["provider_intents"], 0)
+            self.assertEqual(verified["provider_outcomes"], 0)
+            self.assertEqual(verified["predecessor"]["previous_nonce"], NONCE)
+            self.assertEqual(bytes_snapshot(fixture["first"]["previous"]), before_first)
+            self.assertEqual(bytes_snapshot(fixture["previous"]), before_second)
+            self.assertTrue((fixture["previous"]/"studies/locomo1540/inherited/intents.jsonl").stat().st_size)
+            load.assert_not_called()
+
+    def test_v2_any_new_unknown_or_positive_registration_is_rejected(self):
+        for change in ("unknown", "paid"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                fixture = second_zero_fixture(Path(tmp))
+                if change=="unknown":
+                    fixture["events"].append({"event":"outcome", "fixture_only":False, "status":"unknown"})
+                else:
+                    fixture["events"][0]["limits"][driver.ANSWER_IDENTITY["model"]] = 1
+                fixture["event_file"].write_text("".join(json.dumps(event)+"\n" for event in fixture["events"]))
+                with self.assertRaises(ValueError): second_proof(fixture)
+
+    def test_v2_rejects_new_top_journal_and_changed_inherited_historical_journal(self):
+        for inherited in (False, True):
+            with self.subTest(inherited=inherited), tempfile.TemporaryDirectory() as tmp:
+                fixture = second_zero_fixture(Path(tmp))
+                folder = fixture["previous"]/"studies/locomo1540"
+                if inherited: folder /= "inherited"
+                (folder/"intents.jsonl").write_text('{"possibly_new_request":true}\n')
+                with self.assertRaises(ValueError): second_proof(fixture)
+
+    def test_v2_nested_prior_proof_and_source_preparation_must_match_actual_files(self):
+        for change in ("nested", "preparation"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                fixture = second_zero_fixture(Path(tmp))
+                if change=="nested":
+                    path = fixture["previous"]/"entry.json"
+                    value = json.loads(path.read_text())
+                    value["preflight_predecessor"]["previous_nonce"] = "invented-prior-nonce"
+                else:
+                    path = fixture["previous"]/"source_preparation.json"
+                    value = json.loads(path.read_text())
+                    value["locomo1540"]["maximum_attempts"] = 2000
+                write_json(path, value)
+                with self.assertRaises(ValueError): second_proof(fixture)
+
+    def test_v2_absent_journal_appearance_or_changed_v1_control_blocks_next_send(self):
+        for change in ("new-empty", "new-intent", "old-control"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                fixture = second_zero_fixture(Path(tmp))
+                verified = second_proof(fixture)
+                restored = dict(fixture["restoration"], version=driver.RESTORED_CONNECTION_VERSION)
+                with patch.object(driver, "DEFAULT_ROOT", str(Path(tmp)/"unrelated")), \
+                        patch.object(driver, "_load_recovered_transports") as load:
+                    connection = driver._RecoveredConnection(REPO, restored, prior_preflight=verified)
+                    connection.assert_current()
+                    if change=="old-control":
+                        path = fixture["first"]["event_file"]
+                        path.write_text(path.read_text()+'{"event":"intent"}\n')
+                    else:
+                        path = fixture["previous"]/"studies/locomo1540/intents.jsonl"
+                        path.write_text("" if change=="new-empty" else '{"event":"intent"}\n')
+                    with self.assertRaises((ValueError, RuntimeError)):
+                        connection.delegates[driver.ANSWER_IDENTITY["model"]]({"inert":True})
+                    load.assert_not_called()
+
+    def test_v2_proof_ignores_only_prior_verification_timestamp(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = second_zero_fixture(Path(tmp))
+            path = fixture["previous"]/"entry.json"
+            value = json.loads(path.read_text())
+            value["preflight_predecessor"]["verified_at_utc"] = "earlier independent verification"
+            write_json(path, value)
+            verified = second_proof(fixture)
+            self.assertEqual(verified["previous_nonce"], driver.SECOND_PREFLIGHT_NONCE)
 
 
 if __name__ == "__main__":
