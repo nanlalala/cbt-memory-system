@@ -26,7 +26,25 @@ The [complete fictional request](docs/context-assembly-v4/FICTIONAL_REQUEST.md) 
 
 Automatic capture and checking at the point of use keep the interaction light. A user can correct or delete a memory in ordinary conversation. Unsupported interpretations do not become confirmed personal facts; unresolved current state can prompt a relevant optional question. Silence is not confirmation.
 
-## Historical MemoryAgentBench result — unchanged earlier version
+## Completed evaluation highlight: LoCoMo
+
+The new context-v4 comparison completed **1,540 questions across three conditions**. DeepSeek generated the answers; an independent Qwen model applied the frozen reference-grading method. The primary comparison is managed memory against capable raw-history RAG.
+
+| Condition | Primary: source-family-equal accuracy | Secondary: question-micro accuracy |
+| --- | ---: | ---: |
+| No RAG | 2.56% | 2.34% |
+| Raw-history RAG | 41.87% | 41.30% |
+| **Managed-memory RAG** | **55.75%** | **55.26%** |
+
+**Managed memory improved the primary metric by 13.88 percentage points over raw-history RAG**, with a 95% source-family bootstrap interval of **10.15–17.32 points**. It also scored higher in all four included question categories. The repeated-judgment label agreement was **99.35%**; this measures consistency, not correctness calibration.
+
+![Completed LoCoMo three-arm results](assets/locomo1540-context-v4-results.svg)
+
+The fixed denominator retains all 1,540 questions per condition, including four historical technical missing answers. All 5,078 planned grading entries were completed. These are adapted independent model-reference scores, not official benchmark scores, human ratings or clinical outcomes. This completed general-memory benchmark does not establish CBT response quality or treatment efficacy.
+
+[Full LoCoMo methods, category breakdown and denominators](evaluation/architecture-rerun/results/locomo1540_completed_20261113.md) · [Exact aggregate values](evaluation/architecture-rerun/results/locomo1540_completed_20261113.json) · [Evaluation index](evaluation/README.md)
+
+### Historical MemoryAgentBench result — unchanged earlier version
 
 | Condition | Conflict-task accuracy |
 | --- | ---: |
