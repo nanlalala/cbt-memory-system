@@ -246,8 +246,8 @@
     "completion_tokens": 5769,
     "total_tokens": 8759786
   },
-  "metric_interpretation": "Primary is the unchanged released substring metric; secondary is the previously frozen exact-normalized committed-short-answer diagnostic. Both are reported; no post-hoc metric substitution.",
-  "conclusion": "Managed memory improves the released metric, but the stricter diagnostic is lower than raw RAG. Gains concentrate in multi-hop strata; single-hop performance decreases. This is not robust superiority across scoring views.",
+  "metric_interpretation": "Primary result uses the unchanged original released substring scoring method. Previously computed stricter diagnostics remain archived; they are not a new pass criterion or replacement score.",
+  "conclusion": "The new managed-memory score is 469/800 (58.625%), below the historical full-run 480/800 (60.00%) and bounded-repair grid 483/800 (60.375%). Its current +4.75 percentage-point advantage over raw RAG does not demonstrate improvement over the prior managed-memory version.",
   "scope": "MemoryAgentBench source-grammar adaptation, one conservative source family; exploratory, no independent-family confidence interval; not natural CBT or clinical outcome.",
   "all_requests_have_complete_shared_CBT_policy": true,
   "all_received_models_verified": "deepseek-v4-1-flash-260910",
@@ -297,6 +297,24 @@
       "versus_repair_correct": -14,
       "versus_repair_percentage_points": -1.75
     },
-    "conclusion": "The current full-run managed score is lower than both historical managed scores; the positive current managed–raw contrast is not evidence of improvement over the prior version."
+    "conclusion": "The current full-run managed score is lower than both historical managed scores; the positive current managed–raw contrast is not evidence of improvement over the prior version.",
+    "paired_old_full_to_current": {
+      "managed_gains": 19,
+      "managed_losses": 30,
+      "managed_ties": 751,
+      "raw_gains": 39,
+      "raw_losses": 27,
+      "raw_ties": 734,
+      "all_question_ids_and_tasks_aligned": 800
+    },
+    "paired_old_repair_to_current": {
+      "managed_gains": 18,
+      "managed_losses": 32,
+      "managed_ties": 750,
+      "raw_gains": 39,
+      "raw_losses": 27,
+      "raw_ties": 734,
+      "all_question_ids_and_tasks_aligned": 800
+    }
   }
 }
