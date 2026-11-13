@@ -14,19 +14,24 @@ Goals, homework and changing self-reports are the intended use cases. The curren
 implementation provides stronger evidence for reliable memory control than for
 user benefit. Better CBT dialogue and treatment outcomes remain unestablished.
 
-## Selected memory version
+## Current development and retained MAB results
 
-The selected MAB implementation is the earlier source-version view with the
-shared source-edge retrieval repair, whose retained result is **483/800
-(60.375%)**. The newer context-v4 rerun scored 469/800 (58.625%) and remains
-experimental in draft PR #43; it is not promoted as the default.
+Development continues with the new CBT context-assembly implementation in
+[PR #43](https://github.com/nanlalala/cbt-memory-system/pull/43). The memory
+implementation is not reverted to the earlier MAB algorithm.
 
-[Exact selected commits and execution entry](evaluation/selected-memory.json) ·
-[Retained original results](evaluation/objective-memory/results/v4-repair-20261105/README.md).
-The 483-row score combines 206 new replies and 2,194 unchanged replies from the
-original 2,400-row grid. No automatic paid rerun is started by selecting it.
-The stable CBT product below remains controlled-memory-v2.1; its dialogue
-quality is a separate evaluation from this synthetic MAB result.
+The previous MAB datasets, responses and results stay unchanged under their
+original versions: managed memory scored 480/800 in the original full run and
+483/800 in the separate repair grid. They are historical results, not scores
+for the new implementation. The completed newer MAB rerun remains separately
+archived; it does not replace these existing artifacts. No additional MAB
+rerun is requested by this selection.
+
+[Current implementation and MAB retention policy](evaluation/selected-memory.json) ·
+[Original MAB results](evaluation/objective-memory/results/full-20261105/README.md) ·
+[Separate repair results](evaluation/objective-memory/results/v4-repair-20261105/README.md).
+The stable product described below remains on main while context-v4 development
+continues on its existing branch.
 
 ## Controlled memory v2
 
