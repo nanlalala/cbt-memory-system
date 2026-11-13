@@ -14,6 +14,20 @@ Goals, homework and changing self-reports are the intended use cases. The curren
 implementation provides stronger evidence for reliable memory control than for
 user benefit. Better CBT dialogue and treatment outcomes remain unestablished.
 
+## Selected memory version
+
+The selected MAB implementation is the earlier source-version view with the
+shared source-edge retrieval repair, whose retained result is **483/800
+(60.375%)**. The newer context-v4 rerun scored 469/800 (58.625%) and remains
+experimental in draft PR #43; it is not promoted as the default.
+
+[Exact selected commits and execution entry](evaluation/selected-memory.json) ·
+[Retained original results](evaluation/objective-memory/results/v4-repair-20261105/README.md).
+The 483-row score combines 206 new replies and 2,194 unchanged replies from the
+original 2,400-row grid. No automatic paid rerun is started by selecting it.
+The stable CBT product below remains controlled-memory-v2.1; its dialogue
+quality is a separate evaluation from this synthetic MAB result.
+
 ## Controlled memory v2
 
 The new [controlled implementation](docs/cbt-memory-implementation-contract-v2.md)

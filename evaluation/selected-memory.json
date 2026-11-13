@@ -1,0 +1,38 @@
+{
+  "schema": "capstone-selected-memory-v1",
+  "selected_at_utc": "2026-11-13",
+  "selection_reason": "User selected the earlier better-performing managed-memory implementation after the new MAB regression.",
+  "selected_mab": {
+    "implementation": "source-slot-version-view-v1 + source-edge-gated-expansion-v2",
+    "original_runner_commit": "1511706b3a4b0ac71416998b5b4d752a13c4e313",
+    "candidate_commit": "efd75116f985749a96a6070cb80c4b38d5c94dba",
+    "helper_commit": "18432622cc26a80704a50165a9383d559cda22c7",
+    "helper_path": "evaluation/objective-memory/run_v4_changed_requests_colab.py",
+    "helper_sha256": "5e1f862f615a871a09e498da0199d43b43b09a3b745c827a6c8152aeeae89bdc",
+    "protocol_sha256": "bd14178402c2b713e5a4e9eeac250477c4ee66951ff3a06493295ae62a3552ae",
+    "renderer": "compare_v4_retrieval_colab.channel_snapshot with candidate v4 retrieve_sources and original v3 runner; do not call new mab_full.py or new cbt_context renderer",
+    "model": "deepseek-v4.1-flash",
+    "primary_metric": "original released scoring",
+    "historical_correct": 483,
+    "historical_planned": 800,
+    "historical_new_replies": 206,
+    "historical_reused_replies": 2194,
+    "result_path": "evaluation/objective-memory/results/v4-repair-20261105/README.md",
+    "automatic_paid_rerun": false
+  },
+  "stable_product": {
+    "implementation": "controlled-memory-v2.1",
+    "commit": "34aec110811a61eda50431c555b3a5a70620e8bd",
+    "entry": "app/Controlled_Memory_V2_Colab.ipynb",
+    "renderer": "modules/agent-integration/evidence_bundles.py:build_outbound_messages",
+    "note": "Stable product and synthetic MAB implementation are separate paths; the MAB score is not a product CBT score."
+  },
+  "experimental_context_v4": {
+    "branch": "codex/cbt-context-v4",
+    "pull_request": 43,
+    "promoted": false,
+    "historical_mab_correct": 469,
+    "planned": 800,
+    "policy": "Retain code, results and failed attempts; do not use as the selected implementation or launch additional experiments by default."
+  }
+}
