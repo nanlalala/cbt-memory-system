@@ -1,0 +1,63 @@
+CBT quality post-hoc readout v1
+
+Scope: an independent, zero-API analysis of already received blind judge text.
+The frozen running evaluator, raw receipts, reviews, strict summaries, R1-R4
+integer 1-5 scale and R5 pass/fail scale remain unchanged.
+
+Allowed score carriers:
+1. Exact flat R1,R2,R3,R4,R5,evidence object.
+2. Exact dimension_scores,evidence object, with dimension_scores containing
+   exactly R1-R5. Only this explicitly named score carrier is unwrapped.
+3. Exact R1-R5 evidence-only map is diagnosed, with every rating missing.
+
+No fence removal, JSON repair, duplicate-key resolution, numeric coercion,
+case conversion, reason-based inference, reference synthesis or disposition
+repair is allowed. Other shapes remain unsupported; invalid JSON stays
+unparsed. Evidence-only objects never become numerical ratings.
+
+Each dimension reports rating_status independently from evidence_status.
+Evidence uses the original row field, order, reason-length, channel, unique
+reference, maximum-reference and disposition rules. A valid evidence row
+means structural binding only, not independent semantic verification. The
+evidence-container status is separate: an individually valid row does not
+make a malformed or incomplete whole container valid under the old protocol.
+No other dimension is discarded solely because R5 evidence is invalid.
+
+Every row retains the raw text hash, original strict status, readout version,
+source paths, transform trace and per-dimension missing/invalid statuses.
+The CLI authenticates frozen artifacts and actual receipts through the
+original _load(False) and _checked_reviews. Output is separate JSON on stdout;
+it contains no dialogue, original reason text or raw source references.
+
+All original case/arm denominators are retained. Generation not received,
+rating missing, rating invalid, unparsed and evidence invalid are reported
+separately. No missing rating is replaced with zero. Repeats are identified
+separately and excluded from primary coverage and comparisons.
+
+The report includes all three arms' planned counts, generation availability,
+original strict completion, per-dimension rating/evidence status counts,
+unchanged rating distributions, and explicitly conditional means. Raw ratings
+and ratings with valid original per-row evidence are separate analyses.
+The primary managed-minus-raw and auxiliary managed-minus-no-RAG comparisons
+use the same original case on both sides. They report planned and matched
+pairs, missing pairs and reasons, wins/losses/ties, conditional matched means
+and paired differences, with source-family coverage. A difference between
+unpaired available group means is never substituted for the paired difference.
+Missing-reason counts may overlap when both sides are unavailable. Family
+means are conditional and accompanied by matched/fully-matched family counts.
+These are descriptive post-hoc results, not a significance or clinical claim.
+Professional7 retains seven cases and every original three-arm row; its small
+sample and incomplete rating coverage must accompany any R1/R3 discussion.
+
+Apply this identical version to all professional7 rows and, after its original
+grading finishes, all CACTUS rows. Do not modify the active v4 checkout or
+change this version in response to arm differences or score values. Further
+format support requires a distinct version and an explicit change record.
+
+Usage in a genuine hosted Colab credential-free subprocess:
+python -B quality_readout_v1.py SELECTED_FROZEN_REPO FROZEN_GRADE_DIRECTORY
+
+Tests use invented packets and the actual frozen validator/segmenter only.
+python -m unittest discover -s . -p test_quality_readout_v1.py
+Tests discover the repository above this directory. Set CBT_READOUT_TEST_REPO
+to select a different frozen checkout; this variable is only a repository path.

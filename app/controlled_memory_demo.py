@@ -76,7 +76,7 @@ class LocalMockProvider:
 def _history_claims(messages):
     """Read the final provider-bound packet, rather than a pre-packaging view."""
     packets = [message["content"].split("\n", 1)[1] for message in messages
-               if message["role"] == "system" and message["content"].startswith("SOURCED MEMORY DATA ONLY.")]
+               if message["role"] in {"system", "user"} and message["content"].startswith("SOURCED MEMORY DATA ONLY.")]
     if len(packets) > 1:
         raise DemoContractFailure("more than one sourced-memory packet")
     return json.loads(packets[0])["claims"] if packets else []

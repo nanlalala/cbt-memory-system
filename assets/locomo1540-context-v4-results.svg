@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="850" viewBox="0 0 1100 850" role="img" aria-labelledby="title desc">
+<title id="title">Completed context-v4 LoCoMo comparison</title>
+<desc id="desc">Source-family equal accuracy: no RAG 2.56%, raw-history RAG 41.87%, managed memory 55.75%. Managed minus raw: 13.88 percentage points, 95% family-cluster interval 10.15 to 17.32. Managed memory scores higher in each of the four fixed question categories. This is one general-memory cohort, not clinical evidence.</desc>
+<rect width="1100" height="850" fill="#FFFFFF"/>
+<text x="40" y="43" font-family="DejaVu Sans, Arial, sans-serif" font-size="29" font-weight="bold" fill="#1D2939" text-anchor="start">Completed LoCoMo evaluation</text>
+<text x="40" y="74" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" font-weight="normal" fill="#526173" text-anchor="start">1,540 questions · Three memory conditions · Independent reference-model grading</text>
+<text x="40" y="110" font-family="DejaVu Sans, Arial, sans-serif" font-size="19" font-weight="bold" fill="#1D2939" text-anchor="start">Primary metric: source-family-equal accuracy</text>
+<line x1="90" y1="355.0" x2="1040" y2="355.0" stroke="#D9E1EA" stroke-width="1"/>
+<text x="75" y="360.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="end">0</text>
+<line x1="90" y1="282.0" x2="1040" y2="282.0" stroke="#D9E1EA" stroke-width="1"/>
+<text x="75" y="287.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="end">20</text>
+<line x1="90" y1="209.0" x2="1040" y2="209.0" stroke="#D9E1EA" stroke-width="1"/>
+<text x="75" y="214.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="end">40</text>
+<line x1="90" y1="136.0" x2="1040" y2="136.0" stroke="#D9E1EA" stroke-width="1"/>
+<text x="75" y="141.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="end">60</text>
+<text x="35" y="145" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="start">%</text>
+<rect x="180.00" y="345.66" width="170.00" height="9.34" fill="#7C889C"/>
+<text x="265" y="332.6645753499527" font-family="DejaVu Sans, Arial, sans-serif" font-size="23" font-weight="bold" fill="#7C889C" text-anchor="middle">2.56%</text>
+<text x="265" y="386" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2939" text-anchor="middle">No RAG</text>
+<rect x="465.00" y="202.18" width="170.00" height="152.82" fill="#4269B0"/>
+<text x="550" y="189.17912842274205" font-family="DejaVu Sans, Arial, sans-serif" font-size="23" font-weight="bold" fill="#4269B0" text-anchor="middle">41.87%</text>
+<text x="550" y="386" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2939" text-anchor="middle">Raw-history RAG</text>
+<rect x="750.00" y="151.52" width="170.00" height="203.48" fill="#16826B"/>
+<text x="835" y="138.5216888313952" font-family="DejaVu Sans, Arial, sans-serif" font-size="23" font-weight="bold" fill="#16826B" text-anchor="middle">55.75%</text>
+<text x="835" y="386" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="bold" fill="#1D2939" text-anchor="middle">Managed-memory RAG</text>
+<text x="40" y="430" font-family="DejaVu Sans, Arial, sans-serif" font-size="22" font-weight="bold" fill="#16826B" text-anchor="start">Managed − raw: +13.88 pp</text>
+<text x="440" y="430" font-family="DejaVu Sans, Arial, sans-serif" font-size="17" font-weight="normal" fill="#526173" text-anchor="start">95% family-cluster interval: +10.15 to +17.32 pp</text>
+<line x1="40" y1="453" x2="1060" y2="453" stroke="#BFCBD8" stroke-width="1"/>
+<text x="40" y="486" font-family="DejaVu Sans, Arial, sans-serif" font-size="20" font-weight="bold" fill="#1D2939" text-anchor="start">Question-micro accuracy by fixed category ID</text>
+<rect x="797.00" y="473.00" width="14.00" height="14.00" fill="#4269B0"/>
+<text x="819" y="486" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="start">Raw RAG</text>
+<rect x="925.00" y="473.00" width="14.00" height="14.00" fill="#16826B"/>
+<text x="947" y="486" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="start">Managed</text>
+<line x1="90" y1="734.0" x2="1040" y2="734.0" stroke="#D9E1EA" stroke-width="1"/>
+<text x="75" y="739.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="end">0</text>
+<line x1="90" y1="677.0" x2="1040" y2="677.0" stroke="#D9E1EA" stroke-width="1"/>
+<text x="75" y="682.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="end">20</text>
+<line x1="90" y1="620.0" x2="1040" y2="620.0" stroke="#D9E1EA" stroke-width="1"/>
+<text x="75" y="625.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="end">40</text>
+<line x1="90" y1="563.0" x2="1040" y2="563.0" stroke="#D9E1EA" stroke-width="1"/>
+<text x="75" y="568.0" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="end">60</text>
+<rect x="146.00" y="690.54" width="54.00" height="43.46" fill="#4269B0"/>
+<text x="173" y="681.5425531914893" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="bold" fill="#4269B0" text-anchor="middle">15.25%</text>
+<rect x="214.00" y="645.06" width="54.00" height="88.94" fill="#16826B"/>
+<text x="241" y="636.063829787234" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="bold" fill="#16826B" text-anchor="middle">31.21%</text>
+<text x="207" y="763" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" font-weight="bold" fill="#1D2939" text-anchor="middle">Category 1</text>
+<text x="207" y="786" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="middle">n = 282</text>
+<rect x="376.00" y="610.59" width="54.00" height="123.41" fill="#4269B0"/>
+<text x="403" y="601.588785046729" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="bold" fill="#4269B0" text-anchor="middle">43.30%</text>
+<rect x="444.00" y="576.85" width="54.00" height="157.15" fill="#16826B"/>
+<text x="471" y="567.8504672897196" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="bold" fill="#16826B" text-anchor="middle">55.14%</text>
+<text x="437" y="763" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" font-weight="bold" fill="#1D2939" text-anchor="middle">Category 2</text>
+<text x="437" y="786" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="middle">n = 321</text>
+<rect x="606.00" y="680.56" width="54.00" height="53.44" fill="#4269B0"/>
+<text x="633" y="671.5625" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="bold" fill="#4269B0" text-anchor="middle">18.75%</text>
+<rect x="674.00" y="668.69" width="54.00" height="65.31" fill="#16826B"/>
+<text x="701" y="659.6875" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="bold" fill="#16826B" text-anchor="middle">22.92%</text>
+<text x="667" y="763" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" font-weight="bold" fill="#1D2939" text-anchor="middle">Category 3</text>
+<text x="667" y="786" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="middle">n = 96</text>
+<rect x="836.00" y="586.25" width="54.00" height="147.75" fill="#4269B0"/>
+<text x="863" y="577.2473246135553" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="bold" fill="#4269B0" text-anchor="middle">51.84%</text>
+<rect x="904.00" y="542.87" width="54.00" height="191.13" fill="#16826B"/>
+<text x="931" y="533.8703923900118" font-family="DejaVu Sans, Arial, sans-serif" font-size="15" font-weight="bold" fill="#16826B" text-anchor="middle">67.06%</text>
+<text x="897" y="763" font-family="DejaVu Sans, Arial, sans-serif" font-size="16" font-weight="bold" fill="#1D2939" text-anchor="middle">Category 4</text>
+<text x="897" y="786" font-family="DejaVu Sans, Arial, sans-serif" font-size="14" font-weight="normal" fill="#526173" text-anchor="middle">n = 841</text>
+<text x="40" y="827" font-family="DejaVu Sans, Arial, sans-serif" font-size="13" font-weight="normal" fill="#526173" text-anchor="start">Category subsets belong to the same cohort. Adapted automatic scores; not official benchmark or clinical outcomes.</text>
+</svg>

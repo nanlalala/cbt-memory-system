@@ -1,0 +1,1116 @@
+"""One-shot orchestration of retained non-MAB evaluations in genuine Colab.
+
+``run(globals(), repo=..., expected_commit=..., sources=...)`` starts a new,
+parent-owned relay and a sequential background controller. The original entry
+does not read Secrets. The separate ``run_recovered`` entry validates a sealed
+source restoration and lazily reconstructs transports from the existing Colab
+Secret, held only in parent memory after all source/budget checks. Neither entry
+restores the paused legacy relay, creates a runtime, or retries an invocation.
+Each scientific phase runs in a credential-free interpreter. Re-running the
+cell reports the existing nonce and trace; it never creates another batch.
+
+The caller must first supply the clean published checkout and original frozen
+source folders. LongMemEval is inspected without model calls in this entry.
+Its separate, previously pending paid budget is never implied by the CBT run.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from hashlib import sha256
+import importlib.util
+import json
+import os
+from pathlib import Path, PurePosixPath
+import re
+import runpy
+import stat
+import subprocess
+import sys
+import threading
+import time
+from urllib.error import HTTPError
+import uuid
+import zipfile
+
+VERSION = "hosted-non-mab-continuation-v1"
+REMOTE = "https://github.com/nanlalala/cbt-memory-system.git"
+DEFAULT_ROOT = "/content/capstone-non-mab-continuation-20261113-v1"
+PROVIDER = "https://tokendance.space/gateway/v1"
+ANSWER_IDENTITY = {"provider": PROVIDER, "model": "deepseek-v4.1-flash",
+                   "returned_model": "deepseek-v4-1-flash-260910", "model_family": "deepseek"}
+JUDGE_IDENTITY = {"provider": PROVIDER, "model": "qwen3.5-plus",
+                  "returned_model": "qwen3.5-plus-2026-04-20", "model_family": "qwen"}
+CBT_ORIGINAL_LIMITS = {ANSWER_IDENTITY["model"]: 4805, JUDGE_IDENTITY["model"]: 5032}
+PROFESSIONAL_QUALITY_REPAIR_CAP = 24
+LOCOMO_ORIGINAL_ANSWER_LIMIT = 4958
+LOCOMO_NEW_ANSWER_CAP = 1638
+LOCOMO_JUDGE_CAP = 5082
+LME_PAID_CAPS = {ANSWER_IDENTITY["model"]: 39232, JUDGE_IDENTITY["model"]: 1650}
+STATE_NAME = "_capstone_non_mab_continuation_v1"
+AUTHORIZED_ATTEMPT_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v4"
+RESTORED_CONNECTION_VERSION = "hosted-non-mab-restored-connection-v3"
+DEFAULT_RECOVERED_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v3"
+PREVIOUS_RECOVERED_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v1"
+PREVIOUS_PREFLIGHT_NONCE = "4ef01c9e-9cf4-4c41-8f47-be9985b526bf"
+PREVIOUS_PREFLIGHT_COMMIT = "431e7fd7c451c7b1d792c98b67a3aa0a53e2c624"
+SECOND_RECOVERED_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v2"
+SECOND_PREFLIGHT_NONCE = "07d5a09f-4e48-47e0-b3ea-4800e5d17fa2"
+SECOND_PREFLIGHT_COMMIT = "f1d100d92cda15ebf1a1ffef3b7ac861e3632d2d"
+LEGACY_LOCOMO_PROTOCOL_SHA256 = "7441f21c6ad42572b23cf370bd6576ff3619a2b5bc0a3d3c95655e2d6783c929"
+RESTORE_ARCHIVE_SHA256 = "f9c4159abc0d7853c1640cfbb7221139a79ababc012dbb960dfc3a227c65a430"
+RESTORE_FILE_COUNT = 11633
+RESTORE_UNCOMPRESSED_BYTES = 711889502
+RESTORE_ROOTS = {
+    "content/cbt-v4-isolated-cbt-full/professional7",
+    "content/cbt-v4-isolated-cbt-full/professional7_memory",
+    "content/cbt-v4-isolated-cbt-full/professional7_quality",
+    "content/cbt-v4-isolated-cbt-full/cactus600",
+    "content/cbt-v4-isolated-cbt-full/cactus600_memory",
+    "content/cbt-v4-repair-general/locomo1540",
+}
+
+
+def _utc():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _read(path):
+    path = Path(path)
+    if path.is_symlink():
+        raise ValueError("symlinked orchestration artifact")
+    return json.loads(path.read_text())
+
+
+def _write(path, value):
+    path = Path(path)
+    temp = path.with_name(path.name + ".tmp")
+    with temp.open("w", encoding="utf-8") as stream:
+        json.dump(value, stream, ensure_ascii=False, allow_nan=False, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    temp.replace(path)
+
+
+def _hosted():
+    if not (os.environ.get("COLAB_RELEASE_TAG") and Path("/content").is_dir()
+            and importlib.util.find_spec("google.colab") is not None):
+        raise RuntimeError("genuine hosted Colab required; zero model calls")
+
+
+def _content_path(value, *, exists=False):
+    path = Path(value)
+    if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)):
+        raise ValueError("absolute non-symlinked /content path required")
+    path = path.resolve()
+    if not path.is_relative_to("/content") or path == Path("/content"):
+        raise ValueError("named /content path required")
+    if exists and not path.is_dir():
+        raise FileNotFoundError("retained hosted source folder is unavailable; zero model calls")
+    return path
+
+
+def _checkout(repo, expected_commit):
+    if not isinstance(expected_commit, str) or re.fullmatch("[0-9a-f]{40}", expected_commit) is None:
+        raise ValueError("explicit published forty-character commit required")
+    repo = _content_path(repo, exists=True)
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(repo), *args], text=True).strip()
+    if (git("rev-parse", "HEAD") != expected_commit or git("status", "--porcelain")
+            or git("remote", "get-url", "origin") != REMOTE):
+        raise ValueError("published checkout must match the pinned clean revision")
+    for relative in ("evaluation/architecture-rerun/hosted_relay.py",
+                     "evaluation/architecture-rerun/non_mab_worker.py",
+                     "evaluation/architecture-rerun/formal_continuation.py",
+                     "evaluation/cbt-memory-effect/architecture_retest/continuation.py"):
+        if not (repo / relative).is_file():
+            raise ValueError("published continuation code is incomplete")
+    return repo
+
+
+def _source_paths(sources):
+    if type(sources) is not dict or set(sources) != {"professional7", "cactus600", "locomo1540", "longmemeval500"}:
+        raise ValueError("explicit complete non-MAB source map required")
+    result = {}
+    for cohort in ("professional7", "cactus600"):
+        value = sources[cohort]
+        if type(value) is not dict or set(value) != {"reader", "memory", "old_quality"}:
+            raise ValueError("CBT reader, memory and original quality paths required")
+        result[cohort] = {name: str(_content_path(path, exists=(name != "old_quality"))) for name, path in value.items()}
+    value = sources["locomo1540"]
+    if type(value) is not dict or set(value) != {"reader", "old_quality"}:
+        raise ValueError("original LoCoMo reader and quality path required")
+    # Its interrupted judge directory may not yet exist. It remains named in
+    # the frozen source map so an undisclosed prior paid run is not ignored.
+    result["locomo1540"] = {name: str(_content_path(path, exists=(name == "reader")))
+                            for name, path in value.items()}
+    value = sources["longmemeval500"]
+    if value is None:
+        result["longmemeval500"] = None
+    elif type(value) is dict and set(value) == {"reader"}:
+        result["longmemeval500"] = {"reader": str(_content_path(value["reader"], exists=True))}
+    else:
+        raise ValueError("LongMemEval must name its frozen source folder or be explicitly unavailable")
+    return result
+
+
+def _file_hash(path):
+    checksum = sha256()
+    with Path(path).open("rb") as stream:
+        for block in iter(lambda: stream.read(1_048_576), b""):
+            checksum.update(block)
+    return checksum.hexdigest()
+
+
+def _restore_member(name):
+    path = PurePosixPath(name)
+    if (not name or "\\" in name or path.is_absolute() or ".." in path.parts
+            or "." in path.parts or str(path) != name or len(path.parts) < 4
+            or "/".join(path.parts[:3]) not in RESTORE_ROOTS
+            or path.suffix not in {".json", ".jsonl"}):
+        raise ValueError("restoration member is outside the exact frozen non-MAB roots")
+    return path
+
+
+def _regular_file(path):
+    path = Path(path)
+    if not path.is_file() or any(p.is_symlink() for p in (path, *path.parents)):
+        raise ValueError("regular non-symlinked restoration file required")
+    return path
+
+
+def _restoration_provenance(archive_path, receipt_path, sources, *, restore_base=Path("/")):
+    """Pure, zero-call validation of restored bytes; production always uses /.
+
+    The explicit base permits tiny invented offline fixtures. It does not grant
+    hosted execution or construct credentials. Only run_recovered admits work.
+    """
+    archive_path, receipt_path = _regular_file(archive_path), _regular_file(receipt_path)
+    if _file_hash(archive_path) != RESTORE_ARCHIVE_SHA256:
+        raise ValueError("original sealed non-MAB restoration archive differs")
+    receipt = _read(receipt_path)
+    if (receipt.get("version") != "capstone-original-non-mab-source-restore-v1"
+            or receipt.get("status") != "restored_original_bytes_zero_model_calls"
+            or receipt.get("archive_sha256") != RESTORE_ARCHIVE_SHA256
+            or receipt.get("model_calls") != 0 or receipt.get("mab_accessed") is not False
+            or receipt.get("files") != RESTORE_FILE_COUNT
+            or type(receipt.get("moved_roots")) is not list
+            or len(receipt["moved_roots"]) != len(RESTORE_ROOTS)
+            or set(receipt["moved_roots"]) != RESTORE_ROOTS):
+        raise ValueError("completed original-source restoration receipt required")
+    base = Path(restore_base).resolve()
+    expected_roots = {base.joinpath(*PurePosixPath(root).parts) for root in RESTORE_ROOTS}
+    source_bindings = {
+        ("professional7", "reader"): "content/cbt-v4-isolated-cbt-full/professional7",
+        ("professional7", "memory"): "content/cbt-v4-isolated-cbt-full/professional7_memory",
+        ("professional7", "old_quality"): "content/cbt-v4-isolated-cbt-full/professional7_quality",
+        ("cactus600", "reader"): "content/cbt-v4-isolated-cbt-full/cactus600",
+        ("cactus600", "memory"): "content/cbt-v4-isolated-cbt-full/cactus600_memory",
+        ("cactus600", "old_quality"): "content/cbt-v4-isolated-cbt-full/cactus600_quality",
+        ("locomo1540", "reader"): "content/cbt-v4-repair-general/locomo1540",
+        ("locomo1540", "old_quality"): "content/cbt-v4-repair-general/locomo1540-judge",
+    }
+    if any(Path(sources[cohort][kind]).resolve() != base.joinpath(*PurePosixPath(relative).parts)
+           for (cohort, kind), relative in source_bindings.items()):
+        raise ValueError("restored source mapping differs from the original six roots")
+    with zipfile.ZipFile(archive_path) as archive:
+        infos = archive.infolist()
+        names = [info.filename for info in infos]
+        if len(names) != len(set(names)) or "restore_manifest.json" not in names:
+            raise ValueError("restoration ZIP has duplicate members or no manifest")
+        raw_manifest = archive.read("restore_manifest.json")
+        manifest = json.loads(raw_manifest)
+        if (manifest.get("version") != "capstone-original-non-mab-source-restore-v1"
+                or manifest.get("source_only") is not True or manifest.get("model_calls") != 0
+                or manifest.get("mab_accessed") is not False or manifest.get("credentials_included") is not False
+                or manifest.get("restore_base") != "/content"):
+            raise ValueError("restoration manifest is not the sealed source-only import")
+        entries = manifest["entries"]
+        by_name = {entry["path"]: entry for entry in entries}
+        if (len(entries) != RESTORE_FILE_COUNT or len(by_name) != len(entries)
+                or sum(entry["bytes"] for entry in entries) != RESTORE_UNCOMPRESSED_BYTES
+                or set(names) != set(by_name) | {"restore_manifest.json"}):
+            raise ValueError("complete original restoration roster differs")
+        found = set()
+        for info in infos:
+            if info.filename == "restore_manifest.json":
+                continue
+            member = _restore_member(info.filename)
+            entry = by_name[info.filename]
+            if (info.is_dir() or stat.S_ISLNK(info.external_attr >> 16)
+                    or type(entry["bytes"]) is not int or entry["bytes"] < 0
+                    or info.file_size != entry["bytes"]):
+                raise ValueError("restoration member type or length differs")
+            actual = _regular_file(base.joinpath(*member.parts))
+            if actual.stat().st_size != entry["bytes"] or _file_hash(actual) != entry["sha256"]:
+                raise ValueError("restored source bytes differ from their original frozen bytes")
+            found.add(actual)
+    actual_files = set()
+    for root in expected_roots:
+        if root.is_symlink() or not root.is_dir():
+            raise ValueError("a restored source root is missing or symlinked")
+        for path in root.rglob("*"):
+            if path.is_symlink():
+                raise ValueError("symlinked restored source tree")
+            if path.is_file() and path.name != ".run.lock":
+                actual_files.add(path)
+    if actual_files != found:
+        raise ValueError("restored tree contains an omitted or extra source artifact")
+    return {"version": RESTORED_CONNECTION_VERSION,
+        "origin": "reconstructed_from_existing_colab_secret", "secret_name": "Capstone",
+        "credential_location": "hosted_Colab_parent_memory_only",
+        "source_restoration_receipt": str(receipt_path.resolve()),
+        "source_restoration_receipt_sha256": _file_hash(receipt_path),
+        "source_restore_archive": str(archive_path.resolve()),
+        "source_restore_archive_sha256": RESTORE_ARCHIVE_SHA256,
+        "source_manifest_sha256": sha256(raw_manifest).hexdigest(),
+        "restored_original_files_verified": len(found),
+        "restored_original_bytes_verified": RESTORE_UNCOMPRESSED_BYTES,
+        "verification_model_calls": 0, "mab_accessed": False, "verified_at_utc": _utc()}
+
+
+def _load_recovered_transports(repo):
+    """Called only inside the hosted parent after source preparation/budget.
+
+    The existing notebook Secret is read once, never put in a child environment,
+    notebook output or manifest. Its value is held only by the parent transport.
+    """
+    _hosted()
+    api = runpy.run_path(str(Path(repo) / "evaluation/cbt-memory-effect/architecture_retest/transport.py"))
+    from google.colab import userdata
+    key = userdata.get("Capstone")
+    try:
+        return {identity["model"]: api["HostedGatewayTransport"](identity, key)
+                for identity in (ANSWER_IDENTITY, JUDGE_IDENTITY)}
+    finally:
+        del key
+
+
+def _worker_is_running(pid, manifest_path):
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("recorded source worker PID required")
+    command = Path("/proc") / str(pid) / "cmdline"
+    try:
+        args = command.read_bytes().split(b"\0")
+    except FileNotFoundError:
+        return False
+    return str(manifest_path).encode() in args
+
+
+def _zero_call_preflight_proof(previous_root, namespace, *, expected_nonce, sources, restoration):
+    """Allow one fixed successor to the observed failed, entirely zero-call preflight.
+
+    No file in the previous invocation is written or removed. Summary counters
+    alone are insufficient: source manifests, physical relay records and every
+    new reader/assessor journal must all prove that no send was admitted.
+    """
+    previous = Path(previous_root)
+    second = expected_nonce == SECOND_PREFLIGHT_NONCE
+    expected_commit = SECOND_PREFLIGHT_COMMIT if second else PREVIOUS_PREFLIGHT_COMMIT
+    expected_version = "hosted-non-mab-restored-connection-v2" if second else "hosted-non-mab-restored-connection-v1"
+    if expected_nonce not in {PREVIOUS_PREFLIGHT_NONCE, SECOND_PREFLIGHT_NONCE}:
+        raise ValueError("explicit observed zero-call preflight nonce required")
+    entry, saved = _read(previous / "entry.json"), _read(previous / "status.json")
+    if (entry.get("version") != expected_version
+            or entry.get("nonce") != expected_nonce or saved.get("nonce") != expected_nonce
+            or entry.get("selected_commit") != expected_commit
+            or entry.get("sources") != sources or entry.get("mab_accessed") is not False
+            or entry.get("allow_longmemeval_paid") is not False
+            or entry.get("connection_origin") != "reconstructed_from_existing_colab_secret"
+            or saved.get("phase") != "preflight_or_budget" or saved.get("status") != "stopped_without_retry"
+            or Path(saved.get("worker_root", "")) != previous / "workers/locomo1540-source"):
+        raise ValueError("the fixed prior source-only failure identity differs")
+    stable = ("source_restore_archive_sha256", "source_manifest_sha256", "source_restoration_receipt",
+              "source_restoration_receipt_sha256", "restored_original_files_verified", "restored_original_bytes_verified")
+    if any(entry.get("source_restoration", {}).get(key) != restoration.get(key) for key in stable):
+        raise ValueError("successor must retain the exact same restored originals")
+    old_state = namespace.get(STATE_NAME)
+    if isinstance(old_state, dict) and old_state.get("nonce") == expected_nonce:
+        thread, process = old_state.get("thread"), old_state.get("process")
+        if ((isinstance(thread, threading.Thread) and thread.is_alive())
+                or (process is not None and callable(getattr(process, "poll", None)) and process.poll() is None)):
+            raise RuntimeError("previous preflight controller or worker is still active")
+    if (previous / "relay/api.sock").exists() or (previous / "relay/api.sock").is_symlink():
+        raise RuntimeError("previous relay is still present; no successor may start")
+    expected = {"professional7-source": ("cbt-source", "professional7"),
+                "cactus600-source": ("cbt-source", "cactus600"),
+                "locomo1540-source": ("locomo-source", "locomo1540")}
+    manifests = list((previous / "workers").rglob("execution_manifest.json"))
+    if {path.parent.name for path in manifests} != set(expected) or len(manifests) != len(expected):
+        raise ValueError("previous invocation must contain exactly the three observed source phases")
+    controls = {"entry.json", "status.json", "relay/events.jsonl"}
+    jobs = {}
+    for path in manifests:
+        phase = path.parent.name
+        action, cohort = expected[phase]
+        manifest = _read(path)
+        limits = manifest.get("relay_limits")
+        if (path.parent.parent != previous / "workers" or manifest.get("phase") != phase
+                or manifest.get("action") != action or manifest.get("cohort") != cohort
+                or manifest.get("nonce") != expected_nonce
+                or manifest.get("job_id") != expected_nonce + ":" + phase
+                or manifest.get("selected_commit") != expected_commit
+                or type(limits) is not dict or set(limits) != {ANSWER_IDENTITY["model"], JUDGE_IDENTITY["model"]}
+                or any(type(cap) is not int or cap != 0 for cap in limits.values())
+                or type(manifest.get("answer_max_new_calls")) is not int or manifest["answer_max_new_calls"] != 0
+                or type(manifest.get("judge_max_new_calls")) is not int or manifest["judge_max_new_calls"] != 0):
+            raise ValueError("a prior worker was not the exact zero-allowance source phase")
+        process_path = path.parent / "process.json"
+        process = _read(process_path)
+        if process.get("manifest_sha256") != _file_hash(path) or _worker_is_running(process.get("pid"), path):
+            raise RuntimeError("prior worker identity differs or remains active")
+        controls.update((str(path.relative_to(previous)), str(process_path.relative_to(previous))))
+        failed_phase = phase == "locomo1540-source" and not second
+        result_path = path.parent / ("error.json" if failed_phase else "complete.json")
+        result = _read(result_path)
+        if failed_phase:
+            if result.get("error_type") != "ValueError" or (path.parent / "complete.json").exists():
+                raise ValueError("observed LoCoMo source-validation failure differs")
+        elif phase == "locomo1540-source":
+            if (result.get("maximum_attempts") != 1638 or result.get("planned_answers") != 4620
+                    or result.get("inherited_answer_rows") != 2978
+                    or result.get("inherited_preparation_receipts") != 337
+                    or result.get("maximum_independent_judge_calls") != 5082
+                    or (path.parent / "error.json").exists()):
+                raise ValueError("the complete original LoCoMo source preparation differs")
+        elif result.get("maximum_new_generation_requests") != {"professional7": 8, "cactus600": 2111}[cohort]:
+            raise ValueError("original source-only roster/budget differs")
+        controls.add(str(result_path.relative_to(previous)))
+        jobs[manifest["job_id"]] = limits
+    relay_rows = _rows(previous / "relay/events.jsonl")
+    if (len(relay_rows) != len(jobs) or len({r.get("job_id") for r in relay_rows}) != len(jobs)
+            or any(row.get("event") != "register" or row.get("fixture_only") is not False
+                   or type(row.get("limits")) is not dict
+                   or any(type(cap) is not int or cap != 0 for cap in row["limits"].values())
+                   or row.get("limits") != jobs.get(row.get("job_id")) for row in relay_rows)):
+        raise ValueError("prior relay contains a nonzero, duplicate or possibly sent request")
+    snapshot = saved.get("relay", {}).get("jobs", {})
+    if (set(snapshot) != set(jobs) or any(set(snapshot[job]) != set(limits)
+            or any(type(snapshot[job][model]) is not dict or set(snapshot[job][model]) != {"maximum", "admitted"}
+                   or any(type(count) is not int or count != 0 for count in snapshot[job][model].values())
+                   for model in limits)
+            for job, limits in jobs.items())):
+        raise ValueError("prior relay state does not confirm zero admission")
+    if second:
+        journals = [previous / "studies" / cohort / kind / name
+                    for cohort in ("professional7", "cactus600") for kind in ("reader", "memory")
+                    for name in ("intents.jsonl", "outcomes.jsonl")]
+    else:
+        journals = list((previous / "studies").rglob("intents.jsonl")) + list((previous / "studies").rglob("outcomes.jsonl"))
+    if len(journals) != 8:
+        raise ValueError("the two completed CBT source preparations must retain all eight empty journals")
+    for journal in journals:
+        if _regular_file(journal).stat().st_size != 0:
+            raise ValueError("previous continuation has a new reader/assessor attempt")
+        controls.add(str(journal.relative_to(previous)))
+    absent_files, inherited_hashes, predecessor = [], {}, None
+    if second:
+        preparation_path = previous / "source_preparation.json"
+        preparation = _read(preparation_path)
+        if set(preparation) != {"professional7", "cactus600", "locomo1540", "longmemeval500"}:
+            raise ValueError("complete prior source-preparation summary required")
+        for cohort in ("professional7", "cactus600", "locomo1540"):
+            if preparation[cohort] != _read(previous / "workers" / (cohort + "-source") / "complete.json"):
+                raise ValueError("source-preparation summary differs from its worker results")
+        if (preparation["longmemeval500"].get("model_calls") != 0
+                or preparation["longmemeval500"].get("paid_execution_authorized") is not False):
+            raise ValueError("prior LongMemEval must remain source-only")
+        controls.add("source_preparation.json")
+        for name in ("intents.jsonl", "outcomes.jsonl"):
+            new_journal = previous / "studies/locomo1540" / name
+            if new_journal.exists():
+                if _regular_file(new_journal).stat().st_size:
+                    raise ValueError("previous LoCoMo continuation has a new attempt")
+                controls.add(str(new_journal.relative_to(previous)))
+            else:
+                absent_files.append(str(new_journal.relative_to(previous)))
+            inherited = previous / "studies/locomo1540/inherited" / name
+            original = Path(sources["locomo1540"]["reader"]) / name
+            checksum = _file_hash(_regular_file(inherited))
+            if checksum != _file_hash(_regular_file(original)):
+                raise ValueError("inherited historical LoCoMo ledger differs from its frozen original")
+            inherited_hashes[str(inherited.relative_to(previous))] = checksum
+        predecessor = _zero_call_preflight_proof(PREVIOUS_RECOVERED_ROOT, namespace,
+            expected_nonce=PREVIOUS_PREFLIGHT_NONCE, sources=sources, restoration=restoration)
+        recorded = entry.get("preflight_predecessor", {})
+        for field in ("previous_run_root", "previous_nonce", "previous_selected_commit", "previous_files_sha256",
+                      "source_restoration_receipt_sha256", "registered_source_jobs", "provider_intents", "provider_outcomes"):
+            if recorded.get(field) != predecessor.get(field):
+                raise ValueError("the prior zero-call predecessor proof chain changed")
+    diagnostics = previous / "provider_diagnostics.jsonl"
+    if diagnostics.exists():
+        if _regular_file(diagnostics).stat().st_size:
+            raise ValueError("previous preflight has provider diagnostics; inspect before any successor")
+        controls.add(str(diagnostics.relative_to(previous)))
+    result = {"version": "zero-paid-preflight-successor-v1", "previous_run_root": str(previous),
+            "previous_nonce": expected_nonce, "previous_selected_commit": expected_commit,
+            "previous_files_sha256": {name: _file_hash(_regular_file(previous / name)) for name in sorted(controls)},
+            "source_restoration_receipt_sha256": restoration["source_restoration_receipt_sha256"],
+            "registered_source_jobs": len(jobs), "provider_intents": 0, "provider_outcomes": 0,
+            "old_root_preserved": True, "verified_at_utc": _utc()}
+    if second:
+        result.update(absent_files=absent_files, inherited_original_journal_sha256=inherited_hashes,
+                      predecessor=predecessor)
+    return result
+
+
+def _assert_zero_preflight_current(proof):
+    previous = Path(proof["previous_run_root"])
+    if (previous / "relay/api.sock").exists() or (previous / "relay/api.sock").is_symlink():
+        raise RuntimeError("previous relay reappeared after zero-call proof")
+    for name, expected in proof["previous_files_sha256"].items():
+        relative = PurePosixPath(name)
+        if (relative.is_absolute() or ".." in relative.parts or str(relative) != name
+                or _file_hash(_regular_file(previous / name)) != expected):
+            raise ValueError("previous zero-call preflight evidence changed")
+    for name in proof.get("absent_files", []):
+        relative = PurePosixPath(name)
+        if (relative.is_absolute() or ".." in relative.parts or str(relative) != name
+                or (previous / name).exists() or (previous / name).is_symlink()):
+            raise ValueError("a previously absent continuation journal appeared")
+    if proof.get("predecessor") is not None:
+        _assert_zero_preflight_current(proof["predecessor"])
+
+
+class _RecoveredConnection:
+    def __init__(self, repo, provenance, prior_preflight=None, authorized_attempt=None):
+        if (provenance.get("version") != RESTORED_CONNECTION_VERSION
+                or provenance.get("origin") != "reconstructed_from_existing_colab_secret"
+                or provenance.get("source_restore_archive_sha256") != RESTORE_ARCHIVE_SHA256
+                or provenance.get("restored_original_files_verified") != RESTORE_FILE_COUNT):
+            raise ValueError("explicit verified restored-connection provenance required")
+        self.repo, self.provenance = Path(repo), dict(provenance)
+        self.prior_preflight = json.loads(json.dumps(prior_preflight)) if prior_preflight is not None else None
+        self.authorized_attempt = authorized_attempt
+        self._lock, self._loaded = threading.Lock(), None
+        self._load_failed = False
+        self.delegates = {identity["model"]: _RecoveredDelegate(self, identity)
+                          for identity in (ANSWER_IDENTITY, JUDGE_IDENTITY)}
+
+    def assert_current(self):
+        if self._load_failed:
+            raise RuntimeError("restored connection initialization failed; no automatic credential retry")
+        marker = _regular_file(self.provenance["source_restoration_receipt"])
+        if _file_hash(marker) != self.provenance["source_restoration_receipt_sha256"]:
+            raise ValueError("restoration receipt changed before provider admission")
+        if (Path(DEFAULT_ROOT) / "entry.json").exists():
+            raise RuntimeError("original continuation invocation exists; reconcile before restored continuation")
+        if self.prior_preflight is not None:
+            _assert_zero_preflight_current(self.prior_preflight)
+        elif any((Path(root) / "entry.json").exists() for root in (PREVIOUS_RECOVERED_ROOT, SECOND_RECOVERED_ROOT)):
+            raise RuntimeError("previous recovered invocation exists without a validated zero-call proof")
+        if self.authorized_attempt is not None:
+            self.authorized_attempt["api"]["assert_current"](self.authorized_attempt["proof"])
+
+    def send(self, identity, payload):
+        self.assert_current()
+        with self._lock:
+            # Another first send may have failed while this thread waited.
+            # Recheck under the shared lock before ever reading the Secret.
+            self.assert_current()
+            if self._loaded is None:
+                if self.authorized_attempt is not None:
+                    raise RuntimeError("existing initialized parent transport unavailable; no credential reload")
+                try:
+                    loaded = _load_recovered_transports(self.repo)
+                    if (set(loaded) != set(self.delegates) or any(
+                            not callable(loaded[item["model"]]) or loaded[item["model"]].identity != item
+                            for item in (ANSWER_IDENTITY, JUDGE_IDENTITY))):
+                        raise ValueError("reconstructed gateway identities differ")
+                    self._loaded = loaded
+                except Exception:
+                    self._load_failed = True
+                    raise RuntimeError("restored connection initialization failed; credential values withheld") from None
+        # A frontend Secret permission wait may have yielded to other work.
+        self.assert_current()
+        return self._loaded[identity["model"]](payload)
+
+
+class _RecoveredDelegate:
+    def __init__(self, connection, identity):
+        self.connection, self.identity = connection, dict(identity)
+
+    def __call__(self, payload):
+        return self.connection.send(self.identity, payload)
+
+
+def _parents(namespace, recovered_connection=None):
+    delegates = {}
+    if recovered_connection is None:
+        for name, identity in (("v5_answer", ANSWER_IDENTITY), ("v5_judge", JUDGE_IDENTITY)):
+            parent = namespace.get(name)
+            delegate = getattr(parent, "delegate", None)
+            if not callable(delegate) or getattr(delegate, "identity", None) != identity:
+                raise RuntimeError("original parent-owned delegate unavailable; no Secret read; zero model calls")
+            delegates[identity["model"]] = delegate
+    else:
+        if not isinstance(recovered_connection, _RecoveredConnection):
+            raise ValueError("verified explicit restored connection required")
+        recovered_connection.assert_current()
+        delegates = recovered_connection.delegates
+    for name in ("v6_cbt_process", "v5_cbt_process", "v5_general_process"):
+        process = namespace.get(name)
+        if process is not None and callable(getattr(process, "poll", None)) and process.poll() is None:
+            raise RuntimeError("an older study process is active; zero new model calls")
+    def active(value):
+        if isinstance(value, threading.Thread):
+            return value.is_alive()
+        if isinstance(value, dict):
+            return any(isinstance(item, threading.Thread) and item.is_alive() for item in value.values())
+        if isinstance(value, (list, tuple, set)):
+            return any(isinstance(item, threading.Thread) and item.is_alive() for item in value)
+        return False
+    if (any(active(value) for name, value in namespace.items()
+            if name.startswith(("v5_", "v6_", "_v5_", "_v6_")) and ("thread" in name or "watcher" in name))
+            or any(t.is_alive() and t.name.startswith(("cbt-v5-", "cbt-v6-")) for t in threading.enumerate())):
+        raise RuntimeError("an older study thread or grading watcher is active; zero new model calls")
+    return delegates
+
+
+def _prior_recovery(sources):
+    # The older top cell may have been clicked after the last Drive read. Its
+    # independently authorized 24 calls cannot be silently spent twice.
+    legacy = Path("/content/capstone-professional7-regrade-20261113-v1/entry.json")
+    quality = Path(sources["professional7"]["reader"]).parent / "professional7_quality_v2"
+    if legacy.exists() or _rows(quality / "intents.jsonl"):
+        raise RuntimeError("earlier professional quality-v2 recovery exists; reconcile it before spending the repair allowance")
+
+
+def _rows(path):
+    path = Path(path)
+    if not path.exists():
+        return []
+    if path.is_symlink():
+        raise ValueError("symlinked request journal")
+    raw = path.read_bytes()
+    if raw and not raw.endswith(b"\n"):
+        raise ValueError("incomplete request journal; reconciliation required")
+    return [json.loads(line) for line in raw.split(b"\n") if line]
+
+
+def _digest(value):
+    return sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
+                             separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+def _paid_census(folder, identity, *, optional=False, legacy_formal=False):
+    folder = Path(folder)
+    if not folder.exists() and optional:
+        return {"folder": str(folder), "intents": 0, "absent": True}
+    protocol = _read(folder / "protocol.json")
+    if (protocol.get("provider") != identity or protocol.get("protocol_sha256") !=
+            _digest({key: value for key, value in protocol.items() if key != "protocol_sha256"})):
+        raise ValueError("retained journal provider/provenance differs")
+    if legacy_formal:
+        if (identity != ANSWER_IDENTITY or "fixture_only" in protocol
+                or protocol.get("version") != "formal-new-readout-full-v1"
+                or protocol.get("protocol_sha256") != LEGACY_LOCOMO_PROTOCOL_SHA256
+                or protocol.get("dataset_key") != "locomo10" or protocol.get("case_count") != 1540
+                or protocol.get("planned_answers") != 4620 or protocol.get("preparation_chunks") != 169
+                or protocol.get("maximum_attempts") != LOCOMO_ORIGINAL_ANSWER_LIMIT):
+            raise ValueError("only the exact frozen legacy formal schema may omit its fixture field")
+    elif protocol.get("fixture_only") is not False:
+        raise ValueError("retained journal provider/provenance differs")
+    rows = _rows(folder / "intents.jsonl")
+    keys = [r["key"] for r in rows]
+    if len(set(keys)) != len(keys) or any(r.get("protocol_sha256") != protocol["protocol_sha256"] for r in rows):
+        raise ValueError("duplicate or foreign retained paid intent")
+    if legacy_formal:
+        if (len(rows) != 3319 or {purpose: sum(row.get("purpose") == purpose for row in rows)
+                for purpose in ("extraction", "support_check", "answer")} !=
+                {"extraction": 169, "support_check": 168, "answer": 2982}):
+            raise ValueError("the complete original legacy attempt ledger is required")
+        for row in rows:
+            wire, payload = row.get("serialized_request"), row.get("payload")
+            if (row.get("fixture_only", False) is not False or type(wire) is not str
+                    or type(payload) is not dict or payload.get("model") != identity["model"]
+                    or row.get("key") != _digest({"purpose": row.get("purpose"), "payload": payload})
+                    or sha256(wire.encode()).hexdigest() != row.get("wire_sha256")
+                    or len(wire) != row.get("wire_chars") or json.loads(wire) != payload):
+                raise ValueError("legacy original attempt/wire identity differs")
+    return {"folder": str(folder), "intents": len(rows),
+            "protocol_sha256": protocol["protocol_sha256"],
+            "intents_sha256": sha256((folder / "intents.jsonl").read_bytes()).hexdigest(),
+            "legacy_missing_fixture_field": legacy_formal}
+
+
+def _budget(sources, prepared, *, prior_paid_attempts=None):
+    census = {}
+    answer_old = judge_old = 0
+    for cohort in ("professional7", "cactus600"):
+        original = sources[cohort]
+        census[cohort] = {}
+        for name, identity in (("reader", ANSWER_IDENTITY), ("memory", JUDGE_IDENTITY), ("old_quality", JUDGE_IDENTITY)):
+            row = _paid_census(original[name], identity, optional=(name == "old_quality"))
+            census[cohort][name] = row
+            if identity == ANSWER_IDENTITY:
+                answer_old += row["intents"]
+            else:
+                judge_old += row["intents"]
+    previous = {ANSWER_IDENTITY["model"]: 0, JUDGE_IDENTITY["model"]: 0}
+    if prior_paid_attempts is not None:
+        if (type(prior_paid_attempts) is not dict or set(prior_paid_attempts) != set(previous)
+                or any(type(count) is not int or count < 0 for count in prior_paid_attempts.values())):
+            raise ValueError("exact nonnegative prior-attempt counts required")
+        previous = dict(prior_paid_attempts)
+    remaining = {ANSWER_IDENTITY["model"]: CBT_ORIGINAL_LIMITS[ANSWER_IDENTITY["model"]] - answer_old - previous[ANSWER_IDENTITY["model"]],
+                 JUDGE_IDENTITY["model"]: CBT_ORIGINAL_LIMITS[JUDGE_IDENTITY["model"]] - judge_old - previous[JUDGE_IDENTITY["model"]]
+                     + PROFESSIONAL_QUALITY_REPAIR_CAP}
+    need = {ANSWER_IDENTITY["model"]: sum(prepared[c]["maximum_new_generation_requests"] for c in ("professional7", "cactus600")),
+            JUDGE_IDENTITY["model"]: sum(prepared[c]["maximum_new_assertion_requests"]
+                + prepared[c]["quality_after_complete_grid"]["with_independent_10_percent_repeats"]
+                for c in ("professional7", "cactus600"))}
+    locomo_old = _paid_census(sources["locomo1540"]["reader"], ANSWER_IDENTITY, legacy_formal=True)
+    locomo_judge_old = _paid_census(sources["locomo1540"]["old_quality"], JUDGE_IDENTITY, optional=True)
+    locomo = prepared["locomo1540"]
+    locomo_new = locomo["maximum_attempts"]
+    locomo_judge = locomo["maximum_independent_judge_calls"]
+    if (any(type(v) is not int or v < 0 or v > remaining[k] for k, v in need.items())
+            or not 0 <= locomo_new <= min(LOCOMO_NEW_ANSWER_CAP, LOCOMO_ORIGINAL_ANSWER_LIMIT - locomo_old["intents"])
+            or not 0 <= locomo_judge <= LOCOMO_JUDGE_CAP - locomo_judge_old["intents"]):
+        raise ValueError("full remaining plan exceeds its retained finite allowance; zero new paid calls")
+    return {"version": VERSION, "original_cbt_envelope": CBT_ORIGINAL_LIMITS,
+            "cbt_actual_local_paid_intents": {ANSWER_IDENTITY["model"]: answer_old, JUDGE_IDENTITY["model"]: judge_old},
+            "previous_authorized_recovery_attempts_counted": previous,
+            "separate_professional7_quality_repair_allowance": PROFESSIONAL_QUALITY_REPAIR_CAP,
+            "cbt_remaining_after_paid_intents": remaining, "cbt_new_upper_bounds": need,
+            "census": census, "locomo_original_answer_envelope": LOCOMO_ORIGINAL_ANSWER_LIMIT,
+            "inherited_receipts_outside_current_local_envelope": {cohort: {
+                "generation_received": max(0, prepared[cohort].get("inherited_generation_received", 0) - census[cohort]["reader"]["intents"]),
+                "assertion_received": max(0, prepared[cohort].get("inherited_assertion_received", 0) - census[cohort]["memory"]["intents"])}
+                for cohort in ("professional7", "cactus600")},
+            "locomo_original_paid_intents": locomo_old, "locomo_original_judge_paid_intents": locomo_judge_old,
+            "locomo_new_upper_bounds": {ANSWER_IDENTITY["model"]: locomo_new, JUDGE_IDENTITY["model"]: locomo_judge},
+            "inherited_legacy_receipts": "retained separately by source protocols; not a second send or a second local paid intent",
+            "mab_accessed": False, "created_at_utc": _utc()}
+
+
+class _BoundedDelegate:
+    def __init__(self, delegate, semaphore, diagnostics, mutex, before_send=None):
+        self.delegate, self.identity = delegate, dict(delegate.identity)
+        self._semaphore, self._diagnostics, self._mutex = semaphore, diagnostics, mutex
+        self._before_send = before_send
+
+    def __call__(self, payload):
+        with self._semaphore:
+            try:
+                if self._before_send is not None:
+                    self._before_send()
+                return self.delegate(payload)
+            except Exception as exc:
+                # Do not stringify exceptions, response bodies, headers or keys.
+                row = {"at_utc": _utc(), "model": self.identity["model"], "error_type": type(exc).__name__}
+                if isinstance(exc, HTTPError):
+                    row["http_status"] = int(exc.code)
+                with self._mutex, self._diagnostics.open("a") as stream:
+                    stream.write(json.dumps(row) + "\n"); stream.flush(); os.fsync(stream.fileno())
+                raise
+
+
+def _launch(state, phase, action, *, cohort, source=None, limits=None, answer_cap=0, judge_cap=0):
+    relay = state["relay"]
+    model_limits = limits or {ANSWER_IDENTITY["model"]: 0, JUDGE_IDENTITY["model"]: 0}
+    source_only = action.endswith("-source") or action == "lme-source-only"
+    if (source_only and any(model_limits.values())) or (not source_only and not any(model_limits.values())):
+        raise ValueError("phase call limits differ from source-only/paid action")
+    job = state["nonce"] + ":" + phase
+    relay.register_job(job, model_limits)
+    worker_root = state["root"] / "workers" / phase
+    worker_root.mkdir(parents=True, exist_ok=False, mode=0o700)
+    scripts = {"non_mab_worker.py": (state["repo"] / "evaluation/architecture-rerun/non_mab_worker.py").read_bytes(),
+               "hosted_relay.py": (state["repo"] / "evaluation/architecture-rerun/hosted_relay.py").read_bytes()}
+    for name, body in scripts.items():
+        (worker_root / name).write_bytes(body)
+    manifest = {"version": VERSION, "nonce": state["nonce"], "phase": phase, "action": action,
+                "selected_repo": str(state["repo"]), "selected_commit": state["commit"],
+                "run_root": str(state["root"] / "studies" / cohort), "cohort": cohort,
+                "source": source, "socket": relay.endpoint, "job_id": job,
+                "answer_max_new_calls": answer_cap, "judge_max_new_calls": judge_cap,
+                "relay_limits": model_limits,
+                "helper_sha256": {name: sha256(body).hexdigest() for name, body in scripts.items()},
+                "credentials": "only hosted parent-memory transports own provider credentials",
+                "connection_origin": state.get("connection_origin", "original_parent_delegate"),
+                "created_at_utc": _utc()}
+    manifest_path = worker_root / "execution_manifest.json"
+    if state.get("authorized_attempt") is not None:
+        manifest["explicit_attempt_authorization_sha256"] = _digest(state["authorized_attempt"]["proof"])
+    _write(manifest_path, manifest)
+    _update(state, phase=phase, status="running", worker_root=str(worker_root))
+    with (worker_root / "worker.log").open("ab", buffering=0) as log:
+        process = subprocess.Popen([sys.executable, "-B", str(worker_root / "non_mab_worker.py"), "--manifest", str(manifest_path)],
+            cwd=worker_root, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
+            env=state["relay_api"]["sanitized_child_environment"](), start_new_session=True)
+    state["process"] = process
+    _write(worker_root / "process.json", {"pid": process.pid, "manifest_sha256": sha256(manifest_path.read_bytes()).hexdigest()})
+    last_notice = time.monotonic()
+    while process.poll() is None:
+        time.sleep(1)
+        if time.monotonic() - last_notice >= 60:
+            print(json.dumps({"nonce": state["nonce"], "phase": phase, "status": "running", "pid": process.pid}), flush=True)
+            last_notice = time.monotonic()
+    state["process"] = None
+    if process.returncode != 0 or not (worker_root / "complete.json").is_file():
+        raise RuntimeError("isolated phase failed; retained invocation will not be automatically retried")
+    result = _read(worker_root / "complete.json")
+    # A newly ambiguous send must never cause the next paid phase to start.
+    with (state["root"] / "relay" / "events.jsonl").open() as events:
+        unknown = any((r := json.loads(line)).get("job_id") == job and r.get("status") == "unknown" for line in events)
+    if unknown:
+        raise RuntimeError("new ambiguous provider send; stop this cohort without retry")
+    _phase_result(action, cohort, result, Path(manifest["run_root"]))
+    _update(state, phase=phase, status="phase_complete", result_file=str(worker_root / "complete.json"))
+    if action in {"cbt-quality-run", "locomo-judge-run"}:
+        print(json.dumps({"CAPSTONE_NON_MAB_AGGREGATE": aggregate_results(state["root"])}, ensure_ascii=False, allow_nan=False), flush=True)
+    export_checkpoint(state["root"], complete=False)
+    return result
+
+
+def _phase_result(action, cohort, result, output):
+    """Separate terminated processing from a valid/effective final score."""
+    paid_folders = {"cbt-run": output / "reader", "cbt-quality-run": output / "quality_v2",
+                    "locomo-run": output, "locomo-judge-run": output / "formal_judge"}
+    if action not in paid_folders:
+        return
+    invocation = _read(paid_folders[action] / "last_invocation.json")
+    if invocation.get("errors"):
+        raise RuntimeError("scientific phase retained item errors; no automatic continuation")
+    if action == "cbt-run":
+        expected = 7 if cohort == "professional7" else 600
+        if (result.get("planned_cases") != expected or result.get("completed_cases") != expected
+                or result.get("unknown_receipts") != 0 or result.get("unbound_answer_files")):
+            raise RuntimeError("original CBT grid is incomplete or has unbound receipts")
+        if cohort == "professional7" and any(result.get("arms", {}).get(arm, {}).get("received") != 7
+                for arm in ("no_rag", "raw_history_rag", "managed_memory_rag")):
+            raise RuntimeError("professional seven must have all 21 bound answers before full-grid grading")
+    elif result.get("complete") is not True or result.get("unknown_receipts", 0) != 0:
+        raise RuntimeError("scientific phase processing is incomplete; no final-score claim")
+
+
+def _update(state, **fields):
+    state["status"].update(fields, updated_at_utc=_utc())
+    state["status"]["relay"] = state["relay"].snapshot()
+    _write(state["root"] / "status.json", state["status"])
+    print(json.dumps({"nonce": state["nonce"], **fields}), flush=True)
+
+
+def _controller(state):
+    try:
+        prepared = {}
+        for cohort in ("professional7", "cactus600"):
+            prepared[cohort] = _launch(state, cohort + "-source", "cbt-source", cohort=cohort, source=state["sources"][cohort])
+        prepared["locomo1540"] = _launch(state, "locomo1540-source", "locomo-source", cohort="locomo1540", source=state["sources"]["locomo1540"])
+        lme = state["sources"]["longmemeval500"]
+        if lme is not None:
+            prepared["longmemeval500"] = _launch(state, "longmemeval500-source", "lme-source-only", cohort="longmemeval500", source=lme)
+        else:
+            prepared["longmemeval500"] = {"status": "retained_source_unavailable", "model_calls": 0, "paid_execution_authorized": False}
+        _write(state["root"] / "source_preparation.json", prepared)
+        _prior_recovery(state["sources"])
+        _parents(state["namespace"], state.get("recovered_connection"))
+        authorization = state.get("authorized_attempt")
+        plan = _budget(state["sources"], prepared,
+                       prior_paid_attempts=authorization["proof"]["prior_paid_attempts"] if authorization is not None else None)
+        _write(state["root"] / "finite_budget_plan.json", plan)
+        state["status"]["cohorts"] = {}
+        for cohort in ("professional7", "cactus600", "locomo1540"):
+            try:
+                _parents(state["namespace"], state.get("recovered_connection"))
+                budget = prepared[cohort]
+                if cohort != "locomo1540":
+                    answer_cap, assertion_cap = budget["maximum_new_generation_requests"], budget["maximum_new_assertion_requests"]
+                    _launch(state, cohort + "-continuation", "cbt-run", cohort=cohort,
+                        limits={ANSWER_IDENTITY["model"]: answer_cap, JUDGE_IDENTITY["model"]: assertion_cap},
+                        answer_cap=answer_cap, judge_cap=assertion_cap)
+                    quality = _launch(state, cohort + "-quality-source", "cbt-quality-source", cohort=cohort)
+                    cap = quality["maximum_attempts"]
+                    if cap > budget["quality_after_complete_grid"]["with_independent_10_percent_repeats"] or quality.get("ready") is not True:
+                        raise ValueError("quality plan exceeds frozen full-grid allowance or request preflight")
+                    _launch(state, cohort + "-quality", "cbt-quality-run", cohort=cohort,
+                        limits={JUDGE_IDENTITY["model"]: cap}, judge_cap=cap)
+                else:
+                    cap = budget["maximum_attempts"]
+                    _launch(state, cohort + "-continuation", "locomo-run", cohort=cohort,
+                        limits={ANSWER_IDENTITY["model"]: cap}, answer_cap=cap)
+                    quality = _launch(state, cohort + "-judge-source", "locomo-judge-source", cohort=cohort)
+                    cap = quality["maximum_attempts"]
+                    if cap > budget["maximum_independent_judge_calls"]:
+                        raise ValueError("LoCoMo judging exceeds its original independent judge allowance")
+                    _launch(state, cohort + "-judge", "locomo-judge-run", cohort=cohort,
+                        limits={JUDGE_IDENTITY["model"]: cap}, judge_cap=cap)
+                state["status"]["cohorts"][cohort] = {"status": "processing_complete", "effect_scores": "see original-method scientific summaries and valid-score coverage"}
+            except Exception as exc:
+                state["status"]["cohorts"][cohort] = {"status": "stopped_without_retry", "error_type": type(exc).__name__}
+                _update(state, phase=cohort, status="cohort_stopped_without_retry", error_type=type(exc).__name__)
+                if state.get("authorized_attempt") is not None and state["relay"].snapshot().get("admission_stopped"):
+                    raise RuntimeError("new unknown stopped the complete invocation; no later cohort admitted") from None
+        state["status"]["cohorts"]["longmemeval500"] = {"status": "source_only_paid_execution_pending", "model_calls": 0,
+            "explicit_paid_authorization_recorded": state["allow_longmemeval_paid"], "paid_execution_supported_in_this_entry": False}
+        _update(state, phase="all", status="finished", result_root=str(state["root"] / "studies"))
+    except Exception as exc:
+        global_unknown = state.get("authorized_attempt") is not None and state["relay"].snapshot().get("admission_stopped")
+        _update(state, phase="global_unknown" if global_unknown else "preflight_or_budget",
+                status="stopped_on_new_unknown" if global_unknown else "stopped_without_retry", error_type=type(exc).__name__)
+    finally:
+        # No child remains active here. Never close or modify the old relay.
+        if state.get("process") is None:
+            state["relay"].close()
+            aggregate = aggregate_results(state["root"])
+            print(json.dumps({"CAPSTONE_NON_MAB_AGGREGATE": aggregate}, ensure_ascii=False, allow_nan=False), flush=True)
+            export_checkpoint(state["root"], complete=True)
+
+
+def export_checkpoint(root=DEFAULT_ROOT, *, complete=False):
+    """Write a private downloadable checkpoint from this invocation only.
+
+    The small archive is refreshed after each completed phase. The final full
+    archive includes immutable sources and exact requests/receipts, but neither
+    this process nor its children ever owns a provider key on disk. No original
+    cohort, MAB folder, browser state or notebook is traversed.
+    """
+    root = _content_path(root, exists=True)
+    export = root / "exports"
+    export.mkdir(exist_ok=True, mode=0o700)
+    filename = "non_mab_full_audit_PRIVATE.zip" if complete else "non_mab_progress_PRIVATE.zip"
+    target, temp = export / filename, export / (filename + ".tmp")
+    top = {"entry.json", "status.json", "source_preparation.json", "finite_budget_plan.json", "provider_diagnostics.jsonl", "aggregate_results.json"}
+    summary_names = {"protocol.json", "budget_plan.json", "complete.json", "progress.json", "summary.json",
+                     "report.json", "last_invocation.json", "error.json", "process.json", "execution_manifest.json"}
+    manifest = []
+    with zipfile.ZipFile(temp, "w", zipfile.ZIP_DEFLATED, compresslevel=3) as archive:
+        for path in sorted(root.rglob("*")):
+            relative = path.relative_to(root)
+            if relative.parts[0] == "exports" or path.is_symlink() or not path.is_file():
+                continue
+            allowed = relative.parts[0] in top or relative.parts[0] in {"studies", "workers", "relay"}
+            if not allowed or (not complete and path.name not in top | summary_names):
+                continue
+            checksum = sha256()
+            with path.open("rb") as stream:
+                for block in iter(lambda: stream.read(1_048_576), b""):
+                    checksum.update(block)
+            archive.write(path, str(relative))
+            manifest.append({"path": str(relative), "bytes": path.stat().st_size, "sha256": checksum.hexdigest()})
+        archive.writestr("export_manifest.json", json.dumps({"version": VERSION, "complete_audit": complete,
+            "created_at_utc": _utc(), "mab_accessed": False, "files": manifest}, indent=2))
+    temp.replace(target)
+    receipt = {"path": str(target), "bytes": target.stat().st_size, "sha256": sha256(target.read_bytes()).hexdigest(),
+               "complete_audit": complete, "created_at_utc": _utc()}
+    _write(export / (filename + ".json"), receipt)
+    print(json.dumps({"checkpoint": receipt}), flush=True)
+    return receipt
+
+
+def status(root=DEFAULT_ROOT):
+    """Read the existing invocation only; never creates a relay or job."""
+    root = _content_path(root)
+    result = _read(root / "status.json") if (root / "status.json").is_file() else _read(root / "entry.json")
+    return {**result, "repeat_run_action": "report_existing_invocation_only"}
+
+
+def poll(root=DEFAULT_ROOT):
+    """Small notebook-visible state suitable for occasional progress polling."""
+    saved = status(root)
+    return {key: saved[key] for key in ("nonce", "phase", "status", "updated_at_utc", "cohorts", "worker_root", "result_root") if key in saved}
+
+
+def aggregate_results(root=DEFAULT_ROOT):
+    """Return only bounded aggregate scientific results, never case messages."""
+    root = _content_path(root, exists=True)
+    result = {"version": VERSION, "status": poll(root), "mab_accessed": False,
+              "interpretation": "independent automatic evaluation; missing and invalid scores are reported, not clinical efficacy",
+              "longmemeval_paid_model_calls": 0, "cohorts": {}}
+    for cohort in ("professional7", "cactus600", "locomo1540"):
+        report = {}
+        expected = {"generation": root / "workers" / (cohort + "-continuation") / "complete.json"}
+        if cohort == "locomo1540":
+            expected["reference_judge"] = root / "studies" / cohort / "formal_judge" / "summary.json"
+        else:
+            expected["fact_memory"] = root / "studies" / cohort / "memory" / "summary.json"
+            expected["five_dimensions"] = root / "studies" / cohort / "quality_v2" / "summary.json"
+        for label, path in expected.items():
+            if path.is_file():
+                value = _read(path)
+                if label == "fact_memory":
+                    excluded = {"target_preparation", "target_unavailable_case_ids", "inherited_frozen_unavailable_keys"}
+                    value = {k: v for k, v in value.items() if k not in excluded}
+                    value["paired"] = {comparison: {metric: {k: v for k, v in details.items() if k != "per_question"}
+                        for metric, details in metrics.items()} for comparison, metrics in value.get("paired", {}).items()}
+                if label == "generation" and "unbound_answer_files" in value:
+                    value["unbound_answer_file_count"] = len(value.pop("unbound_answer_files"))
+                report[label] = value
+        result["cohorts"][cohort] = report
+    if (root / "source_preparation.json").is_file():
+        result["longmemeval_source_only"] = _read(root / "source_preparation.json").get("longmemeval500")
+    encoded = json.dumps(result, ensure_ascii=False, allow_nan=False).encode()
+    if len(encoded) > 512_000:
+        raise ValueError("aggregate result exceeds notebook-safe output allowance; use private checkpoint files")
+    _write(root / "aggregate_results.json", result)
+    return result
+
+
+def run(namespace, *, repo, expected_commit, sources, root=DEFAULT_ROOT,
+        allow_longmemeval_paid=False, longmemeval_authorization=None, background=True,
+        _recovered_connection=None, _authorized_attempt=None):
+    """Start once; default to the original parent-owned hosted delegates.
+
+    ``sources`` has professional7/cactus600 {reader,memory,old_quality},
+    locomo1540 {reader,old_quality}, longmemeval500 {reader} or None. Every
+    path refers to an existing original hosted source, never a new test roster.
+    The optional LME authorization is recorded for a separately reviewed entry;
+    this entry still performs zero LongMemEval model calls.
+    ``_recovered_connection`` is supplied by the distinct validated restoration
+    entry; it never manufactures original v5 variables or changes old journals.
+    """
+    _hosted()
+    root = _content_path(root)
+    if (root / "entry.json").exists():
+        return status(root)
+    if type(allow_longmemeval_paid) is not bool or type(background) is not bool:
+        raise ValueError("explicit Boolean execution flags required")
+    if allow_longmemeval_paid:
+        expected = {"authorized_by": "user", "cohort": "longmemeval500", "planned_cases": 500, "maximum_calls": LME_PAID_CAPS}
+        if (type(longmemeval_authorization) is not dict or
+                any(longmemeval_authorization.get(k) != v for k, v in expected.items()) or
+                not isinstance(longmemeval_authorization.get("authorization_reference"), str) or
+                not longmemeval_authorization["authorization_reference"].strip()):
+            raise ValueError("explicit separate LongMemEval paid authorization and fixed upper bounds required")
+    elif longmemeval_authorization is not None:
+        raise ValueError("LongMemEval paid authorization cannot be implicit")
+    repo = _checkout(repo, expected_commit)
+    sources = _source_paths(sources)
+    delegates = _parents(namespace, _recovered_connection)
+    _prior_recovery(sources)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    connection_origin = ("original_parent_delegate" if _recovered_connection is None
+                         else "reconstructed_from_existing_colab_secret")
+    if _authorized_attempt is not None:
+        connection_origin = "reused_initialized_parent_transport_with_explicit_attempt_authorization"
+    entry = {"version": (_authorized_attempt["api"]["VERSION"] if _authorized_attempt is not None
+                         else VERSION if _recovered_connection is None else RESTORED_CONNECTION_VERSION),
+             "nonce": str(uuid.uuid4()), "status": "reserved_zero_calls",
+             "root": str(root), "selected_commit": expected_commit, "sources": sources,
+             "allow_longmemeval_paid": allow_longmemeval_paid,
+             "longmemeval_authorization": longmemeval_authorization,
+             "longmemeval_execution": "source_only_zero_model_calls", "mab_accessed": False,
+             "connection_origin": connection_origin, "created_at_utc": _utc()}
+    if _recovered_connection is not None:
+        entry["source_restoration"] = dict(_recovered_connection.provenance)
+        if _recovered_connection.prior_preflight is not None:
+            entry["preflight_predecessor"] = _recovered_connection.prior_preflight
+    if _authorized_attempt is not None:
+        entry["explicit_attempt_authorization"] = _authorized_attempt["proof"]
+    try:
+        with (root / "entry.json").open("x", encoding="utf-8") as stream:
+            json.dump(entry, stream, ensure_ascii=False, allow_nan=False, indent=2)
+            stream.write("\n"); stream.flush(); os.fsync(stream.fileno())
+    except FileExistsError:
+        return status(root)
+    relay_api = runpy.run_path(str(repo / "evaluation/architecture-rerun/hosted_relay.py"))
+    semaphore, mutex = threading.BoundedSemaphore(4), threading.Lock()
+    def before_send():
+        _prior_recovery(sources)
+        if _recovered_connection is not None:
+            _recovered_connection.assert_current()
+    transports = {model: _BoundedDelegate(delegate, semaphore, root / "provider_diagnostics.jsonl", mutex,
+                                        before_send=before_send)
+                  for model, delegate in delegates.items()}
+    relay = (relay_api["start_relay"](root / "relay", transports) if _authorized_attempt is None else
+             _authorized_attempt["api"]["make_relay"](relay_api["Relay"], root / "relay", transports,
+                                                       _authorized_attempt["proof"], nonce=entry["nonce"]))
+    state = {"root": root, "repo": repo, "commit": expected_commit, "sources": sources,
+             "nonce": entry["nonce"], "relay": relay, "relay_api": relay_api, "status": dict(entry),
+             "allow_longmemeval_paid": allow_longmemeval_paid, "process": None, "namespace": namespace,
+             "connection_origin": connection_origin, "recovered_connection": _recovered_connection,
+             "authorized_attempt": _authorized_attempt}
+    namespace[STATE_NAME] = state  # retain parent delegate/relay/thread for the notebook kernel lifetime
+    _update(state, phase="source_preparation", status="started_zero_paid_calls")
+    if background:
+        thread = threading.Thread(target=_controller, args=(state,), name="capstone-non-mab-" + entry["nonce"], daemon=False)
+        state["thread"] = thread
+        thread.start()
+    else:
+        _controller(state)
+    return status(root)
+
+
+def run_recovered(namespace, *, repo, expected_commit, sources, source_restoration_receipt,
+                  source_restore_archive, root=DEFAULT_RECOVERED_ROOT, background=True,
+                  previous_preflight_nonce=None):
+    """Continue from verified restored originals in a fresh genuine Colab.
+
+    This separate entry never creates v5 globals or claims a reused original
+    delegate. It is permanently source-only for LongMemEval. The existing
+    Capstone Secret is loaded in the parent only after every zero-call source
+    preparation and finite-budget check succeeds, at the first paid send.
+    """
+    _hosted()
+    root = _content_path(root)
+    if root != Path(DEFAULT_RECOVERED_ROOT):
+        raise ValueError("restored continuation must use its one fixed invocation root")
+    if (root / "entry.json").exists():
+        return status(root)
+    if (Path(DEFAULT_ROOT) / "entry.json").exists():
+        raise RuntimeError("original continuation exists; inspect it before any restored run")
+    previous = _content_path(SECOND_RECOVERED_ROOT if (Path(SECOND_RECOVERED_ROOT) / "entry.json").exists()
+                             else PREVIOUS_RECOVERED_ROOT)
+    has_previous = (previous / "entry.json").exists()
+    required_nonce = SECOND_PREFLIGHT_NONCE if previous == Path(SECOND_RECOVERED_ROOT) else PREVIOUS_PREFLIGHT_NONCE
+    if ((has_previous and previous_preflight_nonce != required_nonce)
+            or (not has_previous and previous_preflight_nonce is not None)):
+        raise ValueError("an existing prior recovered run requires its explicit observed zero-call nonce")
+    repo = _checkout(repo, expected_commit)
+    sources = _source_paths(sources)
+    archive = _content_path(source_restore_archive)
+    receipt = _content_path(source_restoration_receipt)
+    provenance = _restoration_provenance(archive, receipt, sources)
+    prior = (_zero_call_preflight_proof(previous, namespace, expected_nonce=previous_preflight_nonce,
+              sources=sources, restoration=provenance) if has_previous else None)
+    connection = _RecoveredConnection(repo, provenance, prior_preflight=prior)
+    return run(namespace, repo=repo, expected_commit=expected_commit, sources=sources,
+               root=root, background=background, allow_longmemeval_paid=False,
+               _recovered_connection=connection)
+
+
+def run_authorized_recovery(namespace, *, repo, expected_commit, sources,
+                            source_restoration_receipt, source_restore_archive,
+                            user_authorization_path, root=AUTHORIZED_ATTEMPT_ROOT, background=True):
+    """A separate fixed invocation for one specifically authorized retry set.
+
+    The previous unknown outcomes and their counted attempts stay untouched.
+    Existing initialized parent transports are reused; this entry never reloads
+    a Secret, probes a provider, or sends a preliminary model request.
+    """
+    _hosted()
+    root = _content_path(root)
+    if root != Path(AUTHORIZED_ATTEMPT_ROOT):
+        raise ValueError("the explicit-attempt recovery uses one fixed invocation root")
+    if (root / "entry.json").exists():
+        return status(root)
+    repo = _checkout(repo, expected_commit)
+    sources = _source_paths(sources)
+    api = runpy.run_path(str(repo / "evaluation/architecture-rerun/authorized_attempt_recovery.py"))
+    old = namespace.get(STATE_NAME)
+    if not isinstance(old, dict) or old.get("nonce") != api["PREVIOUS_NONCE"]:
+        raise RuntimeError("the initialized prior parent connection is required; no credential reload")
+    existing = getattr(old.get("recovered_connection"), "_loaded", None)
+    identities = (ANSWER_IDENTITY, JUDGE_IDENTITY)
+    if (type(existing) is not dict or set(existing) != {identity["model"] for identity in identities}
+            or any(not callable(existing[identity["model"]]) or
+                   getattr(existing[identity["model"]], "identity", None) != identity for identity in identities)):
+        raise RuntimeError("matching initialized parent transports are unavailable; no credential reload")
+    archive, receipt = _content_path(source_restore_archive), _content_path(source_restoration_receipt)
+    authorization = _content_path(user_authorization_path)
+    provenance = _restoration_provenance(archive, receipt, sources)
+    def zero_proof():
+        return _zero_call_preflight_proof(SECOND_RECOVERED_ROOT, namespace,
+            expected_nonce=SECOND_PREFLIGHT_NONCE, sources=sources, restoration=provenance)
+    proof = api["validate"](_content_path(api["PREVIOUS_ROOT"], exists=True), namespace,
+        sources=sources, restoration=provenance, repo=repo,
+        zero_proof_validator=zero_proof, user_authorization_path=authorization)
+    recovery = {"api": api, "proof": proof}
+    connection = _RecoveredConnection(repo, provenance, prior_preflight=proof["zero_call_predecessor"],
+                                      authorized_attempt=recovery)
+    connection._loaded = dict(existing)  # object references only; no key is read, copied or serialized
+    return run(namespace, repo=repo, expected_commit=expected_commit, sources=sources,
+               root=root, background=background, allow_longmemeval_paid=False,
+               _recovered_connection=connection, _authorized_attempt=recovery)

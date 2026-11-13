@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="1200" viewBox="0 0 1120 1200" role="img" aria-labelledby="title desc">
+<title id="title">CBT memory readout and actual message assembly</title>
+<desc id="desc">Original source and versioned memory are filtered, ranked and packed into a user-role reference block after stable policy and recent dialogue. A separate audit trace remains outside the model context. Professional CBT knowledge is optional typed reference data.</desc>
+<rect width="1120" height="1200" fill="#FFFFFF" />
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#326AA8" /></marker><marker id="auditArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#845CB6" /></marker></defs>
+<text class="title" x="50" y="53" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="30" font-weight="700">CBT memory readout and context assembly</text>
+<text class="subtitle" x="50" y="87" font-family="Helvetica,Arial,sans-serif" fill="#435D70" font-size="17">Stored memory → selected model data → actual messages, with a separate external audit</text>
+<path d="M320 210 H400" class="arrow" fill="none" stroke="#326AA8" stroke-width="2.6" />
+<polygon points="400,210 390,205.5 390,214.5" fill="#326AA8" /><path d="M580 275 V340" class="arrow" fill="none" stroke="#326AA8" stroke-width="2.6" />
+<polygon points="580,340 584.5,330 575.5,330" fill="#326AA8" /><path d="M580 520 V580" class="arrow" fill="none" stroke="#326AA8" stroke-width="2.6" />
+<polygon points="580,580 584.5,570 575.5,570" fill="#326AA8" /><path d="M580 710 V775" class="arrow" fill="none" stroke="#326AA8" stroke-width="2.6" />
+<polygon points="580,775 584.5,765 575.5,765" fill="#326AA8" /><path d="M580 985 V1045" class="arrow" fill="none" stroke="#326AA8" stroke-width="2.6" />
+<polygon points="580,1045 584.5,1035 575.5,1035" fill="#326AA8" /><path d="M320 870 H400" class="arrow" fill="none" stroke="#326AA8" stroke-width="2.6" />
+<polygon points="400,870 390,865.5 390,874.5" fill="#326AA8" /><path d="M760 645 H810" class="audit" fill="none" stroke="#845CB6" stroke-width="2.2" stroke-dasharray="7 5" />
+<polygon points="810,645 800,640.5 800,649.5" fill="#845CB6" /><path d="M760 827 H785 V724 H810" class="audit" fill="none" stroke="#845CB6" stroke-width="2.2" stroke-dasharray="7 5" />
+<polygon points="810,724 800,719.5 800,728.5" fill="#845CB6" /><path d="M930 275 H1080 V900 H760" class="arrow" fill="none" stroke="#326AA8" stroke-width="2.6" />
+<polygon points="760,900 770,904.5 770,895.5" fill="#326AA8" /><text class="small" x="952" y="880" text-anchor="middle" font-family="Helvetica,Arial,sans-serif" fill="#435D70" font-size="15">typed knowledge data</text>
+<rect x="50" y="145" width="270" height="130" rx="12" fill="#FFFFFF" stroke="#326AA8" stroke-width="2.2" />
+<rect x="51" y="146" width="268" height="8" rx="5" fill="#326AA8" />
+<text class="cardtitle" x="70" y="185" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="21" font-weight="700">Original statements</text>
+<text class="body" x="70" y="221" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Speaker and source order</text>
+<text class="body" x="70" y="248" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Literal evidence spans</text>
+<rect x="400" y="145" width="360" height="130" rx="12" fill="#FFFFFF" stroke="#326AA8" stroke-width="2.2" />
+<rect x="401" y="146" width="358" height="8" rx="5" fill="#326AA8" />
+<text class="cardtitle" x="420" y="185" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="21" font-weight="700">Versioned memory</text>
+<text class="body" x="420" y="221" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Task fields and scoped summaries</text>
+<text class="body" x="420" y="248" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Sources, permissions, dependencies</text>
+<rect x="810" y="145" width="240" height="130" rx="12" fill="#FFFFFF" stroke="#B77D25" stroke-width="2.2" />
+<rect x="811" y="146" width="238" height="8" rx="5" fill="#B77D25" />
+<text class="cardtitle" x="830" y="185" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="21" font-weight="700">CBT knowledge</text>
+<text class="body" x="830" y="221" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Separate professional KB</text>
+<text class="body" x="830" y="248" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Optional reference data</text>
+<rect x="400" y="340" width="360" height="180" rx="12" fill="#FFFFFF" stroke="#2A8A78" stroke-width="2.2" />
+<rect x="401" y="341" width="358" height="8" rx="5" fill="#2A8A78" />
+<text class="cardtitle" x="420" y="380" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="21" font-weight="700">Eligibility and support</text>
+<text class="body" x="420" y="416" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Subject and use permissions</text>
+<text class="body" x="420" y="443" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Deletion, cutoff and live versions</text>
+<text class="body" x="420" y="470" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Source spans and support check</text>
+<text class="body" x="420" y="497" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Reports ≠ hypotheses</text>
+<rect x="400" y="580" width="360" height="130" rx="12" fill="#FFFFFF" stroke="#326AA8" stroke-width="2.2" />
+<rect x="401" y="581" width="358" height="8" rx="5" fill="#326AA8" />
+<text class="cardtitle" x="420" y="620" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="21" font-weight="700">Select and budget</text>
+<text class="body" x="420" y="656" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Current-concern relevance</text>
+<text class="body" x="420" y="683" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Whole-request character ceiling</text>
+<rect x="810" y="525" width="240" height="245" rx="12" fill="#FFFFFF" stroke="#845CB6" stroke-width="2.2" />
+<rect x="811" y="526" width="238" height="8" rx="5" fill="#845CB6" />
+<text class="cardtitle" x="830" y="565" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="21" font-weight="700">External audit</text>
+<text class="body" x="830" y="601" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Source IDs and hashes</text>
+<text class="body" x="830" y="628" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Selected / omitted items</text>
+<text class="body" x="830" y="655" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Versions and ranks</text>
+<text class="body" x="830" y="682" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Request size and hash</text>
+<text class="body" x="830" y="709" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Usage after receipt</text>
+<text class="small" x="830" y="796" font-family="Helvetica,Arial,sans-serif" fill="#435D70" font-size="15">Not a generator message</text>
+<rect x="50" y="775" width="270" height="210" rx="12" fill="#FFFFFF" stroke="#326AA8" stroke-width="2.2" />
+<rect x="51" y="776" width="268" height="8" rx="5" fill="#326AA8" />
+<text class="cardtitle" x="70" y="815" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="21" font-weight="700">Base conversation</text>
+<text class="body" x="70" y="851" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Stable CBT policy</text>
+<text class="body" x="70" y="878" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Genuine recent roles</text>
+<text class="body" x="70" y="905" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">Current user question</text>
+<rect x="400" y="775" width="360" height="210" rx="12" fill="#FFFFFF" stroke="#326AA8" stroke-width="2.2" />
+<rect x="401" y="776" width="358" height="8" rx="5" fill="#326AA8" />
+<text class="cardtitle" x="420" y="815" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="21" font-weight="700">Actual messages</text>
+<text class="body" x="420" y="851" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">system: stable CBT policy</text>
+<text class="body" x="420" y="878" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">user / assistant: recent dialogue</text>
+<text class="body" x="420" y="905" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">user: sourced memory data</text>
+<text class="body" x="420" y="932" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">user: current question</text>
+<rect x="400" y="1045" width="360" height="95" rx="12" fill="#FFFFFF" stroke="#326AA8" stroke-width="2.2" />
+<rect x="401" y="1046" width="358" height="8" rx="5" fill="#326AA8" />
+<text class="cardtitle" x="420" y="1085" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="21" font-weight="700">Generation</text>
+<text class="body" x="420" y="1121" font-family="Helvetica,Arial,sans-serif" fill="#193247" font-size="18">DeepSeek response</text>
+<text class="small" x="50" y="1170" font-family="Helvetica,Arial,sans-serif" fill="#435D70" font-size="15">The memory block is untrusted reference data. Missing facts and dates remain unknown.</text>
+</svg>

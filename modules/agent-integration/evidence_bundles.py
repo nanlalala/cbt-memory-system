@@ -37,8 +37,8 @@ class EvidenceSpan:
         end = self.end if self.end is not None else self.start + len(self.text)
         if type(end) is not int or end <= self.start or end - self.start != len(self.text):
             raise ValueError("evidence offsets must match the exact Unicode text length")
-        if self.role not in {"user", "assistant"}:
-            raise ValueError("evidence requires a known user or assistant role")
+        if self.role not in {"user", "assistant", "context"}:
+            raise ValueError("evidence requires a known conversational or benchmark context role")
         object.__setattr__(self, "end", end)
 
 

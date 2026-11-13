@@ -1,0 +1,51 @@
+[
+  {
+    "case_id": "correction",
+    "sources": [
+      {
+        "role": "user",
+        "content": "I agreed to practise a thought record seven times."
+      },
+      {
+        "role": "user",
+        "content": "Please change that target to two times. I have not started yet."
+      }
+    ],
+    "supported_summary": "The user revised the thought-record target from seven to two practices and reported not starting.",
+    "current_input": "What is the latest agreed practice target? Reply only with JSON {\"answer\":number}."
+  },
+  {
+    "case_id": "pause",
+    "sources": [
+      {
+        "role": "user",
+        "content": "I agreed to do two thought records."
+      },
+      {
+        "role": "user",
+        "content": "I have completed one thought record."
+      },
+      {
+        "role": "user",
+        "content": "I want to pause further thought records for now."
+      }
+    ],
+    "supported_summary": "The user reported completing one thought record, then requested a pause in further practice.",
+    "current_input": "Is further thought-record practice currently paused? Reply only with JSON {\"answer\":true_or_false}."
+  },
+  {
+    "case_id": "proposal",
+    "sources": [
+      {
+        "role": "assistant",
+        "content": "Perhaps you could practise breathing three times."
+      },
+      {
+        "role": "user",
+        "content": "I am not agreeing to that plan yet."
+      }
+    ],
+    "supported_summary": "The assistant proposed three breathing practices; the user explicitly did not agree to the plan.",
+    "current_input": "Has the user agreed to the breathing plan? Reply only with JSON {\"answer\":true_or_false}."
+  }
+]

@@ -651,7 +651,7 @@ def launch_notebook_demo(session: Any = None, *, database: str | Path | None = N
                             run_id=run_id, provider=provider, **configuration) if session is None else session)
     initial_snapshot = session.snapshot()
     validate_snapshot(initial_snapshot)
-    if str(initial_snapshot.get("prototype_version", "")).startswith("controlled-memory-v2"):
+    if str(initial_snapshot.get("prototype_version", "")).startswith(("controlled-memory-v2", "controlled-memory-v4")):
         return _launch_controlled_demo(session, widgets, display)
     initial_view = build_view(initial_snapshot)
     conversational = initial_view["memory_mode"] == "conversational"

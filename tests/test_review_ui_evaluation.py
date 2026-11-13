@@ -222,7 +222,7 @@ class ReplayMutationTests(unittest.TestCase):
                 self.replay()
 
     def test_correct_ids_with_wrong_final_outbound_body_are_rejected(self):
-        original = controlled.build_outbound_messages
+        original = controlled.build_cbt_context
         def corrupt_body(*args, **kwargs):
             package = original(*args, **kwargs)
             messages = deepcopy(list(package.messages))
@@ -241,7 +241,7 @@ class ReplayMutationTests(unittest.TestCase):
             serialized = json.dumps(payload, ensure_ascii=True, sort_keys=True, allow_nan=False)
             return replace(package, messages=tuple(messages), request_payload=payload,
                            serialized_request=serialized, char_count=len(serialized))
-        with patch.object(controlled, "build_outbound_messages", corrupt_body):
+        with patch.object(controlled, "build_cbt_context", corrupt_body):
             with self.assertRaisesRegex(demo.DemoContractFailure, "final_outbound_quotes_match_full_source"):
                 self.replay()
 

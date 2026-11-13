@@ -1,0 +1,152 @@
+{
+  "schema_version": "selected-completed-evaluation-v1",
+  "dataset": "LoCoMo",
+  "question_count": 1540,
+  "source_family_count": 10,
+  "architecture": "context-v4",
+  "generation_model_family": "DeepSeek",
+  "independent_judge_model_family": "Qwen",
+  "scorer_version": "full-readout-independent-reference-judge-v1",
+  "scoring_scope": "adapted frozen reference-model grading; not an official benchmark score",
+  "primary_metric": "source_family_equal_accuracy",
+  "secondary_metric": "question_micro_accuracy",
+  "complete": true,
+  "conditions": {
+    "no_rag": {
+      "planned_questions": 1540,
+      "primary_source_family_equal_accuracy": 0.025576505890540537,
+      "secondary_question_micro_accuracy": 0.023376623376623377,
+      "correct_question_labels": 36,
+      "received_answers": 1539,
+      "valid_primary_judge_labels": 1539,
+      "technical_missing_counted_as_zero": 1,
+      "unparseable_primary_judge_labels": 0
+    },
+    "raw_history_rag": {
+      "planned_questions": 1540,
+      "primary_source_family_equal_accuracy": 0.4186873193897478,
+      "secondary_question_micro_accuracy": 0.412987012987013,
+      "correct_question_labels": 636,
+      "received_answers": 1539,
+      "valid_primary_judge_labels": 1539,
+      "technical_missing_counted_as_zero": 1,
+      "unparseable_primary_judge_labels": 0
+    },
+    "managed_memory_rag": {
+      "planned_questions": 1540,
+      "primary_source_family_equal_accuracy": 0.5574748251194652,
+      "secondary_question_micro_accuracy": 0.5525974025974026,
+      "correct_question_labels": 851,
+      "received_answers": 1538,
+      "valid_primary_judge_labels": 1538,
+      "technical_missing_counted_as_zero": 2,
+      "unparseable_primary_judge_labels": 0
+    }
+  },
+  "primary_managed_minus_raw": {
+    "source_family_accuracy_delta": 0.13878750572971746,
+    "cluster_bootstrap_95_interval": [
+      0.10151431930312468,
+      0.1732133074584673
+    ],
+    "source_family_count": 10
+  },
+  "auxiliary_managed_minus_no_rag": {
+    "source_family_accuracy_delta": 0.5318983192289247,
+    "cluster_bootstrap_95_interval": [
+      0.5141649170434545,
+      0.5494830454639446
+    ],
+    "source_family_count": 10
+  },
+  "grading": {
+    "planned_primary_answer_rows": 4620,
+    "actual_answers": 4616,
+    "reader_technical_zeros": 4,
+    "planned_grading_entries": 5078,
+    "completed_grading_entries": 5078,
+    "recorded_grader_api_attempts": 5040,
+    "new_unknown_grading_receipts": 0,
+    "repeat_pairs_planned": 462,
+    "repeat_pairs_valid": 462,
+    "repeat_labels_agree": 459,
+    "repeat_label_agreement": 0.9935064935064936
+  },
+  "by_fixed_category_id": {
+    "1": {
+      "questions_per_arm": 282,
+      "correct": {
+        "no_rag": 10,
+        "raw_history_rag": 43,
+        "managed_memory_rag": 88
+      },
+      "question_micro_accuracy": {
+        "no_rag": 0.03546099290780142,
+        "raw_history_rag": 0.1524822695035461,
+        "managed_memory_rag": 0.3120567375886525
+      }
+    },
+    "2": {
+      "questions_per_arm": 321,
+      "correct": {
+        "no_rag": 4,
+        "raw_history_rag": 139,
+        "managed_memory_rag": 177
+      },
+      "question_micro_accuracy": {
+        "no_rag": 0.012461059190031152,
+        "raw_history_rag": 0.43302180685358255,
+        "managed_memory_rag": 0.5514018691588785
+      }
+    },
+    "3": {
+      "questions_per_arm": 96,
+      "correct": {
+        "no_rag": 3,
+        "raw_history_rag": 18,
+        "managed_memory_rag": 22
+      },
+      "question_micro_accuracy": {
+        "no_rag": 0.03125,
+        "raw_history_rag": 0.1875,
+        "managed_memory_rag": 0.22916666666666666
+      }
+    },
+    "4": {
+      "questions_per_arm": 841,
+      "correct": {
+        "no_rag": 19,
+        "raw_history_rag": 436,
+        "managed_memory_rag": 564
+      },
+      "question_micro_accuracy": {
+        "no_rag": 0.022592152199762187,
+        "raw_history_rag": 0.5184304399524375,
+        "managed_memory_rag": 0.6706302021403091
+      }
+    }
+  },
+  "provenance": {
+    "scientific_runtime_commit": "7824a42f374df749e506006999f01109338836d4",
+    "scorer_source": "evaluation/architecture-rerun/formal_judge.py",
+    "retrieval_and_renderer_source": "evaluation/architecture-rerun/formal_full.py",
+    "verification": "Original scorer re-executed with complete receipt binding and no invocation errors. These are aggregate-only results."
+  },
+  "interpretation": {
+    "exploratory_with_prior_development_exposure": true,
+    "official_benchmark_score": false,
+    "human_ratings": false,
+    "clinical_outcomes": false,
+    "cbt_response_quality_demonstrated_by_this_dataset": false,
+    "historical_mab_rerun_or_relabelled": false
+  },
+  "included_category_ids": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "excluded_by_frozen_roster_category_ids": [
+    5
+  ]
+}

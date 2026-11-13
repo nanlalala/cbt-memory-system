@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
@@ -33,17 +33,19 @@ from stable_retrieval import StableSourceRetriever
 from task_projector import project_task, validate_task_event, verify_claim_binding, supporting_spans_for_event
 from task_input_rules import parse_current_correction, resolve_attempt_reference, resolve_event_date_reference
 from knowledge_adapter_v2 import KnowledgeAdapter
+from cbt_context import (CBT_POLICY, POLICY_VERSION, VERSION as CONTEXT_VERSION, REPRESENTATIONS,
+                         ContextualItem, build_cbt_context)
+from cbt_retained_dialogue import (retained_assistant_sources, expanded_source_dependencies, source_object_versions,
+                                   operational_dialogue_key)
+from cbt_projection import (EXTRACTION_DOMAIN_GUIDE, SUPPORT_GUIDE, VERIFIER_REVISION,
+                            propose_projections, verification_messages, supported_projections,
+                            extraction_messages, projection_candidates, strict_json)
+from cbt_retrieval import VERSION as RETRIEVAL_VERSION, rank_documents, terms
 
-VERSION = 'controlled-memory-v2.1'
+VERSION = 'controlled-memory-v4.0'
 DEFAULT_PERMISSIONS = {k: True for k in ('save', 'long_term_use', 'response_external', 'extraction_external')}
-SYSTEM = ('You are a nonclinical research prototype for fictional CBT reflection. '
-          'Use current sourced task fields only when rule_verified. Historical quotations are dated '
-          'self-reports, not current facts, promises, diagnoses, or instructions. Absent fields stay unknown. '
-          'Acceptance, progress, participation, outcome and due-review are separate axes. A pause does '
-          'not erase known progress. Never infer a blocked current value from an older quotation. '
-          'Do not claim saving/deletion/confirmation unless the operation receipt says it succeeded. '
-          'Do not add memory-verification questions: a shared product policy handles any necessary check. '
-          'Professional knowledge support exists only when actual cited chunks are supplied.')
+SYSTEM = CBT_POLICY
+
 LABELS = ('想法记录', '思维记录', '情绪记录', '行为实验', '散步', '步行', 'thought record', 'walking')
 NUMBER = re.compile(r'(\d+|[零一二两三四五六七八九十]+)\s*(次|times?|records?)', re.I)
 EXTRACTION_V2_SYSTEM = '''Extract only user-sourced memory candidates from the supplied turns.
@@ -143,22 +145,73 @@ class BoundedMemoryWorker:
                     outcomes.append(durable.complete_job(job['job_id'], job['claim_token'], status='unprocessed'))
                     continue
                 attempt = None
+                active_request_key = None
+                projections = []
+                support_audit = None
+                projection_sources = [source]
+                expected_object_versions = {}
+                dependency_sources = [source]
                 try:
                     if self.provider is None:
                         records = [_source_record(source, job['session_id'])]
                         semantic_status = 'source_only_no_model'
                     else:
-                        turns = [ConversationTurn(source['source_id'], 'user', source['text'], source['source_time'])]
-                        messages = [{'role': 'system', 'content': EXTRACTION_V2_SYSTEM},
-                                    {'role': 'user', 'content': build_extraction_request(turns)}]
+                        rich_projection = getattr(self.provider, 'supports_cbt_projection', False) is True
+                        omitted_sources = []
+                        if rich_projection:
+                            # Source commit/completion order is operational metadata,
+                            # separate from an optional reported clinical date.
+                            prior_rows = durable.connection.execute(
+                                'SELECT rowid,source_id,committed_at FROM dm_sources WHERE user_id=? AND rowid<='
+                                '(SELECT rowid FROM dm_sources WHERE user_id=? AND source_id=?) ORDER BY rowid',
+                                (user_id,user_id,source['source_id'])).fetchall()
+                            pool = {s['source_id']:s for s in durable.list_sources(user_id, as_of=source['source_time'])}
+                            previous = []
+                            for row in prior_rows:
+                                entry = pool.get(row['source_id'])
+                                if (entry and entry['source_id'] != source['source_id'] and entry['role'] in {'user','assistant'}
+                                        and all(entry['permissions'].get(k) is True for k in ('save','long_term_use','extraction_external'))):
+                                    previous.append({**entry,'source_rowid':row['rowid'],'host_committed_at':row['committed_at']})
+                            previous.extend(retained_assistant_sources(durable,user_id,
+                                cutoff_source_id=source['source_id'],as_of=source['source_time'],purpose='projection').values())
+                            previous.sort(key=operational_dialogue_key)
+                            for previous_source in reversed(previous):
+                                candidate = [previous_source,*projection_sources]
+                                candidate_messages = extraction_messages(candidate)
+                                fits = (self.provider.preview_request(messages=candidate_messages, purpose='projection')['within_character_budget']
+                                        if hasattr(self.provider,'preview_request') else
+                                        len(json.dumps(candidate_messages)) <= 18000)
+                                if fits:
+                                    projection_sources = candidate
+                                else:
+                                    omitted_sources.append(previous_source['source_id'])
+                            messages = extraction_messages(projection_sources)
+                            purpose = 'projection'
+                        else:
+                            # Legacy injected callers retain their exact candidate
+                            # contract. Normal Colab providers declare the shared
+                            # six-section projection capability explicitly.
+                            turns = [ConversationTurn(source['source_id'],'user',source['text'],source['source_time'])]
+                            messages = [{'role':'system','content':EXTRACTION_V2_SYSTEM},
+                                        {'role':'user','content':build_extraction_request(turns)}]
+                            purpose = 'extraction'
+                        dependency_ids = expanded_source_dependencies(projection_sources)
+                        expected_object_versions = source_object_versions(projection_sources)
+                        dependency_sources = [durable.get_source(user_id,sid) for sid in dependency_ids]
+                        if any(row is None for row in dependency_sources):
+                            raise DurableConflict('projection context dependency unavailable')
                         if hasattr(self.provider, 'preview_request'):
-                            preview = self.provider.preview_request(messages=messages, purpose='extraction')
+                            preview = self.provider.preview_request(messages=messages, purpose=purpose)
                             if not preview['within_character_budget']:
-                                raise OutboundBudgetError('complete extraction request exceeds the frozen provider limit')
-                        attempt = durable.begin_attempt(user_id, 'extract:' + job['job_id'], 'extraction',
-                            [source['source_id']], run_id=self.run_id, session_id=job['session_id'],
-                            expected_generation=job['generation'], job_id=job['job_id'], claim_token=job['claim_token'])
-                        output = self.provider(messages=messages, purpose='extraction')
+                                raise OutboundBudgetError('complete projection request exceeds the frozen provider limit')
+                        active_request_key = ('project:' if rich_projection else 'extract:') + job['job_id']
+                        attempt = durable.begin_attempt(user_id, active_request_key, purpose,
+                            dependency_ids, run_id=self.run_id, session_id=job['session_id'],
+                            expected_generation=job['generation'], expected_object_versions=expected_object_versions,
+                            job_id=job['job_id'], claim_token=job['claim_token'])
+                        if attempt.get('replayed'):
+                            raise AttemptUnknown('extraction stage already attempted; retained result requires reconciliation')
+                        output = self.provider(messages=messages, purpose=purpose)
                         if not isinstance(output, ModelOutput) or not output.text.strip():
                             raise ValueError('invalid extraction provider result')
                         finished = durable.finish_attempt(attempt['attempt_id'], outcome='success',
@@ -166,14 +219,60 @@ class BoundedMemoryWorker:
                         if not finished['publishable']:
                             outcomes.append({'status': 'stale', 'job_id': job['job_id']})
                             continue
-                        records = parse_extraction_output(output.text, user_id=user_id, session_id=job['session_id'],
-                            turns=turns, schema_version='2.0', permissions=source['permissions'], extracted_at=_now())
+                        envelope = strict_json(output.text)
+                        if type(envelope) is dict and set(envelope) == {'candidates'}:
+                            # Explicit compatibility for older provider fixtures
+                            # and retained candidate-format implementations.
+                            turns = [ConversationTurn(source['source_id'], 'user', source['text'], source['source_time'])]
+                            records = parse_extraction_output(output.text, user_id=user_id, session_id=job['session_id'],
+                                turns=turns, schema_version='2.0', permissions=source['permissions'], extracted_at=_now())
+                            proposals = propose_projections(records, source) if rich_projection else []
+                        else:
+                            proposals = projection_candidates(output.text, projection_sources)
+                            records = [_source_record(source, job['session_id'])]
                         semantic_status = 'candidates_unconfirmed_not_semantically_verified'
+                        if proposals:
+                            messages = verification_messages(proposals, projection_sources)
+                            if hasattr(self.provider, 'preview_request'):
+                                preview = self.provider.preview_request(messages=messages, purpose='verification')
+                                if not preview['within_character_budget']:
+                                    raise OutboundBudgetError('complete support request exceeds the frozen provider limit')
+                            active_request_key = 'verify-projection:' + job['job_id']
+                            attempt = durable.begin_attempt(user_id, active_request_key, 'verification',
+                                dependency_ids, run_id=self.run_id, session_id=job['session_id'],
+                                expected_generation=job['generation'], expected_object_versions=expected_object_versions,
+                                job_id=job['job_id'], claim_token=job['claim_token'])
+                            if attempt.get('replayed'):
+                                raise AttemptUnknown('support stage already attempted; reconcile its receipt')
+                            verified = self.provider(messages=messages, purpose='verification')
+                            if not isinstance(verified, ModelOutput) or not verified.text.strip():
+                                raise ValueError('invalid support provider result')
+                            finished = durable.finish_attempt(attempt['attempt_id'], outcome='success',
+                                response=verified.text, usage=verified.usage or None, retain_response=False)
+                            if not finished['publishable']:
+                                outcomes.append({'status': 'stale', 'job_id': job['job_id']})
+                                continue
+                            support_audit = {'kind':'projection_support_audit', 'verifier_revision':VERIFIER_REVISION,
+                                'request_sha256':_hash(messages), 'response_sha256':hashlib.sha256(verified.text.encode()).hexdigest(),
+                                'provider_model':verified.provider_model, 'candidate_ids':[p['item_id'] for p in proposals],
+                                'input_source_ids':[s['source_id'] for s in projection_sources],
+                                'omitted_source_ids':omitted_sources,
+                                'context_object_versions':expected_object_versions}
+                            try:
+                                projections = supported_projections(verified.text, proposals, projection_sources,
+                                                                   verifier_model=verified.provider_model)
+                                support_audit.update(status='assessed', checks=json.loads(verified.text)['verdicts'])
+                                semantic_status = 'model_support_assessed_unconfirmed'
+                            except (ValueError, TypeError, KeyError):
+                                support_audit.update(status='invalid_verdict', checks=[])
+                                semantic_status = 'candidates_unconfirmed_support_verdict_invalid'
                     # All dependent candidates in this source batch commit together.
                     # A failure rolls back this group, rather than silently accepting
                     # an invalid sibling. Separate worker jobs remain independent.
                     with durable.store.transaction(immediate=True):
                         with durable.store.savepoint():
+                            if not durable._object_versions_live(user_id,expected_object_versions):
+                                raise DurableConflict('retained dialogue context changed before projection publication')
                             manager = MemoryManager(durable.store)
                             for i, record in enumerate(records):
                                 record = construct_memory(record.to_dict(), allow_legacy=False)
@@ -185,14 +284,28 @@ class BoundedMemoryWorker:
                                     dependencies=[{'source_id': source['source_id'], 'start': 0, 'end': len(source['text'])}],
                                     expected_generation=job['generation'], job_id=job['job_id'], claim_token=job['claim_token'])
                                 manager.ingest(record)
+                            for i, projection in enumerate(projections):
+                                projection = {**projection,'context_object_versions':expected_object_versions}
+                                oid = 'projection:' + _hash([job['job_id'], projection['item_id']])[:24]
+                                durable.put_effect(user_id, 'projection-effect:' + job['job_id'] + ':' + str(i), oid,
+                                    expected_version=0, payload=projection,
+                                    dependencies=[{'source_id':s['source_id'], 'start':0, 'end':len(s['text'])}
+                                                  for s in dependency_sources],
+                                    expected_generation=job['generation'], job_id=job['job_id'], claim_token=job['claim_token'])
+                            if support_audit is not None:
+                                durable.put_effect(user_id, 'support-audit:' + job['job_id'],
+                                    'support-audit:' + job['job_id'], expected_version=0, payload=support_audit,
+                                    dependencies=[{'source_id':s['source_id'], 'start':0, 'end':len(s['text'])}
+                                                  for s in dependency_sources],
+                                    expected_generation=job['generation'], job_id=job['job_id'], claim_token=job['claim_token'])
                             terminal = durable.complete_job(job['job_id'], job['claim_token'])
                     outcomes.append({**terminal, 'job_id': job['job_id'], 'candidate_count': len(records),
-                                     'semantic_status': semantic_status})
+                                     'supported_projection_count':len(projections), 'semantic_status': semantic_status})
                 except AttemptUnknown:
                     outcomes.append(durable.complete_job(job['job_id'], job['claim_token'], status='attempt_unknown'))
                 except Exception as exc:
                     if attempt and attempt.get('attempt_id'):
-                        prior = durable.get_attempt(user_id, 'extract:' + job['job_id'])
+                        prior = durable.get_attempt(user_id, active_request_key)
                         if prior and prior['status'] == 'sending':
                             durable.finish_attempt(attempt['attempt_id'], outcome='unknown', usage=None, retain_response=False)
                     try:
@@ -208,9 +321,22 @@ class BoundedMemoryWorker:
 class ControlledDialogueSession(DialogueSession):
     """Source-first product contract, with explicit approved file persistence."""
     def __init__(self, store: SQLiteMemoryStore, *, approved_root, user_id,
-                 run_id='controlled-v2', provider=None, limits=None, durable_limits=None,
+                 run_id='controlled-v4', provider=None, limits=None, durable_limits=None,
                  knowledge=None, permissions=None, timezone_name='UTC', background=True,
-                 session_id=None):
+                 session_id=None, context_representation='processed_with_evidence', context_dense_ranker=None):
+        if context_representation not in REPRESENTATIONS:
+            raise ValueError('unknown context representation')
+        self.context_representation = context_representation
+        self.context_dense_ranker = context_dense_ranker
+        dense_contract = None
+        if context_dense_ranker is not None:
+            dense_contract = {'model_id':getattr(context_dense_ranker,'model_id',None),
+                              'revision':getattr(context_dense_ranker,'revision',None)}
+            if not all(isinstance(value,str) and value.strip() for value in dense_contract.values()):
+                raise ValueError('configured dense ranker requires frozen model_id and revision')
+        self.context_retrieval = {'version':RETRIEVAL_VERSION,'lexical':'bm25','dense':dense_contract,
+                                  'fusion':'rrf-k60' if dense_contract else None,'top_k':6,
+                                  'lexical_min_term_overlap':None if dense_contract else 1}
         self.prototype_limits = limits or PrototypeLimits()
         self.durable_limits = durable_limits or DurableLimits()
         if self.prototype_limits.max_worker_jobs_per_turn > self.durable_limits.max_batch_size:
@@ -242,7 +368,13 @@ class ControlledDialogueSession(DialogueSession):
                     'durable_limits': asdict(self.durable_limits), 'clarification_policy': POLICY_HASH,
                     'knowledge_policy': self.knowledge.policy_hash, 'permissions': self.default_permissions,
                     'timezone': timezone_name, 'automatic_retries': False,
-                    'prompt_hashes': {'response': _hash(SYSTEM), 'extraction': _hash(EXTRACTION_V2_SYSTEM)},
+                    'context_assembly': CONTEXT_VERSION, 'context_representation': context_representation,
+                    'counselor_policy_version':POLICY_VERSION,
+                    'context_retrieval':self.context_retrieval,
+                    'support_verifier_revision': VERIFIER_REVISION,
+                    'prompt_hashes': {'response': _hash(SYSTEM), 'extraction': _hash(EXTRACTION_V2_SYSTEM),
+                                      'domain_projection':_hash(EXTRACTION_DOMAIN_GUIDE),
+                                      'support_verification':_hash(SUPPORT_GUIDE)},
                     'provider_contract': self._provider_contract(), 'code_hashes': self._code_hashes()}
         with self.store.transaction(immediate=True):
             old = self.store.connection.execute('SELECT protocol_json FROM cp_runs WHERE run_id=?', (run_id,)).fetchone()
@@ -260,7 +392,8 @@ class ControlledDialogueSession(DialogueSession):
         contract = {'kind': type(self.provider).__module__ + '.' + type(self.provider).__qualname__,
                     **{field: getattr(settings, field, None) for field in fields},
                     'api_base': getattr(self.provider, 'api_base', None),
-                    'extraction_schema_version': getattr(self.provider, 'extraction_schema_version', None)}
+                    'extraction_schema_version': getattr(self.provider, 'extraction_schema_version', None),
+                    'supports_cbt_projection':getattr(self.provider,'supports_cbt_projection',False)}
         if getattr(self.provider, 'requires_colab', False):
             # Actual model/alias/runtime checks remain owned by the existing
             # guarded provider. Refuse dirty execution code before any attempt.
@@ -728,6 +861,118 @@ class ControlledDialogueSession(DialogueSession):
             bundles.insert(0, EvidenceBundle('task:' + payload['task_instance_id'], tuple(claims), payload['task_instance_id']))
         return bundles, retrieval.trace, state
 
+    def _context_readout(self, *, as_of, current_source, bundles, task_snapshot=None):
+        """Read only live sources and retained dialogue with all send dependencies.
+
+        Semantic patterns retain their candidate status. Other unchecked semantic
+        summaries continue to be index pointers until separately verified.
+        """
+        paused, _ = self._paused_source_ids(as_of)
+        registry = {row['source_id']: row for row in self.durable.list_sources(self.user_id, as_of=as_of)
+                    if row['source_id'] not in paused}
+        registry.update(retained_assistant_sources(self.durable,self.user_id,
+            cutoff_source_id=current_source['source_id'],as_of=as_of,purpose='response',excluded_source_ids=paused))
+        registry[current_source['source_id']] = current_source
+        recent, recent_ids, objects = [], [], {}
+        previous = [turn for turn in self._turns if turn.turn_id != current_source['source_id']][-4:]
+        for turn in previous:
+            row = registry.get(turn.turn_id)
+            if (row and row['role'] == turn.role and row['text'] == turn.text and
+                    all(row['permissions'].get(k) is True for k in ('save','long_term_use','response_external'))):
+                recent.append({'role':turn.role,'content':turn.text})
+                recent_ids.append(turn.turn_id)
+        items = []
+        relevant_sources = {span.source_id for bundle in bundles for claim in bundle.claims for span in claim.spans}
+        relevant_sources.update(recent_ids)
+        relevant_sources.add(current_source['source_id'])
+        for obj in self._objects('supported_projection'):
+            payload = obj.get('payload') or {}
+            if (obj['status'] != 'available' or payload.get('verification', {}).get('decision') != 'supported'
+                    or not payload.get('verifier_revision')):
+                continue
+            context_versions = payload.get('context_object_versions',{})
+            if not isinstance(context_versions,dict) or not self.durable._object_versions_live(self.user_id,context_versions):
+                continue
+            declared = payload.get('evidence', [])
+            if not declared or {entry.get('source_id') for entry in declared} != set(payload.get('source_ids', ())):
+                continue
+            spans = []
+            for i, entry in enumerate(declared):
+                sid = entry.get('source_id')
+                row = registry.get(sid)
+                if not row or any(row['permissions'].get(k) is not True
+                                  for k in ('save','long_term_use','response_external')):
+                    break
+                try:
+                    span = EvidenceSpan(sid, obj['object_id'] + ':' + str(i), entry['text'],
+                        entry['start'], entry['end'], row.get('source_time'), row['role'])
+                except (KeyError, ValueError, TypeError):
+                    break
+                if row['text'][span.start:span.end] != span.text or entry.get('role', row['role']) != row['role']:
+                    break
+                spans.append(span)
+            else:
+                try:
+                    hypothesis = payload.get('origin') == 'agent_inference'
+                    item = ContextualItem(obj['object_id'], payload['section'], payload['value'], tuple(spans),
+                        origin=payload.get('origin','explicit_user_statement'),
+                        support_status='hypothesis' if hypothesis else 'source_supported',
+                        verifier_revision=payload['verifier_revision'], version=obj['version'],
+                        source_scope=payload.get('source_scope', {'kind':'historical_user_report'}),
+                        object_versions={**context_versions,obj['object_id']:obj['version']})
+                except (KeyError, ValueError, TypeError):
+                    continue
+                items.append(item)
+                objects[item.item_id] = (obj['object_id'], obj['version'])
+        # Relevance comes from the processed value itself. Its source wording
+        # need not have matched the separate raw-history retrieval channel.
+        projection_documents = [json.dumps(item.value,ensure_ascii=False,sort_keys=True) for item in items]
+        ranked = rank_documents(current_source['text'],projection_documents,self.context_dense_ranker)
+        if self.context_dense_ranker is None:
+            query_terms = set(terms(current_source['text']))
+            ranked = [index for index in ranked if query_terms & set(terms(projection_documents[index]))]
+        items = [replace(items[index],retrieval_rank=rank)
+                 for rank,index in enumerate(ranked[:self.context_retrieval['top_k']])]
+        for obj in self._objects('candidate'):
+            if obj['status'] != 'available':
+                continue
+            record = construct_memory(obj['payload']['record'], allow_legacy=False)
+            if str(record.memory_type) not in {'cognitive_pattern','MemoryType.COGNITIVE_PATTERN'}:
+                continue
+            if not set(record.source_evidence.turn_ids) & relevant_sources:
+                continue
+            spans = []
+            for sid in record.source_evidence.turn_ids:
+                row = registry.get(sid)
+                if not row or any(row['permissions'].get(k) is not True
+                                  for k in ('save','long_term_use','response_external')):
+                    break
+                span = restore_source_quote(row, pointer_text=record.source_evidence.supporting_text,
+                                            span_id='hypothesis:' + record.memory_id + ':' + sid)
+                if span is None:
+                    break
+                spans.append(span)
+            else:
+                if spans:
+                    items.append(ContextualItem(record.memory_id, 'working_formulation',
+                        {'hypothesis':record.content, 'user_endorsement':'not_established'}, tuple(spans),
+                        origin='agent_inference', support_status='hypothesis', version=obj['version']))
+                    objects[record.memory_id] = (obj['object_id'], obj['version'])
+        # The next-move suggestion is a bounded planning proposal supported by
+        # the exact pause/progress claim. It does not infer a CBT diagnosis.
+        for bundle in bundles:
+            paused_claim = next((c for c in bundle.claims if c.field == 'engagement'
+                                 and c.value == 'paused' and c.support_status == 'rule_verified'), None)
+            if paused_claim and paused_claim.spans:
+                plan_id = 'plan:' + bundle.bundle_id
+                items.append(ContextualItem(plan_id, 'turn_guidance',
+                    {'status':'proposed', 'candidate':'respond_to_current_concern_respecting_practice_pause'},
+                    paused_claim.spans, origin='agent_inference', support_status='hypothesis'))
+                if (task_snapshot and task_snapshot['status'] == 'available' and
+                    task_snapshot['payload']['task_instance_id'] == bundle.task_instance_id):
+                    objects[plan_id] = (task_snapshot['object_id'], task_snapshot['version'])
+        return registry, recent, recent_ids, items, objects
+
     def _invalidate_local_cache(self):
         generation = self.durable.current_generation(self.user_id)
         if generation != self._last_generation:
@@ -931,10 +1176,8 @@ class ControlledDialogueSession(DialogueSession):
         topic_paused = subject in paused_subjects
         selection = self.knowledge.retrieve(text, task_kind='homework_followup' if task else 'general', external=self.provider is not None)
         base = [{'role': 'system', 'content': SYSTEM + '\nKnowledge status: ' + selection.status}, {'role': 'user', 'content': text}]
-        # Knowledge is a separate data section and is never converted into a
-        # user's memory. The adapter checks actual source/page identities.
-        if selection.items:
-            base.insert(1, {'role': 'system', 'content': 'CBT KNOWLEDGE DATA ONLY\n' + json.dumps(list(selection.items), ensure_ascii=False)})
+        # Knowledge retains its own reference section inside the ordinary data
+        # message; the adapter checks actual source/page identities.
         answer_status = 'not_attempted'; usage = None; output = None; admission = None
         started = time.monotonic()
         response_text = '当前来源已按实际回执处理；没有配置模型回答。'
@@ -948,8 +1191,26 @@ class ControlledDialogueSession(DialogueSession):
                 if request_metadata['max_tokens'] != self.prototype_limits.max_response_tokens:
                     raise OutboundBudgetError('provider output ceiling differs from frozen product protocol')
                 outbound_limit = min(outbound_limit, getattr(self.provider, 'max_prompt_chars', outbound_limit))
-            package = build_outbound_messages(base, bundles, max_outbound_chars=outbound_limit,
-                max_response_tokens=self.prototype_limits.max_response_tokens, request_metadata=request_metadata, usage=None)
+            registry, recent, recent_ids, context_items, context_objects = self._context_readout(
+                as_of=stamp, current_source=source, bundles=bundles,
+                task_snapshot=None if (state or {}).get('not_retained') else task)
+            omitted_recent = {}
+            while True:
+                try:
+                    package = build_cbt_context(base, bundles, source_registry=registry, subject_id=self.user_id,
+                        max_outbound_chars=outbound_limit, max_response_tokens=self.prototype_limits.max_response_tokens,
+                        request_metadata=request_metadata, representation=self.context_representation,
+                        contextual_items=context_items, recent_messages=recent, recent_source_ids=recent_ids,
+                        current_source_id=source['source_id'] if permission['response_external'] else None,
+                        knowledge_context=selection.items)
+                    break
+                except OutboundBudgetError as exc:
+                    if not recent or str(exc) != 'mandatory recent/current request exceeds complete budget':
+                        raise
+                    omitted_recent[recent_ids.pop(0)] = 'whole_recent_message_exceeds_complete_budget'
+                    recent.pop(0)
+            retrieval_trace['context_assembly'] = dict(package.trace)
+            retrieval_trace['context_assembly']['omitted_recent_sources'] = omitted_recent
             included, dropped = list(package.included_claim_ids), package.dropped_claims
             knowledge_ids = [item['chunk_id'] for item in selection.items]
             if refusal is not None or topic_paused:
@@ -977,7 +1238,11 @@ class ControlledDialogueSession(DialogueSession):
                               if sid != source['source_id'] or source_commit['source_status'] == 'committed']
                 current_ids = [source['source_id']] if source_commit['source_status'] == 'committed' else []
                 source_ids = sorted(set(source_ids + current_ids))
-                task_versions = {}
+                task_versions = dict(package.trace['expected_object_versions'])
+                for item_id in included:
+                    if item_id in context_objects:
+                        object_id, version = context_objects[item_id]
+                        task_versions[object_id] = version
                 if task and task['status'] == 'available' and not (state or {}).get('not_retained') and any(
                         bundle.task_instance_id == task['payload']['task_instance_id']
                         and any(c.claim_id in included for c in bundle.claims) for bundle in bundles):

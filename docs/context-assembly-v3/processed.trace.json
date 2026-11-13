@@ -1,0 +1,25 @@
+{
+  "assembly_version": "context-assembly-v3-experimental",
+  "arm": "processed",
+  "subject_id": "invented:one",
+  "cutoff_order": 1,
+  "selected_source_ids": [
+    "s0",
+    "s1"
+  ],
+  "source_sha256": {
+    "s0": "e097cec20f663c01ec5e718569278e9a1429fe0dd13597e62d8c8d41879b9c4b",
+    "s1": "57d1ff07f0d5cecfd6a1010402d1d4f270e17159bb4349459dfda72d7b7b4a4f"
+  },
+  "memory_versions": {
+    "target": 2
+  },
+  "rejected_memories": {},
+  "unrepresented_source_ids": [],
+  "verifier_revision": "invented-rule-v1",
+  "request_chars": 887,
+  "request_sha256": "b89847f7068b5db9944bab608371a97589a6167abf988e0f08f32bffa57e6365",
+  "request_tokens": null,
+  "token_count_scope": "unknown",
+  "provider_usage": null
+}

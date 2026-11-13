@@ -1,0 +1,126 @@
+{
+  "scope": "entirely fictional software fixture; dates are declared invented example dates",
+  "sources": [
+    {
+      "user_id": "fictional-readout-person",
+      "source_id": "source:fictional-0",
+      "input_id": "fictional-0",
+      "text": "我同意每周做两次想法记录。",
+      "role": "user",
+      "source_time": "2026-11-03T09:00:00Z",
+      "permissions": {
+        "extraction_external": true,
+        "long_term_use": true,
+        "response_external": true,
+        "save": true
+      }
+    },
+    {
+      "user_id": "fictional-readout-person",
+      "source_id": "source:fictional-1",
+      "input_id": "fictional-1",
+      "text": "想法记录累计做了一次。",
+      "role": "user",
+      "source_time": "2026-11-04T09:00:00Z",
+      "permissions": {
+        "extraction_external": true,
+        "long_term_use": true,
+        "response_external": true,
+        "save": true
+      }
+    },
+    {
+      "user_id": "fictional-readout-person",
+      "source_id": "source:fictional-2",
+      "input_id": "fictional-2",
+      "text": "这周暂停",
+      "role": "user",
+      "source_time": "2026-11-05T09:00:00Z",
+      "permissions": {
+        "extraction_external": true,
+        "long_term_use": true,
+        "response_external": true,
+        "save": true
+      }
+    },
+    {
+      "user_id": "fictional-readout-person",
+      "source_id": "source:fictional-3",
+      "input_id": "fictional-3",
+      "text": "想法记录现在怎么安排？",
+      "role": "user",
+      "source_time": "2026-11-06T09:00:00Z",
+      "permissions": {
+        "extraction_external": true,
+        "long_term_use": true,
+        "response_external": true,
+        "save": true
+      }
+    }
+  ],
+  "task_state": {
+    "user_id": "fictional-readout-person",
+    "goal_id": "goal-2f26cd40e4f0ed612a5a",
+    "task_instance_id": "task-1994161fe6004e49891412c22dd269ce",
+    "period_id": "2026-11-02",
+    "state_version": 3,
+    "acceptance": "agreed",
+    "participation": "paused",
+    "outcome": "unknown",
+    "due_review": false,
+    "blocked": false,
+    "progress": {
+      "reported_count": 1,
+      "target_count": 2,
+      "attempt_ids": [],
+      "known_attempt_count": 0,
+      "reported_total": 1,
+      "count_conflict": false,
+      "completion": "partial",
+      "coverage_conflict_attempt_ids": []
+    },
+    "source_ids": [
+      "source:fictional-0",
+      "source:fictional-1",
+      "source:fictional-2"
+    ],
+    "object_support_source_ids": [
+      "source:fictional-0"
+    ],
+    "pending_proposals": [],
+    "field_support_event_ids": {
+      "acceptance": [
+        "event:fictional-0:agreed"
+      ],
+      "target_count": [
+        "event:fictional-0:agreed"
+      ],
+      "participation": [
+        "event:fictional-2:participation_changed"
+      ],
+      "known_attempt_count": [],
+      "reported_total": [
+        "event:fictional-1:progress_report"
+      ],
+      "reported_count": [
+        "event:fictional-1:progress_report"
+      ],
+      "completion": [
+        "event:fictional-0:agreed",
+        "event:fictional-1:progress_report"
+      ]
+    },
+    "event_ids": [
+      "event:fictional-0:agreed",
+      "event:fictional-1:progress_report",
+      "event:fictional-2:participation_changed"
+    ],
+    "eligibility": "sourced_current_report",
+    "field_support_source_ids": {
+      "acceptance": "source:fictional-0",
+      "target_count": "source:fictional-0",
+      "participation": "source:fictional-2"
+    }
+  },
+  "model_calls": 0
+}

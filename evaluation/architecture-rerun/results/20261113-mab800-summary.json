@@ -1,0 +1,320 @@
+{
+  "status": "complete_800_questions_2400_actual_received_answers_independently_recomputed",
+  "frozen_generation_commit": "053d459a1c0773b46aa2bd40e8b57d3e4f11fef2",
+  "protocol_sha256": "a8d4046b6ba584d754bd1702e166bca8320edc09584177ca805498314274d120",
+  "arms": {
+    "no_rag": {
+      "planned": 800,
+      "received": 800,
+      "released_substring_correct": 9,
+      "released_substring_accuracy": 0.01125,
+      "strict_committed_correct": 9,
+      "strict_committed_accuracy": 0.01125,
+      "official_positive_not_strict": 0,
+      "positive_not_strict_diagnostics": {
+        "exact_normalized_alias_mismatch": 0,
+        "multiple_nonempty_lines": 0,
+        "abstention_cue": 0,
+        "disjunction_cue": 0,
+        "enumeration_cue": 0,
+        "over_declared_short_answer_limits": 0
+      }
+    },
+    "raw_history_rag": {
+      "planned": 800,
+      "received": 800,
+      "released_substring_correct": 431,
+      "released_substring_accuracy": 0.53875,
+      "strict_committed_correct": 431,
+      "strict_committed_accuracy": 0.53875,
+      "official_positive_not_strict": 0,
+      "positive_not_strict_diagnostics": {
+        "exact_normalized_alias_mismatch": 0,
+        "multiple_nonempty_lines": 0,
+        "abstention_cue": 0,
+        "disjunction_cue": 0,
+        "enumeration_cue": 0,
+        "over_declared_short_answer_limits": 0
+      }
+    },
+    "managed_memory_rag": {
+      "planned": 800,
+      "received": 800,
+      "released_substring_correct": 469,
+      "released_substring_accuracy": 0.58625,
+      "strict_committed_correct": 419,
+      "strict_committed_accuracy": 0.52375,
+      "official_positive_not_strict": 50,
+      "positive_not_strict_diagnostics": {
+        "exact_normalized_alias_mismatch": 50,
+        "multiple_nonempty_lines": 0,
+        "abstention_cue": 0,
+        "disjunction_cue": 0,
+        "enumeration_cue": 0,
+        "over_declared_short_answer_limits": 0
+      }
+    }
+  },
+  "by_task": {
+    "factconsolidation_mh_262k": {
+      "no_rag": {
+        "planned": 100,
+        "released_substring_correct": 0,
+        "strict_committed_correct": 0
+      },
+      "raw_history_rag": {
+        "planned": 100,
+        "released_substring_correct": 7,
+        "strict_committed_correct": 7
+      },
+      "managed_memory_rag": {
+        "planned": 100,
+        "released_substring_correct": 16,
+        "strict_committed_correct": 12
+      }
+    },
+    "factconsolidation_mh_32k": {
+      "no_rag": {
+        "planned": 100,
+        "released_substring_correct": 0,
+        "strict_committed_correct": 0
+      },
+      "raw_history_rag": {
+        "planned": 100,
+        "released_substring_correct": 11,
+        "strict_committed_correct": 11
+      },
+      "managed_memory_rag": {
+        "planned": 100,
+        "released_substring_correct": 21,
+        "strict_committed_correct": 19
+      }
+    },
+    "factconsolidation_mh_64k": {
+      "no_rag": {
+        "planned": 100,
+        "released_substring_correct": 0,
+        "strict_committed_correct": 0
+      },
+      "raw_history_rag": {
+        "planned": 100,
+        "released_substring_correct": 11,
+        "strict_committed_correct": 11
+      },
+      "managed_memory_rag": {
+        "planned": 100,
+        "released_substring_correct": 26,
+        "strict_committed_correct": 23
+      }
+    },
+    "factconsolidation_mh_6k": {
+      "no_rag": {
+        "planned": 100,
+        "released_substring_correct": 0,
+        "strict_committed_correct": 0
+      },
+      "raw_history_rag": {
+        "planned": 100,
+        "released_substring_correct": 13,
+        "strict_committed_correct": 13
+      },
+      "managed_memory_rag": {
+        "planned": 100,
+        "released_substring_correct": 31,
+        "strict_committed_correct": 26
+      }
+    },
+    "factconsolidation_sh_262k": {
+      "no_rag": {
+        "planned": 100,
+        "released_substring_correct": 0,
+        "strict_committed_correct": 0
+      },
+      "raw_history_rag": {
+        "planned": 100,
+        "released_substring_correct": 95,
+        "strict_committed_correct": 95
+      },
+      "managed_memory_rag": {
+        "planned": 100,
+        "released_substring_correct": 95,
+        "strict_committed_correct": 85
+      }
+    },
+    "factconsolidation_sh_32k": {
+      "no_rag": {
+        "planned": 100,
+        "released_substring_correct": 1,
+        "strict_committed_correct": 1
+      },
+      "raw_history_rag": {
+        "planned": 100,
+        "released_substring_correct": 98,
+        "strict_committed_correct": 98
+      },
+      "managed_memory_rag": {
+        "planned": 100,
+        "released_substring_correct": 96,
+        "strict_committed_correct": 85
+      }
+    },
+    "factconsolidation_sh_64k": {
+      "no_rag": {
+        "planned": 100,
+        "released_substring_correct": 0,
+        "strict_committed_correct": 0
+      },
+      "raw_history_rag": {
+        "planned": 100,
+        "released_substring_correct": 96,
+        "strict_committed_correct": 96
+      },
+      "managed_memory_rag": {
+        "planned": 100,
+        "released_substring_correct": 90,
+        "strict_committed_correct": 82
+      }
+    },
+    "factconsolidation_sh_6k": {
+      "no_rag": {
+        "planned": 100,
+        "released_substring_correct": 8,
+        "strict_committed_correct": 8
+      },
+      "raw_history_rag": {
+        "planned": 100,
+        "released_substring_correct": 100,
+        "strict_committed_correct": 100
+      },
+      "managed_memory_rag": {
+        "planned": 100,
+        "released_substring_correct": 94,
+        "strict_committed_correct": 87
+      }
+    }
+  },
+  "by_hop": {
+    "mh": {
+      "no_rag": {
+        "planned": 400,
+        "released_substring_correct": 0,
+        "strict_committed_correct": 0
+      },
+      "raw_history_rag": {
+        "planned": 400,
+        "released_substring_correct": 42,
+        "strict_committed_correct": 42
+      },
+      "managed_memory_rag": {
+        "planned": 400,
+        "released_substring_correct": 94,
+        "strict_committed_correct": 80
+      }
+    },
+    "sh": {
+      "no_rag": {
+        "planned": 400,
+        "released_substring_correct": 9,
+        "strict_committed_correct": 9
+      },
+      "raw_history_rag": {
+        "planned": 400,
+        "released_substring_correct": 389,
+        "strict_committed_correct": 389
+      },
+      "managed_memory_rag": {
+        "planned": 400,
+        "released_substring_correct": 375,
+        "strict_committed_correct": 339
+      }
+    }
+  },
+  "paired": {
+    "released_substring": {
+      "managed_wins": 61,
+      "raw_wins": 23,
+      "ties": 716
+    },
+    "strict_committed": {
+      "managed_wins": 55,
+      "raw_wins": 67,
+      "ties": 678
+    }
+  },
+  "provider_usage": {
+    "prompt_tokens": 8754017,
+    "completion_tokens": 5769,
+    "total_tokens": 8759786
+  },
+  "metric_interpretation": "Primary result uses the unchanged original released substring scoring method. Previously computed stricter diagnostics remain archived; they are not a new pass criterion or replacement score.",
+  "conclusion": "The new managed-memory score is 469/800 (58.625%), below the historical full-run 480/800 (60.00%) and bounded-repair grid 483/800 (60.375%). Its current +4.75 percentage-point advantage over raw RAG does not demonstrate improvement over the prior managed-memory version.",
+  "scope": "MemoryAgentBench source-grammar adaptation, one conservative source family; exploratory, no independent-family confidence interval; not natural CBT or clinical outcome.",
+  "all_requests_have_complete_shared_CBT_policy": true,
+  "all_received_models_verified": "deepseek-v4-1-flash-260910",
+  "verified_request_and_receipt_pairs": 2400,
+  "missing_or_unknown_sends": 0,
+  "released_metric_managed_minus_raw_percentage_points": 4.75,
+  "strict_diagnostic_managed_minus_raw_percentage_points": -1.5,
+  "scoring_source_hashes": {
+    "evaluation/architecture-rerun/mab_full.py": "1738e7930a3c29f0780c4fd8c7c9b4824f42686e38d82a430c0451d4f24508f3",
+    "evaluation/objective-memory/score_objective_comparison.py": "262243267a1b2f73bf1838d0c88f50afc235402c9d934252982a38a0e3ffb719",
+    "evaluation/objective-memory/v3_response_diagnostics.py": "3a61b6c2059e9647340b86797476b1f32267f099dd25e0d46f0cbe3225b046f0"
+  },
+  "result_version": "cbt-readout-v4-mab800-20261113",
+  "independent_recomputation_new_model_calls": 0,
+  "reporting_policy": {
+    "primary_metric": "released_original_substring_method",
+    "primary_managed_minus_raw_percentage_points": 4.75,
+    "user_instruction": "Use the original MAB scoring method; extra stricter checks are not required.",
+    "additional_strict_diagnostic": "Previously computed record retained for provenance; not a pass criterion or replacement score.",
+    "no_new_stricter_scoring_calls": true
+  },
+  "historical_original_metric_comparison": {
+    "original_full_run": {
+      "raw_correct": 419,
+      "managed_correct": 480,
+      "planned_per_arm": 800,
+      "managed_accuracy": 0.6,
+      "source": "evaluation/objective-memory/results/full-20261105/README.md"
+    },
+    "bounded_repair_grid": {
+      "raw_correct": 419,
+      "managed_correct": 483,
+      "planned_per_arm": 800,
+      "managed_accuracy": 0.60375,
+      "new_replies": 206,
+      "reused_unchanged_replies": 2194,
+      "source": "docs/objective-v4-repair-results-20261105.md"
+    },
+    "current_full_run": {
+      "raw_correct": 431,
+      "managed_correct": 469,
+      "planned_per_arm": 800
+    },
+    "current_minus_previous_managed": {
+      "versus_original_full_run_correct": -11,
+      "versus_original_full_run_percentage_points": -1.375,
+      "versus_repair_correct": -14,
+      "versus_repair_percentage_points": -1.75
+    },
+    "conclusion": "The current full-run managed score is lower than both historical managed scores; the positive current managed–raw contrast is not evidence of improvement over the prior version.",
+    "paired_old_full_to_current": {
+      "managed_gains": 19,
+      "managed_losses": 30,
+      "managed_ties": 751,
+      "raw_gains": 39,
+      "raw_losses": 27,
+      "raw_ties": 734,
+      "all_question_ids_and_tasks_aligned": 800
+    },
+    "paired_old_repair_to_current": {
+      "managed_gains": 18,
+      "managed_losses": 32,
+      "managed_ties": 750,
+      "raw_gains": 39,
+      "raw_losses": 27,
+      "raw_ties": 734,
+      "all_question_ids_and_tasks_aligned": 800
+    }
+  }
+}

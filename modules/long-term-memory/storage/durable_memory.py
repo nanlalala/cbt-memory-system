@@ -135,6 +135,26 @@ class DurableMemoryStore:
         self.store._before_commit=self._checkpoint_before_commit
         self.store._before_read=self._verify_control_anchor
         self._ensure_attempt_object_schema()
+        self._ensure_dialogue_time_schema()
+
+    def _ensure_dialogue_time_schema(self) -> None:
+        """Migrate host chronology only after authenticating the old store.
+
+        NULL means unknown chronology. It never supplies an invented user date
+        or makes an old retained reply eligible as derived context.
+        """
+        source_columns = {r[1] for r in self.connection.execute('PRAGMA table_info(dm_sources)')}
+        attempt_columns = {r[1] for r in self.connection.execute('PRAGMA table_info(dm_attempts)')}
+        if 'committed_at' in source_columns and 'completed_at' in attempt_columns:
+            return
+        if self.connection.execute("SELECT value FROM dm_meta WHERE key='maintenance'").fetchone()[0]:
+            return
+        with self.store.transaction(immediate=True):
+            self._writable()
+            if 'committed_at' not in {r[1] for r in self.connection.execute('PRAGMA table_info(dm_sources)')}:
+                self.connection.execute('ALTER TABLE dm_sources ADD COLUMN committed_at TEXT')
+            if 'completed_at' not in {r[1] for r in self.connection.execute('PRAGMA table_info(dm_attempts)')}:
+                self.connection.execute('ALTER TABLE dm_attempts ADD COLUMN completed_at TEXT')
 
     def _ensure_attempt_object_schema(self) -> None:
         """Extend an authenticated store only after verifying its old anchor.
@@ -219,7 +239,8 @@ class DurableMemoryStore:
         CREATE TABLE IF NOT EXISTS dm_sources (
           user_id TEXT NOT NULL, source_id TEXT NOT NULL, input_id TEXT NOT NULL,
           text TEXT NOT NULL, role TEXT, source_time TEXT, permissions_json TEXT NOT NULL,
-          active INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(user_id,source_id), UNIQUE(user_id,input_id));
+          active INTEGER NOT NULL DEFAULT 1, committed_at TEXT,
+          PRIMARY KEY(user_id,source_id), UNIQUE(user_id,input_id));
         CREATE TABLE IF NOT EXISTS dm_jobs (
           job_id TEXT PRIMARY KEY, user_id TEXT NOT NULL, source_id TEXT NOT NULL,
           run_id TEXT NOT NULL, session_id TEXT NOT NULL, status TEXT NOT NULL,
@@ -251,7 +272,7 @@ class DurableMemoryStore:
           purpose TEXT NOT NULL, source_ids_json TEXT NOT NULL, current_source_ids_json TEXT NOT NULL DEFAULT '[]', run_id TEXT NOT NULL,
           session_id TEXT NOT NULL, generation INTEGER NOT NULL, status TEXT NOT NULL,
           response_json TEXT, usage_json TEXT, job_id TEXT, created_at TEXT NOT NULL,
-          current_input_id TEXT, can_retain_response INTEGER NOT NULL DEFAULT 0,
+          current_input_id TEXT, can_retain_response INTEGER NOT NULL DEFAULT 0, completed_at TEXT,
           UNIQUE(user_id,request_key));
         """
         with self.store.transaction(immediate=True):
@@ -484,7 +505,7 @@ class DurableMemoryStore:
                 raise DurableConflict("source_id has a persistent withdrawal barrier")
             if self.connection.execute("SELECT 1 FROM dm_sources WHERE user_id=? AND source_id=?",(user,sid)).fetchone():
                 raise DurableConflict("source_id already exists, including withdrawn sources")
-            self.connection.execute("INSERT INTO dm_sources VALUES (?,?,?,?,?,?,?,1)",(user,sid,iid,source['text'],source['role'],source['source_time'],_json(permissions)))
+            self.connection.execute("INSERT INTO dm_sources(user_id,source_id,input_id,text,role,source_time,permissions_json,active,committed_at) VALUES (?,?,?,?,?,?,?,1,?)",(user,sid,iid,source['text'],source['role'],source['source_time'],_json(permissions),_now()))
             generation=self.current_generation(user)
             allowed = enqueue and permissions['long_term_use'] is True and permissions['extraction_external'] is True
             queued = self.connection.execute("SELECT COUNT(*) FROM dm_jobs WHERE run_id=? AND status IN ('queued','claimed','sending')",(run_id,)).fetchone()[0]
@@ -599,7 +620,7 @@ class DurableMemoryStore:
                       current_source_ids: list[str] | None = None,current_input_id: str | None=None,
                       expected_object_versions: dict[str,int] | None=None) -> dict:
         _id(user_id,'user_id');_id(request_key,'request_key');_id(run_id,'run_id');_id(session_id,'session_id')
-        if purpose not in {'response','extraction','verification'}:raise ValueError('invalid external purpose')
+        if purpose not in {'response','extraction','projection','verification'}:raise ValueError('invalid external purpose')
         if type(source_ids) is not list or any(type(s) is not str for s in source_ids) or len(set(source_ids))!=len(source_ids):raise ValueError('source_ids must be unique strings')
         if purpose!='response' and not source_ids:raise PermissionError('background external work requires persisted permitted sources')
         if expected_generation is not None and (type(expected_generation) is not int or expected_generation<0):raise ValueError('expected_generation must be a nonnegative integer')
@@ -642,7 +663,11 @@ class DurableMemoryStore:
                     if withdrawn:raise PermissionError('explicit withdrawal overrides the current-input exception')
             if job_id is not None:
                 job=self.connection.execute('SELECT * FROM dm_jobs WHERE job_id=? AND user_id=?',(job_id,user_id)).fetchone()
-                if job is None or job['claim_token']!=claim_token or job['status']!='claimed' or job['generation']!=generation:raise DurableConflict('send requires current persistent job claim')
+                if job is None or job['claim_token']!=claim_token or job['status'] not in {'claimed','sending'} or job['generation']!=generation:raise DurableConflict('send requires current persistent job claim')
+                if job['status']=='sending':
+                    previous=self.connection.execute("SELECT status FROM dm_attempts WHERE job_id=?",(job_id,)).fetchall()
+                    if not previous or any(row['status']!='succeeded' for row in previous):
+                        raise AttemptUnknown('prior job stage must succeed before another send')
                 if job['source_id'] not in source_ids:raise DurableConflict('job source missing from request')
                 if job['run_id']!=run_id or job['session_id']!=session_id:raise DurableConflict('job cannot escape frozen run/session budgets')
             run_count=self.connection.execute('SELECT COUNT(*) FROM dm_attempts WHERE run_id=?',(run_id,)).fetchone()[0]
@@ -673,7 +698,7 @@ class DurableMemoryStore:
             status='stale' if stale else {'success':'succeeded','failed':'failed','unknown':'attempt_unknown'}[outcome]
             stored=response_json if status=='succeeded' and retain_response and row['can_retain_response'] else None
             recorded_usage=usage_json if usage_json is not None else row['usage_json']
-            self.connection.execute('UPDATE dm_attempts SET status=?,response_json=?,usage_json=? WHERE attempt_id=?',(status,stored,recorded_usage,attempt_id))
+            self.connection.execute('UPDATE dm_attempts SET status=?,response_json=?,usage_json=?,completed_at=? WHERE attempt_id=?',(status,stored,recorded_usage,_now(),attempt_id))
             if row['job_id'] and status in {'stale','failed','attempt_unknown'}:self.connection.execute('UPDATE dm_jobs SET status=? WHERE job_id=?',(status,row['job_id']))
             return {'attempt_id':attempt_id,'status':status,'publishable':status=='succeeded','clear_payload':status!='succeeded','response_retained':stored is not None,'response':response if status=='succeeded' else None}
 
@@ -850,4 +875,5 @@ class DurableMemoryStore:
             if latest_control_ledger is None or latest_control_ledger!=current:raise DurableConflict('latest complete control ledger required; stale restore refused')
             self.connection.execute("UPDATE dm_meta SET value=0 WHERE key='maintenance'")
             self._ensure_attempt_object_schema()
+            self._ensure_dialogue_time_schema()
         return {'status':'ready','control_watermark':current['watermark'],'replica_cleanup':'not_claimed'}
