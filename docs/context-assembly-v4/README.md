@@ -5,6 +5,13 @@ builder and to separately frozen evaluation runs. The generator receives selecte
 processed information with its source basis. The request trace records the actual
 messages and full request size, separately from stored memory.
 
+![Source-supported memory readout and context assembly](readout-flow.svg)
+
+The [implementation-path map](IMPLEMENTATION_PATHS.md) separates current product
+and domain-evaluation requests from the older system-message bundle and raw-only
+retrieval renderers. It also links the complete renderer-generated fictional
+request, its source input, serialized wire and external trace.
+
 ## Information presented to the generator
 
 | Section | Content | Qualification |
@@ -92,3 +99,4 @@ The CBT-specific fields and readout choices above are this project's design.
 
 These sources support the design rationale. Effects of this implementation are
 determined by the versioned runs and their individual receipts.
+

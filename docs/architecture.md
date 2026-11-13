@@ -1,17 +1,23 @@
 # System architecture
 
-These diagrams describe the target research design, not a production deployment.
-The memory manager, retrievers and context builder are implemented; the current
-application includes fictional-data CLI and Colab dialogue demonstrations. A real risk detector,
-referral workflow, authenticated journal UI and production privacy controls
-remain unimplemented. The first three-arm runner tests released memory QA with
-raw history, not CBT treatment quality or automatic confirmed-memory extraction.
+The implemented memory path includes source capture, typed task and contextual
+projections, support checks, versioned retrieval and the context-v4 request
+renderer. The research prototype includes fictional-data CLI and Colab dialogue
+demonstrations. A production clinical risk detector, referral service,
+authenticated journal UI and production privacy controls remain unimplemented.
+Target application components are identified separately from the implemented
+memory pipeline.
+
+The current [readout implementation and complete request](context-assembly-v4/IMPLEMENTATION_PATHS.md)
+make the storage-to-generator boundary explicit. Supported processed memory
+actually enters the dynamic model context; the external audit trace is a separate
+artifact. Earlier quote-only adapters retain their own versions.
 
 [Back to project overview](../README.md)
 
 This page contains the overall architecture and all module-level diagrams in one continuous document.
 
-## 1. Overall system
+## 1. Overall application design
 
 ```mermaid
 flowchart TD
@@ -33,7 +39,7 @@ flowchart TD
     DB --> MR
 ```
 
-The system combines current-session state with two independent retrieval channels. Safety routing is executed before normal retrieval.
+The target application combines current-session state with separate professional-knowledge and personal-memory retrieval channels. Implemented ownership, permission and lifecycle checks gate memory readout. The clinical risk/referral components in this overview remain a target service boundary.
 
 ## 2. Safety and task routing
 
@@ -127,17 +133,22 @@ flowchart TD
 
 The write path creates traceable, correctable memories. The read path retrieves only relevant, valid and permitted memories.
 
-The dialogue mode adds a separate use decision after retrieval. Source-verified
-quotations may be referenced as dated self-reports without individual approval.
-Changing or uncertain information gets a relevant optional check; it is not
-silently promoted to a confirmed current fact. The core manager and frozen QA
-benchmarks keep their strict contracts.
+The current dialogue mode reads supported processed information as well as
+source quotations. Literal evidence binding and a separate semantic-support
+assessment qualify a processed item; neither establishes user endorsement or
+independent truth. Proposals, task acceptance, reported participation and outcomes
+retain separate axes. Working hypotheses remain explicitly unverified.
+
+A source statement may be used as a report made at that time. Changing or
+uncertain current information can prompt a relevant optional check, rather than
+routine per-item confirmation. The versioned benchmark adapters preserve their
+source-scope and ordinal-time restrictions.
 
 ```mermaid
 flowchart TD
     R["Relevant retrieved history"] --> P["Ownership, lifecycle and source checks"]
     P --> D{"How may it be used?"}
-    D -->|"Verified past statement"| H["Dated history context"]
+    D -->|"Supported historical content"| H["Scoped report or processed memory"]
     D -->|"Uncertain current state"| Q["One optional conversational check"]
     D -->|"Not permitted or unsupported"| X["Exclude"]
     H --> A["Response with readable source trace"]
@@ -212,37 +223,67 @@ Updates preserve provenance. Superseded, expired, deleted or restricted memories
 are excluded from ordinary context. Conversational history use is a separate,
 source-checked policy and does not turn all candidates into retrievable facts.
 
-## 8. Agent context assembly
+## 8. Memory readout and actual context assembly
 
-```mermaid
-flowchart TD
-    S["Safety-policy output"] --> V["Context validation"]
-    T["Short-term session state"] --> V
-    K["CBT evidence or empty"] --> V
-    M["Long-term memories or empty"] --> V
-    V --> P["Provenance, lifecycle and sensitivity checks"]
-    P --> D["Deduplication and context budget"]
-    D --> N["Separate prompt sections"]
-    N --> A["Response agent"]
-    A --> O["Supportive response"]
-    A --> TR["Internal trace of information used"]
-```
+![Implemented context-v4 memory readout](context-assembly-v4/readout-flow.svg)
 
-Professional evidence and personal memory remain separate in the prompt and cannot silently override the current user message.
+The implementation separates three objects:
+
+| Object | Content and role |
+| --- | --- |
+| Stored source and memory records | Original statements, source scope, support decisions, task axes, versions and permissions |
+| Per-turn dynamic memory | Relevant supported processing, permitted task state, changes and necessary evidence selected for the present question |
+| External request trace | Included/omitted items, source/version dependencies, request size/hash and actual provider usage; outside model messages |
+
+Read admission checks the subject, permissions, deletion/stopped use, source
+cutoff, conflicts and versions. Ranking and complete-request packing retain
+control-relevant dependencies. Personal history and professional CBT evidence
+keep distinct fields.
+
+The current product and CBT architecture retest share this message contract:
+
+1. Fixed system policy with the full CBT counselor role and behavioral rules.
+2. Admitted recent dialogue in its original user/assistant roles.
+3. One application-inserted **user-role** sourced-memory reference block.
+4. The current **user** question, once.
+
+The dynamic block is rebuilt every turn. Its data label does not make retrieved
+text safe or correct by itself, and external content gains no system-policy
+authority. A real tool-result message requires its actual tool call.
+
+The [full fictional request](context-assembly-v4/FICTIONAL_REQUEST.md) is generated
+by the actual renderer. The [path map](context-assembly-v4/IMPLEMENTATION_PATHS.md)
+also documents the older system-message claims adapter and the historical
+raw-evidence evaluation path, so their evidence cannot be confused with this
+processed-memory readout.
 
 ## 9. Evaluation framework
 
 ```mermaid
 flowchart TD
-    K["Knowledge retrieval"] --> R["Integrated results"]
-    M["Memory retrieval"] --> R
-    D["End-to-end dialogue"] --> R
-    S["Safety evaluation"] --> R
-    C1["No cross-session memory"] --> D
-    C2["Short-term memory only"] --> D
-    C3["Short-term plus Long-term Memory RAG"] --> D
-    F["Frozen response model, CBT RAG and safety rules"] --> D
-    R --> REP["Development report and later human review"]
+    F["Frozen source roster, role policy, model and budget"] --> N["No RAG"]
+    F --> R["Raw-history RAG"]
+    F --> M["Managed-memory RAG"]
+    N --> G["DeepSeek answers"]
+    R --> G
+    M --> G
+    G --> Q["Independent model scoring"]
+    Q --> L["General-memory factual accuracy"]
+    Q --> C["CBT R1–R5 dimensions"]
+    L --> P["Versioned results and coverage"]
+    C --> P
+    S["Separate lifecycle software replay"] --> P
 ```
 
-The main experiment changes only cross-session memory. Knowledge RAG, the response model, safety rules and scenarios remain fixed.
+Within each current three-arm experiment, the primary comparator is capable
+raw-history RAG. The recent dialogue window and role policy are shared; it is not
+a fourth condition. The comparison evaluates the full managed pipeline rather
+than isolating representation alone.
+
+CBT-specific factual context, CBT method, next-step suitability, empathy and
+safety remain separate automatic endpoints. General-memory results and software
+checks do not establish treatment efficacy or human experience.
+
+The [evaluation index](../evaluation/README.md) retains the methods, versioned
+historical results, scoring scope and missingness. Historical MAB results keep
+their original identity; they are not relabelled as scores for context v4.
