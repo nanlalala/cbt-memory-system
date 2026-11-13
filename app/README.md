@@ -2,12 +2,14 @@
 
 ## Default CBT dialogue: context v4
 
-The default `app/memory_demo.py` / `app/dialogue_demo.py` entry opens
+The default `app/dialogue_demo.py` entry opens
 `ControlledDialogueSession` (`controlled-memory-v4.0`) with
 `processed_with_evidence` memory. Its [context-v4 renderer](../docs/context-assembly-v4/README.md)
 supplies supported processed memory and evidence to the actual response request.
 The [message-path specification](../docs/context-assembly-v4/IMPLEMENTATION_PATHS.md)
 distinguishes this product contract from benchmark reference-message adapters.
+The separate `app/memory_demo.py --scripted` command exercises memory lifecycle
+logic with fictional inputs.
 
 ## Controlled launcher and recorded replay
 
