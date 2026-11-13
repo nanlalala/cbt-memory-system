@@ -163,6 +163,24 @@ def validation_fixture(base):
         write_json(worker/"execution_manifest.json", {"nonce":recovery.PREVIOUS_NONCE, "selected_commit":recovery.PREVIOUS_COMMIT})
         write_json(worker/"process.json", {"pid":2_000_000_000,
             "manifest_sha256":sha256((worker/"execution_manifest.json").read_bytes()).hexdigest()})
+    memory = previous/"studies/cactus600/memory"
+    memory_protocol = {"cohort":"cactus600-memory",
+        "code_sha256":{"science.json":sha256((repo/"science.json").read_bytes()).hexdigest()}}
+    memory_protocol["protocol_sha256"] = digest(memory_protocol)
+    write_json(memory/"protocol.json", memory_protocol)
+    local_identity = {"provider":"https://tokendance.space/gateway/v1", "model":recovery.JUDGE,
+        "returned_model":"qwen3.5-plus-2026-04-20", "model_family":"qwen"}
+    local = inert_attempt(99, recovery.JUDGE, local_identity)
+    local.update(cohort="cactus600", purpose="fact_targets", protocol_sha256=memory_protocol["protocol_sha256"])
+    local["key"] = digest({"purpose":local["purpose"],"payload":local["payload"]})
+    local_permit = {key:local[key] for key in ("cohort","case_id","purpose","model","key","protocol_sha256","wire_sha256")}
+    local_permit["error_type"] = "FileNotFoundError"
+    local_intent = {key:copy.deepcopy(local[key]) for key in ("case_id","purpose","key","protocol_sha256",
+        "wire_sha256","serialized_request","payload")}
+    local_outcome = {key:local[key] for key in ("case_id","purpose","key","protocol_sha256")}
+    local_outcome.update(status="unknown",error_type="FileNotFoundError",provider_model=None,text=None,usage={})
+    (memory/"intents.jsonl").write_text(json.dumps(local_intent)+"\n")
+    (memory/"outcomes.jsonl").write_text(json.dumps(local_outcome)+"\n")
     event_file = previous/"relay/events.jsonl"
     event_file.parent.mkdir(parents=True)
     event_file.write_text("".join(json.dumps(row)+"\n" for row in records))
@@ -176,13 +194,14 @@ def validation_fixture(base):
     archive.write_bytes(b"inert preserved error audit; contains no real requests")
     fixture.update(previous=previous, repo=repo, sources=sources, restoration=restoration, prior=prior,
         records=records, event_file=event_file, permits=permits, authorization=authorization,
-        authorization_sha=sha256(authorization_text.encode()).hexdigest(), archive=archive)
+        authorization_sha=sha256(authorization_text.encode()).hexdigest(), archive=archive, local_permit=local_permit)
     return fixture
 
 
 def fixture_validation_constants(fixture):
     scope = ExitStack()
     scope.enter_context(patch.object(recovery, "ALLOWLIST", tuple(fixture["permits"])))
+    scope.enter_context(patch.object(recovery, "LOCAL_UNADMITTED", fixture["local_permit"]))
     scope.enter_context(patch.object(recovery, "AUTHORIZATION_TEXT_SHA256", fixture["authorization_sha"]))
     scope.enter_context(patch.object(recovery, "ERROR_ARCHIVE", str(fixture["archive"])))
     scope.enter_context(patch.object(recovery, "ERROR_ARCHIVE_SHA256", sha256(fixture["archive"].read_bytes()).hexdigest()))
@@ -196,6 +215,42 @@ def validate_fixture(fixture, *, namespace=None, zero_validator=None):
 
 
 class FrozenAttemptProofTests(unittest.TestCase):
+    def test_exact_local_unadmitted_unknown_is_preserved_without_charge_or_retry_grant(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = validation_fixture(Path(tmp))
+            before = snapshot(fixture["previous"])
+            with fixture_validation_constants(fixture): result = validate_fixture(fixture)
+            self.assertEqual(snapshot(fixture["previous"]), before)
+            local = result["preserved_local_unadmitted"]
+            self.assertEqual(len(local), 1)
+            self.assertEqual(local[0]["previous_status"], "unknown")
+            self.assertIs(local[0]["parent_admitted"], False)
+            self.assertEqual(local[0]["provider_attempts_counted"], 0)
+            self.assertEqual(result["prior_paid_attempts"], {recovery.MODEL:3,recovery.JUDGE:0})
+            self.assertEqual(len(result["retry_allowlist"]), 3)
+            self.assertNotIn(local[0]["key"], {row["key"] for row in result["retry_allowlist"]})
+
+    def test_local_unadmitted_record_cannot_hide_wrong_error_wire_missing_or_extra_attempt(self):
+        for change in ("error","wire","missing","extra"):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as tmp:
+                fixture = validation_fixture(Path(tmp))
+                memory = fixture["previous"]/"studies/cactus600/memory"
+                if change in {"error","missing"}:
+                    path = memory/"outcomes.jsonl"
+                    row = json.loads(path.read_text())
+                    if change=="error": row["error_type"] = "RuntimeError"
+                    path.write_text("" if change=="missing" else json.dumps(row)+"\n")
+                else:
+                    path = memory/"intents.jsonl"
+                    row = json.loads(path.read_text())
+                    if change=="wire":
+                        row["wire_sha256"] = "4"*64
+                        path.write_text(json.dumps(row)+"\n")
+                    else:
+                        row["key"] = "5"*64
+                        with path.open("a") as stream: stream.write(json.dumps(row)+"\n")
+                with fixture_validation_constants(fixture), self.assertRaises(ValueError): validate_fixture(fixture)
+
     def test_exact_three_unknowns_stay_unknown_and_are_debited_without_rewriting(self):
         with tempfile.TemporaryDirectory() as tmp:
             fixture = validation_fixture(Path(tmp))

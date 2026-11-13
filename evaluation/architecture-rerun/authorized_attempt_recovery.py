@@ -37,6 +37,14 @@ ALLOWLIST = (
      "request_id": "d0b0f9cf-01b1-47cd-ac03-70554e6d3fa0",
      "protocol_sha256": "11fe33142fe476a09ee9082186b3b2b36d9d2f112494e5947c0cc8a8e65962d2"},
 )
+LOCAL_UNADMITTED = {
+    "cohort": "cactus600", "case_id": "cactus-a8069763fdb4bd8fa6a93a0915e74aec",
+    "purpose": "fact_targets", "model": JUDGE,
+    "key": "9e037612d790c894fc97738ee42f74a64009635ebf5d2440fbfe87b11fe1142a",
+    "protocol_sha256": "42addbec431f24d47d15bca309b5798137760fc3339738dbcdfe878ca896daf4",
+    "wire_sha256": "89adb6e21351385cf5d2250853ef5558c422f893c349d408b11719e3f1aa3b80",
+    "error_type": "FileNotFoundError",
+}
 OLD_FORBIDDEN_WIRES = {
     "b6406640f48bc3d1d860b4290ee381fb72d40c83c6ff3572e9b7d19df8cebe5e",
     "41d5ab159a302e7cf8a5ac601bbf7e103128f0589b01738d2137d743ecb39c85",
@@ -186,7 +194,8 @@ def validate(previous_root, namespace, *, sources, restoration, repo, zero_proof
         if not protocol.get("code_sha256"):
             raise ValueError("frozen scientific source hashes required")
         frozen_protocols[str(protocol_path.relative_to(previous))] = file_hash(protocol_path)
-    if set(child_intents) != {row["key"] for row in ALLOWLIST} or set(child_outcomes) != set(child_intents):
+    expected_children = {row["key"] for row in ALLOWLIST} | {LOCAL_UNADMITTED["key"]}
+    if len(expected_children) != 4 or set(child_intents) != expected_children or set(child_outcomes) != set(child_intents):
         raise ValueError("the child ledgers contain another or outstanding attempt")
     for permit in ALLOWLIST:
         intent, outcome = child_intents[permit["key"]], child_outcomes[permit["key"]]
@@ -199,6 +208,25 @@ def validate(previous_root, namespace, *, sources, restoration, repo, zero_proof
                 or json.loads(intent["serialized_request"]) != intent.get("payload")
                 or digest({"purpose": permit["purpose"], "payload": intent.get("payload")}) != permit["key"]):
             raise ValueError("the original child request/protocol binding differs")
+    local = LOCAL_UNADMITTED
+    intent, outcome = child_intents[local["key"]], child_outcomes[local["key"]]
+    memory_protocol_path = previous / "studies/cactus600/memory/protocol.json"
+    memory_protocol = read(memory_protocol_path)
+    wire, payload = intent.get("serialized_request"), intent.get("payload")
+    if (local["wire_sha256"] in OLD_FORBIDDEN_WIRES
+            or any(row.get("wire_sha256") == local["wire_sha256"] for row in intents)
+            or any(intent.get(key) != local[key] for key in ("case_id", "purpose", "protocol_sha256", "wire_sha256"))
+            or any(outcome.get(key) != local[key] for key in ("case_id", "purpose", "protocol_sha256", "error_type"))
+            or outcome.get("status") != "unknown" or outcome.get("provider_model") is not None
+            or outcome.get("text") is not None or outcome.get("usage", {}) != {}
+            or type(wire) is not str or sha256(wire.encode()).hexdigest() != local["wire_sha256"]
+            or type(payload) is not dict or payload.get("model") != local["model"]
+            or json.loads(wire) != payload
+            or digest({"purpose": local["purpose"], "payload": payload}) != local["key"]
+            or memory_protocol.get("protocol_sha256") != local["protocol_sha256"]
+            or memory_protocol["protocol_sha256"] != digest({key: value for key, value in memory_protocol.items() if key != "protocol_sha256"})):
+        raise ValueError("the one preserved local non-admitted attempt differs")
+    frozen_protocols[str(memory_protocol_path.relative_to(previous))] = file_hash(memory_protocol_path)
     for manifest_path in (previous / "workers").rglob("execution_manifest.json"):
         manifest = read(manifest_path)
         process_path = manifest_path.parent / "process.json"
@@ -216,6 +244,8 @@ def validate(previous_root, namespace, *, sources, restoration, repo, zero_proof
                                "private_manifest_sha256": file_hash(user_authorization_path),
                                "scope": "one_new_attempt_per_exact_listed_wire; full original cohorts continue"},
         "retry_allowlist": list(ALLOWLIST), "prior_paid_attempts": {MODEL: 3, JUDGE: 0},
+        "preserved_local_unadmitted": [{**local, "previous_status": "unknown", "parent_admitted": False,
+                                         "provider_attempts_counted": 0}],
         "previous_error_archive_sha256": ERROR_ARCHIVE_SHA256,
         "frozen_scientific_protocol_files_sha256": frozen_protocols,
         "previous_files_sha256": {name: file_hash(previous / name) for name in sorted(controls)},
