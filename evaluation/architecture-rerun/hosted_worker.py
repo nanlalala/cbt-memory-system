@@ -46,7 +46,7 @@ def execute(manifest_path):
     action = manifest["action"]
     run_root = Path(manifest["run_root"])
     socket, job_id = manifest["socket"], manifest["job_id"]
-    if action in {"cbt-prepare", "cbt-run"}:
+    if action in {"cbt-prepare", "cbt-run", "cbt-quotation"}:
         controller = runpy.run_path(str(repo / "evaluation/architecture-rerun/cbt_hosted_controller.py"))
         inherited = ({"professional7": manifest["inherited_memory_root"]}
                      if manifest.get("inherited_memory_root") else {})
@@ -57,7 +57,23 @@ def execute(manifest_path):
             answer = RelayTransport(runner.IDENTITY, socket, job_id)
             judge = RelayTransport(controller["JUDGE_IDENTITY"], socket, job_id)
             result = controller["run_all"](repo, answer, judge, run_root,
-                stage=manifest["stage"], workers=4, inherited_memory_roots=inherited)
+                stage="quotation" if action == "cbt-quotation" else manifest["stage"],
+                workers=4, inherited_memory_roots=inherited)
+    elif action == "quality-v2":
+        cohort, stage = manifest["cohort"], manifest["stage"]
+        if cohort not in {"professional7", "cactus600"} or stage not in {"prepare", "run"}:
+            raise ValueError("explicit original quality cohort and stage required")
+        controller = runpy.run_path(str(repo / "evaluation/architecture-rerun/quality_span_judge.py"))
+        identity = {"provider": "https://tokendance.space/gateway/v1", "model": "qwen3.5-plus",
+                    "returned_model": "qwen3.5-plus-2026-04-20", "model_family": "qwen"}
+        output = run_root / (cohort + "_quality_v2")
+        if stage == "prepare":
+            result = controller["prepare"](run_root / cohort, output, identity)
+        else:
+            if not output.exists():
+                raise ValueError("source-only quality preparation must complete before grading")
+            judge = RelayTransport(identity, socket, job_id)
+            result = controller["run"](output, judge, max_new_calls=manifest["max_new_calls"], workers=4)
     elif action == "formal-judge":
         controller = runpy.run_path(str(repo / "evaluation/architecture-rerun/hosted_controller.py"))
         from architecture_retest.transport import require_hosted

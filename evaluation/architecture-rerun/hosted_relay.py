@@ -379,14 +379,17 @@ def launch_worker(relay, *, repo, job_id, action, run_root, worker_root,
         _hosted()
     if fixture_only:
         raise ValueError("fixture launcher does not execute real study actions")
-    if action not in {"cbt-prepare", "cbt-run", "formal-judge"}:
+    if action not in {"cbt-prepare", "cbt-run", "cbt-quotation", "formal-judge", "quality-v2"}:
         raise ValueError("unknown isolated worker action")
+    if action == "quality-v2" and (stage not in {"prepare", "run"} or cohort not in {"professional7", "cactus600"}):
+        raise ValueError("explicit quality stage and original CBT cohort required")
     limits = relay.snapshot()["jobs"].get(job_id)
     if limits is None:
         raise ValueError("register the finite job/model limits before launching")
-    if action == "cbt-prepare" and any(row["maximum"] != 0 for row in limits.values()):
+    source_only = action == "cbt-prepare" or (action == "quality-v2" and stage == "prepare")
+    if source_only and any(row["maximum"] != 0 for row in limits.values()):
         raise ValueError("source-only preparation must have zero provider allowances")
-    if action != "cbt-prepare" and not any(row["maximum"] > row["admitted"] for row in limits.values()):
+    if not source_only and not any(row["maximum"] > row["admitted"] for row in limits.values()):
         raise ValueError("worker job has no remaining provider allowance")
     repo, run_root = Path(repo).resolve(), Path(run_root).resolve()
     if not repo.is_relative_to("/content") or not run_root.is_relative_to("/content"):

@@ -198,3 +198,26 @@ and type matching, and no repair or answer extraction. Missing rows remain in
 the planned denominator. The original scorer source identity is recorded. These
 24 exposed constructed variants are a development mechanism regression, not
 independent natural CBT cases or clinical observations.
+
+## Separately versioned CBT quality grading
+
+`quality_span_judge.py` regrades retained answers using the original R1–R5 rubric.
+It does not regenerate answers or change the counselor policy. The earlier
+professional-seven grader returned 19 receipts, but none satisfied its evidence
+binding contract: copied quotations were not always literal and some source IDs
+or fields were invalid. Those attempts and their costs remain archived; invalid
+reviews are not interpreted as zero quality scores.
+
+The new protocol presents losslessly indexed segments of the complete source,
+current request and answer. A review selects segment IDs instead of reproducing
+quotations. The audit retains parent IDs, roles, offsets, exact content, original
+reader request and receipt hashes. It validates all five evidence objects and
+keeps missing answers in coverage reports. Scores remain conditional on available
+valid reviews; missing responses are not replaced with invented ratings.
+
+Preparation is source-only. An immutable manifest fixes model identity, source
+hashes, blind packets, a ten-percent independent repeat and call caps before
+grading. Exact wire bytes and real receipts are journaled; unknown sends stop
+the run without automatic retry. `hosted_worker.py` exposes separate `quality-v2`
+prepare and run actions in fresh credential-free Colab children. This protocol
+repair does not establish new CBT effectiveness results until grading completes.
