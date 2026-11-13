@@ -97,6 +97,26 @@ cbt['run_all'](REPO, deepseek_transport, independent_judge_transport, NEW_ROOT,
 
 ## MemoryAgentBench
 
+The [completed 800-question rerun](results/20261113-mab800-summary.json) has
+2,400 received DeepSeek answers. The released substring metric is 9/800,
+431/800 and 469/800 for no RAG, raw RAG and managed memory respectively
+(managed minus raw: +4.75 percentage points). This original metric remains the
+requested reporting and comparison method; an extra exact-string diagnostic is
+not an effectiveness threshold or a replacement score. Already computed
+diagnostic records remain archived.
+
+The earlier full run recorded 480/800 (60.00%) for managed memory; the bounded
+repair grid recorded 483/800 (60.375%), combining 206 new replies with 2,194
+unchanged frozen replies. The new full run's 469/800 is 11 below the earlier
+full-run result and 14 below the repair grid. The corresponding raw scores are
+419/800 previously and 431/800 now. This is a regression against the older
+managed-memory scores, even though the new within-run managed–raw gap remains
+positive. Changed role policy, retrieval/readout and execution time require
+case-level investigation before attributing that difference to one component.
+These source-grammar results
+come from one conservative source family; they do not establish a CBT or
+clinical benefit.
+
 `mab_full.py` preserves the eight declared factconsolidation strata, 100 questions
 each. It reuses the existing candidate store, deterministic source-grammar version
 projection and source-edge retrieval. Both RAG conditions receive the same
