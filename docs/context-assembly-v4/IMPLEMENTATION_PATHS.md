@@ -12,7 +12,7 @@ use a database summary as evidence that the generator saw that summary.
 | --- | --- | --- |
 | Stored memory and sources | Original speaker/text, source scope, permissions, projected task axes, object versions and support dependencies | Durable state and future readout |
 | Dynamic memory block | Representation-specific `claims`, `action_plans`, raw `source_reports`, relevant formulation/progress/learning items and proposed `turn_guidance`, with source evidence | A newly assembled user-role reference message for this turn |
-| External trace | Included/omitted identities and reasons, source hashes, versions, retrieval ranks, complete request size and hash; provider usage when available | Audit and reproducibility, outside the generator's messages |
+| External trace | Included/omitted identities and reasons, source hashes, versions, retrieval ranks, canonical payload size/hash, separate provider-preview body size/hash and returned usage when available | Audit and reproducibility, outside the generator's messages |
 
 The live product filters source ownership, use permissions, stopped/deleted
 material, source cutoff and object versions before retrieval. Literal source
@@ -23,6 +23,13 @@ The builder packs complete claims and evidence under the **whole escaped request
 character budget**, including policy, dialogue, metadata and output-cap fields.
 A character ceiling is not an exact token count; provider token usage is recorded
 after an actual receipt.
+
+The renderer's `request_sha256` identifies its canonical JSON payload. In the
+product response trace, `provider_request_sha256` and `provider_request_chars`
+identify the provider's exact preview serialization when available; key ordering
+can make its wire hash differ from the canonical payload hash. A preview is not
+a delivery receipt. The adapter copies reported usage to `provider_usage` after
+a returned response, while unavailable preview or usage fields remain unknown.
 
 Support checking is not user confirmation. The renderer keeps original reports,
 source-supported processing and agent hypotheses distinct. A proposed task is

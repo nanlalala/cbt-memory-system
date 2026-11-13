@@ -33,7 +33,8 @@ The application checks subject, permissions, deletion and stopped-use controls,
 source cutoff, active version and conflicts before ranking candidates. A selected
 correction, pause or task value retains the dependencies needed to interpret it.
 Other candidates are chosen for the present question under the complete request
-budget. Literal source offsets establish the quoted text. A separate support
+budget. Literal source offsets establish the quoted text, and a supplied evidence
+date must match its admitted source record. Missing dates stay unknown. A separate support
 check is required for model-generated paraphrases.
 
 The new product path uses stable system policy, admitted recent user/assistant
@@ -42,10 +43,16 @@ user question. The current question appears once. Retrieved text remains data.
 The application replaces the reference block each turn. A tool result requires an
 actual corresponding tool call.
 
-The external trace retains source IDs and hashes, memory versions, selected and
-omitted items, reasons, serialization size, request hash and provider usage.
-Provider token usage is recorded after a receipt. Character budgets and token
+The renderer trace retains source IDs and hashes, memory versions, selected and
+omitted items, reasons, serialization size and a canonical payload hash. The
+product adapter separately records the exact provider-preview body hash and size
+when the provider exposes that preview; these fields stay unknown otherwise.
+Reported provider usage is added after a returned receipt. A preview records the
+body prepared for sending, not proof of delivery. Character budgets and token
 budgets have different units.
+
+Completed evaluations keep their recorded source revisions and request journals.
+Product audit improvements and input guards do not change those reported scores.
 
 ## Versioned comparisons
 

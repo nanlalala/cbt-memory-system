@@ -159,6 +159,10 @@ def build_cbt_context(
             if (row["role"] != span.role or row["text"][span.start:span.end] != span.text
                     or span.end > len(row["text"])):
                 return False
+            # An omitted evidence date stays unknown. Any supplied date must
+            # bind to this admitted source, not to a projection's own estimate.
+            if span.source_time is not None and span.source_time != row.get("source_time"):
+                return False
         return True
 
     recent_deps = set()

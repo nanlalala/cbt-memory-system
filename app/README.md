@@ -1,9 +1,22 @@
 # Memory demonstrations
 
-## Controlled memory v2
+## Default CBT dialogue: context v4
 
-Open [Controlled Memory v2 Colab](Controlled_Memory_V2_Colab.ipynb) in an actual
-hosted Google Colab runtime. Model calls start disabled. Configure the approved
+The default `app/dialogue_demo.py` entry opens
+`ControlledDialogueSession` (`controlled-memory-v4.0`) with
+`processed_with_evidence` memory. Its [context-v4 renderer](../docs/context-assembly-v4/README.md)
+supplies supported processed memory and evidence to the actual response request.
+The [message-path specification](../docs/context-assembly-v4/IMPLEMENTATION_PATHS.md)
+distinguishes this product contract from benchmark reference-message adapters.
+The separate `app/memory_demo.py --scripted` command exercises memory lifecycle
+logic with fictional inputs.
+
+## Controlled launcher and recorded replay
+
+Open [Controlled Memory Colab](Controlled_Memory_V2_Colab.ipynb) in an actual
+hosted Google Colab runtime. This recorded notebook keeps its explicit
+`CODE_REVISION` (`2d48a7917e17aa8e02fa13f419ebe35961e11d0f`); it does not
+automatically select current main. Model calls start disabled. Configure the approved
 absolute cloud directory, SQLite file, stable user ID and new run ID explicitly;
 there is no in-memory fallback. Four per-input purposes distinguish saving,
 long-term use, answer transmission and organization transmission. Enabling a
@@ -34,15 +47,17 @@ protocol identities as software verification only. Approved storage must retain
 the newest control anchor independently of old DB backups; the runtime's process
 lifetime alone does not provide cross-runtime persistence.
 
-The v2.1 replay contains five fictional scenarios, 22 assertions and six local
+The [recorded v2.1 replay](https://github.com/nanlalala/cbt-memory-system/blob/737c93236cb2c23b20ee44eaa4dd3aa4840ab532/app/controlled_memory_demo.py)
+contains five fictional scenarios, 22 assertions and six local
 mock calls. It includes historical-source-only retrieval, zero-hit/top-k controls
 and exact final outbound body/offset checks. The earlier four-scenario records
 are preserved at their original executable identities. Review repairs and their
 regressions are listed in the [remediation record](../docs/review-c757-remediation-20261109.md).
 
-See the [implementation contract](../docs/cbt-memory-implementation-contract-v2.md)
-for limits, recovery, deletion scope and prospective fair evaluation. New v2
-model comparisons, professional reviews and participant outcomes have not run.
+The [control contract](../docs/cbt-memory-implementation-contract-v2.md) documents
+the underlying lifecycle and recovery rules. The current default response path
+is described by the context-v4 specification above; replay assertions are
+software evidence rather than model-response or clinical-outcome scores.
 
 ## Retained legacy dialogue and memory controls
 
