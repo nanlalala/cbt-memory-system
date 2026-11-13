@@ -70,6 +70,17 @@ is reserved exclusively; repeating the entry reports that invocation instead
 of launching another one. Progress, finite budgets, immutable imports, new
 receipts and scientific summaries are retained for review.
 
+If the original runtime is actually gone, `run_recovered(...)` is a separate
+entry for a fresh hosted kernel. It validates the sealed non-MAB restoration
+archive, completed restoration receipt and all 11,633 restored file hashes.
+It records `reconstructed_from_existing_colab_secret` as the connection origin;
+it never pretends the original `v5` objects survived. The existing `Capstone`
+Secret is loaded only inside the parent at the first paid send, after source
+preparation and budget checks. Its fixed separate invocation root prevents
+relaunch, and an existing original continuation blocks this recovery route.
+Workers receive no credential. The original rosters, unknown-send rules,
+finite budgets and LongMemEval source-only boundary remain unchanged.
+
 Software tests and zero-call source audits do not establish effectiveness.
 No new comparison score should be claimed before actual hosted execution and
 valid assessment receipts are available.
