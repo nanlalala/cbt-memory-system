@@ -54,6 +54,8 @@ The fixed denominator retains all 1,540 questions per condition, including four 
 
 This is the previously recorded **v3 version-view experiment**, a gain of **7.625 percentage points** over its raw-history comparator. It is not a rerun or score for context v4. Its frozen implementation and complete historical record remain in the [original results](evaluation/objective-memory/results/full-20261105/README.md).
 
+The [MAB retention policy](evaluation/selected-memory.json) also preserves the [separate historical repair grid](evaluation/objective-memory/results/v4-repair-20261105/README.md) under its own version. Development continues with the new memory architecture; no additional MAB rerun or replacement of the historical data is requested.
+
 ## Research scope
 
 The research question is whether correctable, expirable and deletable memory improves cross-session tracking over retrieval from the same raw history. General-memory answering, memory-control software checks, CBT response quality and clinical benefit are separate endpoints.

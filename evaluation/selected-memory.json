@@ -1,0 +1,57 @@
+{
+  "schema": "capstone-selected-memory-v2",
+  "updated_at": "2026-11-13",
+  "active_implementation": {
+    "version": "cbt-context-v4",
+    "repository_ref": "codex/cbt-context-v4",
+    "implementation_commit": "e7dadbc2ca0a50bcb0a7adcff4589fb3f302c85c",
+    "pull_request": 43,
+    "context_renderer": "modules/agent-integration/cbt_context.py:build_cbt_context",
+    "answers": "DeepSeek",
+    "conditions": [
+      "no_rag",
+      "raw_history_rag",
+      "managed_memory_rag"
+    ],
+    "prior_legacy_algorithm_selection_superseded": true
+  },
+  "mab_results_policy": {
+    "selection": "retain_previous_MAB_data_and_results_unchanged",
+    "rerun_requested": false,
+    "overwrite_existing_artifacts": false,
+    "relabel_old_results_as_new_implementation": false,
+    "retained_original_full_run": {
+      "commit": "1511706b3a4b0ac71416998b5b4d752a13c4e313",
+      "raw_correct": 419,
+      "managed_correct": 480,
+      "planned_per_arm": 800,
+      "results_path": "evaluation/objective-memory/results/full-20261105/README.md"
+    },
+    "retained_repair_grid": {
+      "candidate_commit": "efd75116f985749a96a6070cb80c4b38d5c94dba",
+      "helper_sha256": "5e1f862f615a871a09e498da0199d43b43b09a3b745c827a6c8152aeeae89bdc",
+      "protocol_sha256": "bd14178402c2b713e5a4e9eeac250477c4ee66951ff3a06493295ae62a3552ae",
+      "raw_correct": 419,
+      "managed_correct": 483,
+      "planned_per_arm": 800,
+      "new_replies": 206,
+      "reused_replies": 2194,
+      "results_path": "evaluation/objective-memory/results/v4-repair-20261105/README.md"
+    },
+    "completed_context_v4_rerun": {
+      "managed_correct": 469,
+      "raw_correct": 431,
+      "planned_per_arm": 800,
+      "disposition": "Retain separately under its own frozen protocol; do not overwrite previous MAB data or erase this run.",
+      "results_ref": "e7dadbc2ca0a50bcb0a7adcff4589fb3f302c85c",
+      "results_path": "evaluation/architecture-rerun/results/20261113-mab800-summary.json"
+    },
+    "primary_scoring": "unchanged original released MAB scoring",
+    "interpretation": "Historical MAB scores belong to their original implementations; they do not measure the active context-v4 implementation."
+  },
+  "stable_main_product": {
+    "version": "controlled-memory-v2.1",
+    "code_unchanged_by_this_configuration_update": true,
+    "context_v4_development_on_ref": "codex/cbt-context-v4"
+  }
+}
