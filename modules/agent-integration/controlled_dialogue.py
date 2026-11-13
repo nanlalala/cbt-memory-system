@@ -1211,6 +1211,12 @@ class ControlledDialogueSession(DialogueSession):
                     recent.pop(0)
             retrieval_trace['context_assembly'] = dict(package.trace)
             retrieval_trace['context_assembly']['omitted_recent_sources'] = omitted_recent
+            # Keep the renderer's canonical payload hash distinct from the
+            # provider's final serialization. Key ordering can differ without
+            # changing the messages or the complete request character count.
+            retrieval_trace['context_assembly']['request_hash_scope'] = 'canonical_renderer_payload'
+            retrieval_trace['context_assembly']['provider_request_sha256'] = None
+            retrieval_trace['context_assembly']['provider_request_chars'] = None
             included, dropped = list(package.included_claim_ids), package.dropped_claims
             knowledge_ids = [item['chunk_id'] for item in selection.items]
             if refusal is not None or topic_paused:
@@ -1230,6 +1236,11 @@ class ControlledDialogueSession(DialogueSession):
                     preview = self.provider.preview_request(messages=messages, purpose='response')
                     if preview['serialized_length'] > self.prototype_limits.max_outbound_chars:
                         raise OutboundBudgetError('actual provider request exceeds the frozen complete outbound budget')
+                    provider_request = preview.get('serialized_request')
+                    if isinstance(provider_request, str):
+                        retrieval_trace['context_assembly']['provider_request_sha256'] = hashlib.sha256(
+                            provider_request.encode('utf-8')).hexdigest()
+                        retrieval_trace['context_assembly']['provider_request_chars'] = len(provider_request)
                 # Retain every dependency used to build this exact request.
                 # Filtering a deleted ID here would send stale text without its
                 # withdrawal fence. Only this explicitly ephemeral current input
@@ -1256,6 +1267,7 @@ class ControlledDialogueSession(DialogueSession):
                     return self._retry_receipt(iid)
                 output = self._call_provider(messages, purpose='response')
                 usage = dict(output.usage) if output.usage else None
+                retrieval_trace['context_assembly']['provider_usage'] = deepcopy(usage)
                 finished = self.durable.finish_attempt(admission['attempt_id'], outcome='success',
                     response={'text': output.text}, usage=usage, retain_response=permission['save'] is True)
                 if finished['publishable']:

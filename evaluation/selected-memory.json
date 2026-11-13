@@ -1,10 +1,9 @@
 {
-  "schema": "capstone-selected-memory-v2",
+  "schema": "capstone-selected-memory-v3",
   "updated_at": "2026-11-13",
   "active_implementation": {
     "version": "cbt-context-v4",
-    "repository_ref": "codex/cbt-context-v4",
-    "implementation_commit": "e7dadbc2ca0a50bcb0a7adcff4589fb3f302c85c",
+    "repository_ref": "main",
     "pull_request": 43,
     "context_renderer": "modules/agent-integration/cbt_context.py:build_cbt_context",
     "answers": "DeepSeek",
@@ -13,7 +12,8 @@
       "raw_history_rag",
       "managed_memory_rag"
     ],
-    "prior_legacy_algorithm_selection_superseded": true
+    "prior_legacy_algorithm_selection_superseded": true,
+    "integration_commit": "118f4fdcbad5418e43f71215bdee2cd4a75acb0c"
   },
   "mab_results_policy": {
     "selection": "retain_previous_MAB_data_and_results_unchanged",
@@ -49,9 +49,17 @@
     "primary_scoring": "unchanged original released MAB scoring",
     "interpretation": "Historical MAB scores belong to their original implementations; they do not measure the active context-v4 implementation."
   },
-  "stable_main_product": {
+  "default_product": {
+    "version": "controlled-memory-v4.0",
+    "entrypoint": "app/dialogue_demo.py",
+    "repository_ref": "main",
+    "context_renderer": "modules/agent-integration/cbt_context.py:build_cbt_context",
+    "memory_representation": "processed_with_evidence"
+  },
+  "recorded_control_replay": {
     "version": "controlled-memory-v2.1",
-    "code_unchanged_by_this_configuration_update": true,
-    "context_v4_development_on_ref": "codex/cbt-context-v4"
+    "repository_commit": "737c93236cb2c23b20ee44eaa4dd3aa4840ab532",
+    "entrypoint": "app/controlled_memory_demo.py",
+    "scope": "Recorded engineering replay; the current default product is identified separately."
   }
 }
