@@ -47,6 +47,7 @@ LOCOMO_NEW_ANSWER_CAP = 1638
 LOCOMO_JUDGE_CAP = 5082
 LME_PAID_CAPS = {ANSWER_IDENTITY["model"]: 39232, JUDGE_IDENTITY["model"]: 1650}
 STATE_NAME = "_capstone_non_mab_continuation_v1"
+AUTHORIZED_ATTEMPT_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v4"
 RESTORED_CONNECTION_VERSION = "hosted-non-mab-restored-connection-v3"
 DEFAULT_RECOVERED_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v3"
 PREVIOUS_RECOVERED_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v1"
@@ -472,7 +473,7 @@ def _assert_zero_preflight_current(proof):
 
 
 class _RecoveredConnection:
-    def __init__(self, repo, provenance, prior_preflight=None):
+    def __init__(self, repo, provenance, prior_preflight=None, authorized_attempt=None):
         if (provenance.get("version") != RESTORED_CONNECTION_VERSION
                 or provenance.get("origin") != "reconstructed_from_existing_colab_secret"
                 or provenance.get("source_restore_archive_sha256") != RESTORE_ARCHIVE_SHA256
@@ -480,6 +481,7 @@ class _RecoveredConnection:
             raise ValueError("explicit verified restored-connection provenance required")
         self.repo, self.provenance = Path(repo), dict(provenance)
         self.prior_preflight = json.loads(json.dumps(prior_preflight)) if prior_preflight is not None else None
+        self.authorized_attempt = authorized_attempt
         self._lock, self._loaded = threading.Lock(), None
         self._load_failed = False
         self.delegates = {identity["model"]: _RecoveredDelegate(self, identity)
@@ -497,6 +499,8 @@ class _RecoveredConnection:
             _assert_zero_preflight_current(self.prior_preflight)
         elif any((Path(root) / "entry.json").exists() for root in (PREVIOUS_RECOVERED_ROOT, SECOND_RECOVERED_ROOT)):
             raise RuntimeError("previous recovered invocation exists without a validated zero-call proof")
+        if self.authorized_attempt is not None:
+            self.authorized_attempt["api"]["assert_current"](self.authorized_attempt["proof"])
 
     def send(self, identity, payload):
         self.assert_current()
@@ -505,6 +509,8 @@ class _RecoveredConnection:
             # Recheck under the shared lock before ever reading the Secret.
             self.assert_current()
             if self._loaded is None:
+                if self.authorized_attempt is not None:
+                    raise RuntimeError("existing initialized parent transport unavailable; no credential reload")
                 try:
                     loaded = _load_recovered_transports(self.repo)
                     if (set(loaded) != set(self.delegates) or any(
@@ -628,7 +634,7 @@ def _paid_census(folder, identity, *, optional=False, legacy_formal=False):
             "legacy_missing_fixture_field": legacy_formal}
 
 
-def _budget(sources, prepared):
+def _budget(sources, prepared, *, prior_paid_attempts=None):
     census = {}
     answer_old = judge_old = 0
     for cohort in ("professional7", "cactus600"):
@@ -641,8 +647,14 @@ def _budget(sources, prepared):
                 answer_old += row["intents"]
             else:
                 judge_old += row["intents"]
-    remaining = {ANSWER_IDENTITY["model"]: CBT_ORIGINAL_LIMITS[ANSWER_IDENTITY["model"]] - answer_old,
-                 JUDGE_IDENTITY["model"]: CBT_ORIGINAL_LIMITS[JUDGE_IDENTITY["model"]] - judge_old
+    previous = {ANSWER_IDENTITY["model"]: 0, JUDGE_IDENTITY["model"]: 0}
+    if prior_paid_attempts is not None:
+        if (type(prior_paid_attempts) is not dict or set(prior_paid_attempts) != set(previous)
+                or any(type(count) is not int or count < 0 for count in prior_paid_attempts.values())):
+            raise ValueError("exact nonnegative prior-attempt counts required")
+        previous = dict(prior_paid_attempts)
+    remaining = {ANSWER_IDENTITY["model"]: CBT_ORIGINAL_LIMITS[ANSWER_IDENTITY["model"]] - answer_old - previous[ANSWER_IDENTITY["model"]],
+                 JUDGE_IDENTITY["model"]: CBT_ORIGINAL_LIMITS[JUDGE_IDENTITY["model"]] - judge_old - previous[JUDGE_IDENTITY["model"]]
                      + PROFESSIONAL_QUALITY_REPAIR_CAP}
     need = {ANSWER_IDENTITY["model"]: sum(prepared[c]["maximum_new_generation_requests"] for c in ("professional7", "cactus600")),
             JUDGE_IDENTITY["model"]: sum(prepared[c]["maximum_new_assertion_requests"]
@@ -659,6 +671,7 @@ def _budget(sources, prepared):
         raise ValueError("full remaining plan exceeds its retained finite allowance; zero new paid calls")
     return {"version": VERSION, "original_cbt_envelope": CBT_ORIGINAL_LIMITS,
             "cbt_actual_local_paid_intents": {ANSWER_IDENTITY["model"]: answer_old, JUDGE_IDENTITY["model"]: judge_old},
+            "previous_authorized_recovery_attempts_counted": previous,
             "separate_professional7_quality_repair_allowance": PROFESSIONAL_QUALITY_REPAIR_CAP,
             "cbt_remaining_after_paid_intents": remaining, "cbt_new_upper_bounds": need,
             "census": census, "locomo_original_answer_envelope": LOCOMO_ORIGINAL_ANSWER_LIMIT,
@@ -719,6 +732,8 @@ def _launch(state, phase, action, *, cohort, source=None, limits=None, answer_ca
                 "connection_origin": state.get("connection_origin", "original_parent_delegate"),
                 "created_at_utc": _utc()}
     manifest_path = worker_root / "execution_manifest.json"
+    if state.get("authorized_attempt") is not None:
+        manifest["explicit_attempt_authorization_sha256"] = _digest(state["authorized_attempt"]["proof"])
     _write(manifest_path, manifest)
     _update(state, phase=phase, status="running", worker_root=str(worker_root))
     with (worker_root / "worker.log").open("ab", buffering=0) as log:
@@ -792,7 +807,9 @@ def _controller(state):
         _write(state["root"] / "source_preparation.json", prepared)
         _prior_recovery(state["sources"])
         _parents(state["namespace"], state.get("recovered_connection"))
-        plan = _budget(state["sources"], prepared)
+        authorization = state.get("authorized_attempt")
+        plan = _budget(state["sources"], prepared,
+                       prior_paid_attempts=authorization["proof"]["prior_paid_attempts"] if authorization is not None else None)
         _write(state["root"] / "finite_budget_plan.json", plan)
         state["status"]["cohorts"] = {}
         for cohort in ("professional7", "cactus600", "locomo1540"):
@@ -824,11 +841,15 @@ def _controller(state):
             except Exception as exc:
                 state["status"]["cohorts"][cohort] = {"status": "stopped_without_retry", "error_type": type(exc).__name__}
                 _update(state, phase=cohort, status="cohort_stopped_without_retry", error_type=type(exc).__name__)
+                if state.get("authorized_attempt") is not None and state["relay"].snapshot().get("admission_stopped"):
+                    raise RuntimeError("new unknown stopped the complete invocation; no later cohort admitted") from None
         state["status"]["cohorts"]["longmemeval500"] = {"status": "source_only_paid_execution_pending", "model_calls": 0,
             "explicit_paid_authorization_recorded": state["allow_longmemeval_paid"], "paid_execution_supported_in_this_entry": False}
         _update(state, phase="all", status="finished", result_root=str(state["root"] / "studies"))
     except Exception as exc:
-        _update(state, phase="preflight_or_budget", status="stopped_without_retry", error_type=type(exc).__name__)
+        global_unknown = state.get("authorized_attempt") is not None and state["relay"].snapshot().get("admission_stopped")
+        _update(state, phase="global_unknown" if global_unknown else "preflight_or_budget",
+                status="stopped_on_new_unknown" if global_unknown else "stopped_without_retry", error_type=type(exc).__name__)
     finally:
         # No child remains active here. Never close or modify the old relay.
         if state.get("process") is None:
@@ -929,7 +950,7 @@ def aggregate_results(root=DEFAULT_ROOT):
 
 def run(namespace, *, repo, expected_commit, sources, root=DEFAULT_ROOT,
         allow_longmemeval_paid=False, longmemeval_authorization=None, background=True,
-        _recovered_connection=None):
+        _recovered_connection=None, _authorized_attempt=None):
     """Start once; default to the original parent-owned hosted delegates.
 
     ``sources`` has professional7/cactus600 {reader,memory,old_quality},
@@ -962,7 +983,10 @@ def run(namespace, *, repo, expected_commit, sources, root=DEFAULT_ROOT,
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     connection_origin = ("original_parent_delegate" if _recovered_connection is None
                          else "reconstructed_from_existing_colab_secret")
-    entry = {"version": VERSION if _recovered_connection is None else RESTORED_CONNECTION_VERSION,
+    if _authorized_attempt is not None:
+        connection_origin = "reused_initialized_parent_transport_with_explicit_attempt_authorization"
+    entry = {"version": (_authorized_attempt["api"]["VERSION"] if _authorized_attempt is not None
+                         else VERSION if _recovered_connection is None else RESTORED_CONNECTION_VERSION),
              "nonce": str(uuid.uuid4()), "status": "reserved_zero_calls",
              "root": str(root), "selected_commit": expected_commit, "sources": sources,
              "allow_longmemeval_paid": allow_longmemeval_paid,
@@ -973,6 +997,8 @@ def run(namespace, *, repo, expected_commit, sources, root=DEFAULT_ROOT,
         entry["source_restoration"] = dict(_recovered_connection.provenance)
         if _recovered_connection.prior_preflight is not None:
             entry["preflight_predecessor"] = _recovered_connection.prior_preflight
+    if _authorized_attempt is not None:
+        entry["explicit_attempt_authorization"] = _authorized_attempt["proof"]
     try:
         with (root / "entry.json").open("x", encoding="utf-8") as stream:
             json.dump(entry, stream, ensure_ascii=False, allow_nan=False, indent=2)
@@ -988,11 +1014,14 @@ def run(namespace, *, repo, expected_commit, sources, root=DEFAULT_ROOT,
     transports = {model: _BoundedDelegate(delegate, semaphore, root / "provider_diagnostics.jsonl", mutex,
                                         before_send=before_send)
                   for model, delegate in delegates.items()}
-    relay = relay_api["start_relay"](root / "relay", transports)
+    relay = (relay_api["start_relay"](root / "relay", transports) if _authorized_attempt is None else
+             _authorized_attempt["api"]["make_relay"](relay_api["Relay"], root / "relay", transports,
+                                                       _authorized_attempt["proof"], nonce=entry["nonce"]))
     state = {"root": root, "repo": repo, "commit": expected_commit, "sources": sources,
              "nonce": entry["nonce"], "relay": relay, "relay_api": relay_api, "status": dict(entry),
              "allow_longmemeval_paid": allow_longmemeval_paid, "process": None, "namespace": namespace,
-             "connection_origin": connection_origin, "recovered_connection": _recovered_connection}
+             "connection_origin": connection_origin, "recovered_connection": _recovered_connection,
+             "authorized_attempt": _authorized_attempt}
     namespace[STATE_NAME] = state  # retain parent delegate/relay/thread for the notebook kernel lifetime
     _update(state, phase="source_preparation", status="started_zero_paid_calls")
     if background:
@@ -1040,3 +1069,48 @@ def run_recovered(namespace, *, repo, expected_commit, sources, source_restorati
     return run(namespace, repo=repo, expected_commit=expected_commit, sources=sources,
                root=root, background=background, allow_longmemeval_paid=False,
                _recovered_connection=connection)
+
+
+def run_authorized_recovery(namespace, *, repo, expected_commit, sources,
+                            source_restoration_receipt, source_restore_archive,
+                            user_authorization_path, root=AUTHORIZED_ATTEMPT_ROOT, background=True):
+    """A separate fixed invocation for one specifically authorized retry set.
+
+    The previous unknown outcomes and their counted attempts stay untouched.
+    Existing initialized parent transports are reused; this entry never reloads
+    a Secret, probes a provider, or sends a preliminary model request.
+    """
+    _hosted()
+    root = _content_path(root)
+    if root != Path(AUTHORIZED_ATTEMPT_ROOT):
+        raise ValueError("the explicit-attempt recovery uses one fixed invocation root")
+    if (root / "entry.json").exists():
+        return status(root)
+    repo = _checkout(repo, expected_commit)
+    sources = _source_paths(sources)
+    api = runpy.run_path(str(repo / "evaluation/architecture-rerun/authorized_attempt_recovery.py"))
+    old = namespace.get(STATE_NAME)
+    if not isinstance(old, dict) or old.get("nonce") != api["PREVIOUS_NONCE"]:
+        raise RuntimeError("the initialized prior parent connection is required; no credential reload")
+    existing = getattr(old.get("recovered_connection"), "_loaded", None)
+    identities = (ANSWER_IDENTITY, JUDGE_IDENTITY)
+    if (type(existing) is not dict or set(existing) != {identity["model"] for identity in identities}
+            or any(not callable(existing[identity["model"]]) or
+                   getattr(existing[identity["model"]], "identity", None) != identity for identity in identities)):
+        raise RuntimeError("matching initialized parent transports are unavailable; no credential reload")
+    archive, receipt = _content_path(source_restore_archive), _content_path(source_restoration_receipt)
+    authorization = _content_path(user_authorization_path)
+    provenance = _restoration_provenance(archive, receipt, sources)
+    def zero_proof():
+        return _zero_call_preflight_proof(SECOND_RECOVERED_ROOT, namespace,
+            expected_nonce=SECOND_PREFLIGHT_NONCE, sources=sources, restoration=provenance)
+    proof = api["validate"](_content_path(api["PREVIOUS_ROOT"], exists=True), namespace,
+        sources=sources, restoration=provenance, repo=repo,
+        zero_proof_validator=zero_proof, user_authorization_path=authorization)
+    recovery = {"api": api, "proof": proof}
+    connection = _RecoveredConnection(repo, provenance, prior_preflight=proof["zero_call_predecessor"],
+                                      authorized_attempt=recovery)
+    connection._loaded = dict(existing)  # object references only; no key is read, copied or serialized
+    return run(namespace, repo=repo, expected_commit=expected_commit, sources=sources,
+               root=root, background=background, allow_longmemeval_paid=False,
+               _recovered_connection=connection, _authorized_attempt=recovery)
