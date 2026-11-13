@@ -37,11 +37,11 @@ For general-memory benchmarks, the common policy is followed by an identical fac
 | Evaluation | Question roster | Scope |
 | --- | ---: | --- |
 | LoCoMo | 1,540 | Completed factual-answer comparison above, with 10 source conversation families |
-| Historical MemoryAgentBench | 800 | Earlier version-view conflict-task result; unchanged and separate from context v4 |
+| MemoryAgentBench | 800 | Conflict-task accuracy under its recorded experiment protocol |
 
 The CBT-specific fact, continuity and R1–R5 protocols remain separate from the completed general-memory result. This update publishes no new CBT-specific scores or execution-status snapshots.
 
-Historical MemoryAgentBench data are unchanged. The earlier [800-question conflict-task result](../objective-memory/results/full-20261105/README.md) remains an earlier version-view experiment, not a context-v4 rerun. Earlier controlled-development fixtures remain software/development evidence rather than additional independent benchmark results.
+The [MAB 800-question conflict-task result](../objective-memory/results/full-20261105/README.md) includes its own frozen methods and implementation references. MAB data and scores are preserved. Controlled-development fixtures remain software/development evidence rather than additional independent benchmark results.
 
 ## Reproducibility entry points
 

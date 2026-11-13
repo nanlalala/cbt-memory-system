@@ -41,7 +41,7 @@ The primary comparator is capable raw-history RAG. A recent window is shared aux
 | [Migration matrix](ARCHITECTURE_MIGRATION_20261113.md) | Which outputs need new execution after the architecture change |
 | [CBT memory study](cbt-memory-effect/architecture_retest/README.md) | Domain-specific facts, continuity and source-bound automatic evaluation |
 | [Published-label calibration](architecture-calibration/README.md) | Calibration only for the dimensions covered by released expert labels |
-| [Historical full objective comparison](objective-memory/results/full-20261105/README.md) | Earlier MAB version-view result and original complete record; unchanged |
+| [MAB 800-question comparison](objective-memory/results/full-20261105/README.md) | Conflict-task accuracy, methods and complete result record |
 | [Objective-memory protocols](objective-memory/README.md) | Released-answer scoring and historical control comparisons |
 | [Memory-control replay](controlled-memory-v2/README.md) | Versioned software evidence for lifecycle and access controls |
 | [Earlier historical-QA workflow](end-to-end-dialogue/README.md) | Preserved earlier questions, responses and original model-assisted endpoint |

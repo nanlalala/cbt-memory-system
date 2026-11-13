@@ -44,7 +44,7 @@ The fixed denominator retains all 1,540 questions per condition, including four 
 
 [Full LoCoMo methods, category breakdown and denominators](evaluation/architecture-rerun/results/locomo1540_completed_20261113.md) · [Exact aggregate values](evaluation/architecture-rerun/results/locomo1540_completed_20261113.json) · [Evaluation index](evaluation/README.md)
 
-### Historical MemoryAgentBench result — unchanged earlier version
+### MemoryAgentBench: 800-question evaluation
 
 | Condition | Conflict-task accuracy |
 | --- | ---: |
@@ -52,9 +52,11 @@ The fixed denominator retains all 1,540 questions per condition, including four 
 | Raw-history RAG | 419/800 (52.38%) |
 | Managed-memory RAG | 480/800 (60.00%) |
 
-This is the previously recorded **v3 version-view experiment**, a gain of **7.625 percentage points** over its raw-history comparator. It is not a rerun or score for context v4. Its frozen implementation and complete historical record remain in the [original results](evaluation/objective-memory/results/full-20261105/README.md).
+The MAB conflict-task evaluation covers **800 questions per condition**. Managed memory improves accuracy over raw-history RAG by **7.625 percentage points**.
 
-The [MAB retention policy](evaluation/selected-memory.json) also preserves the [separate historical repair grid](evaluation/objective-memory/results/v4-repair-20261105/README.md) under its own version. Development continues with the new memory architecture; no additional MAB rerun or replacement of the historical data is requested.
+[Methods and full results](evaluation/objective-memory/results/full-20261105/README.md) · [MAB data policy](evaluation/selected-memory.json) · [Separate repair experiment](evaluation/objective-memory/results/v4-repair-20261105/README.md)
+
+Each benchmark retains its own frozen protocol. Exact implementations, scoring rules and supporting records are documented with the corresponding experiment.
 
 ## Research scope
 
@@ -62,7 +64,7 @@ The research question is whether correctable, expirable and deletable memory imp
 
 - The current architecture has three evaluation conditions: `no_rag`, `raw_history_rag` and `managed_memory_rag`, with the same role policy, response model, admitted history and request ceiling.
 - CBT-specific evaluations assess factual context, CBT method, next-step suitability, empathy and safety separately, with emphasis on factual context and next steps. These endpoints are interpreted separately from general-memory answering.
-- Historical runs, failed attempts and versioned protocols are retained in their existing result directories; the homepage highlights completed findings rather than combining incompatible versions.
+- Versioned runs, failed attempts and protocols are retained in their result directories. Each benchmark is reported with its own methods and denominator.
 - The application is a research and educational prototype. A production clinical risk detector, referral service and clinical-outcome study have not been implemented.
 
 ## Repository and documentation
@@ -75,7 +77,7 @@ The research question is whether correctable, expirable and deletable memory imp
 | Product dialogue and memory integration | [modules/agent-integration](modules/agent-integration/README.md) |
 | Professional knowledge retrieval | [modules/cbt-knowledge-rag](modules/cbt-knowledge-rag/README.md) |
 | Current three-arm replication protocols | [evaluation/architecture-rerun](evaluation/architecture-rerun/README.md) |
-| All evaluation layers and historical records | [evaluation](evaluation/README.md) |
+| All evaluation layers and experiment records | [evaluation](evaluation/README.md) |
 | Fictional CLI and Colab application | [app](app/README.md) |
 
 The [previous project overview and milestones](https://github.com/nanlalala/cbt-memory-system/blob/ea21751e17066aa768361313c08695251a31af0c/README.md) remain available at their frozen public revision.

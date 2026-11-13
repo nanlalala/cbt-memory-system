@@ -285,5 +285,5 @@ safety remain separate automatic endpoints. General-memory results and software
 checks do not establish treatment efficacy or human experience.
 
 The [evaluation index](../evaluation/README.md) retains the methods, versioned
-historical results, scoring scope and missingness. Historical MAB results keep
-their original identity; they are not relabelled as scores for context v4.
+results, scoring scope and missingness. MAB and LoCoMo retain separate experiment
+protocols, with exact implementations and scoring records linked to each result.
