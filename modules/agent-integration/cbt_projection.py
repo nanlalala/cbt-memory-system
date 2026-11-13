@@ -11,6 +11,7 @@ import hashlib
 
 from cbt_projection_contract import (EXTRACT, VERIFY, VERIFIER_VERSION, bind_candidates,
                                      canonical, checked_items, fingerprint, request, strict_json)
+from cbt_projection_contract import BINDING_VERSION, bind_candidates_with_status
 
 VERSION = 'cbt-source-projection-v1'
 VERIFIER_REVISION = VERIFIER_VERSION
@@ -44,6 +45,29 @@ def projection_candidates(raw, sources):
         value['evidence'] = [{**e, 'role':by_id[e['source_id']]['role'],
                              'source_time':by_id[e['source_id']].get('source_time')} for e in item['evidence']]
         value['projection_version'] = VERSION
+        result.append(value)
+    return result
+
+
+def projection_candidates_with_status(raw, sources):
+    """Explicit V2 binding; retained candidates still need support checking."""
+    bound, statuses = bind_candidates_with_status(raw, visible_sources(sources))
+    # The representation/enrichment contract is unchanged; its separate binding
+    # revision lives in the audit. Valid unchanged batches retain exact payloads.
+    return _enrich_candidates(bound, sources, VERSION), statuses
+
+
+def _enrich_candidates(bound, sources, version):
+    by_id = {s['source_id']:s for s in sources}
+    result = []
+    for item in bound:
+        value = deepcopy(item)
+        value['source_ids'] = list(dict.fromkeys(e['source_id'] for e in item['evidence']))
+        value['source_scope'] = {'kind':'historical_source_reports',
+            'sources':[{'source_id':sid, 'source_time':by_id[sid].get('source_time')} for sid in value['source_ids']]}
+        value['evidence'] = [{**e, 'role':by_id[e['source_id']]['role'],
+                             'source_time':by_id[e['source_id']].get('source_time')} for e in item['evidence']]
+        value['projection_version'] = version
         result.append(value)
     return result
 

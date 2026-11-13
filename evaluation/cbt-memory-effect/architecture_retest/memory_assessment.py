@@ -159,6 +159,12 @@ class Assessor:
         if self.protocol["code_sha256"]!=runner.code_hashes() or self.protocol["fixture_only"]!=fixture_only:
             raise ValueError("frozen assertion-assessor code/mode differs")
         self.journal=Journal(self.folder,self.protocol,transport,max_new_calls)
+        self.receipt_resolver=None
+        if self.protocol.get("version")=="cbt-v4-independent-memory-assertions-continuation-v3":
+            from .receipt_resolver import ReceiptResolver
+            from .continuation import validate_seed_artifacts
+            self.receipt_resolver=ReceiptResolver(self.folder,self.protocol,self.journal)
+            validate_seed_artifacts(self.folder,self.protocol)
         preflight=json.loads((self.folder/"source_preflight.json").read_text())
         if digest(preflight)!=self.protocol["source_preflight_sha256"]:
             raise ValueError("frozen assessor source preflight differs")
@@ -181,6 +187,8 @@ class Assessor:
         payload={"model":self.protocol["provider"]["model"],"messages":p.request(system,data),
                  "temperature":0,"max_tokens":4096,"thinking":{"type":"disabled"}}
         key=digest({"purpose":purpose,"payload":payload})
+        if getattr(self,"receipt_resolver",None) is not None:
+            return self.receipt_resolver.call(case,purpose,payload)
         if key in self.inherited_receipts:
             return {**self.inherited_receipts[key],"receipt_origin":"inherited_recorded_cache"}
         return {**self.journal.call(case,purpose,payload),"receipt_origin":"new_run_journal"}
@@ -250,8 +258,16 @@ class Assessor:
         path=folder/(answer["arm"]+".score.json")
         if path.exists():
             return json.loads(path.read_text())["score"]
-        received=self.call(case,"memory_adjudication",ADJUDICATE,
-            {"history":with_current(case,sources),"input":case["input"],"response":answer["response"],"targets":frozen["targets"]})
+        from .receipt_resolver import FrozenAssessmentUnavailable
+        try:
+            received=self.call(case,"memory_adjudication",ADJUDICATE,
+                {"history":with_current(case,sources),"input":case["input"],"response":answer["response"],"targets":frozen["targets"]})
+        except FrozenAssessmentUnavailable as exc:
+            atomic(folder/(answer["arm"]+".unavailable.json"),{"case_id":case["case_id"],"arm":answer["arm"],
+                "status":"unavailable","reason":"frozen_historical_post_answer_send_unknown",
+                "assessor_request_key":exc.request_key,"answer_request_key":answer["request_key"],
+                "targets_retained":True,"resend_permitted":False})
+            raise
         value=p.strict_json(received["text"])
         if type(value) is not dict or set(value)!={"status","claims"} or type(value["claims"]) is not list:
             raise ValueError("exact assertion adjudication schema required")
@@ -332,6 +348,12 @@ class Assessor:
             "inherited_received_requests":len(getattr(self,"inherited_receipts",{})),
             "completion_adjustment":"Missing answers or assessments contribute zero coverage on every frozen required fact; unavailable targets are reported separately."}
         inherited_received=list(getattr(self,"inherited_receipts",{}).values())
+        resolver=getattr(self,"receipt_resolver",None)
+        if resolver is not None:
+            inherited_received.extend(e["receipt"] for e in resolver.received.values())
+            result["inherited_frozen_unavailable_requests"]=len(resolver.unavailable)
+            result["inherited_frozen_unavailable_keys"]=sorted(resolver.unavailable)
+        result["inherited_received_requests"]=len(inherited_received)
         new_outcomes=rows(self.folder/"outcomes.jsonl")
         result["request_accounting"]={
             "inherited_received_requests":len(inherited_received),

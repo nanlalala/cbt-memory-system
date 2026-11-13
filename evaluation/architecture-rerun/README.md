@@ -221,3 +221,14 @@ grading. Exact wire bytes and real receipts are journaled; unknown sends stop
 the run without automatic retry. `hosted_worker.py` exposes separate `quality-v2`
 prepare and run actions in fresh credential-free Colab children. This protocol
 repair does not establish new CBT effectiveness results until grading completes.
+
+## Original-roster non-MAB continuation
+
+The [continuation protocol](NON_MAB_CONTINUATION.md) retains professional CBT
+7, CACTUS 600 and LoCoMo 1,540 with their original three conditions and scoring
+rubrics. `cloud_continue_non_mab.py` prepares source-bound reuse and finite
+budgets before starting isolated hosted workers. It preserves historical
+unknown sends, original receipts and full planned denominators. LongMemEval
+is source-only here because its original paid stage awaits an additional
+budget; historical MAB data are excluded. Software checks are not new effect
+scores.

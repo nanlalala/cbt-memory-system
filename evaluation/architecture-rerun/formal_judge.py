@@ -14,6 +14,7 @@ import statistics
 import sys
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(ROOT / "evaluation/end-to-end-dialogue"))
 sys.path.insert(0, str(ROOT / "evaluation/cbt-memory-effect"))
 import reference_judge as legacy
@@ -33,7 +34,8 @@ def file_hash(path):
 
 
 def code_hashes():
-    paths = [Path(__file__), ROOT / "evaluation/end-to-end-dialogue/reference_judge.py",
+    paths = [Path(__file__), Path(__file__).with_name("formal_continuation.py"),
+        ROOT / "evaluation/end-to-end-dialogue/reference_judge.py",
         legacy.SNAPSHOT, ROOT / "evaluation/cbt-memory-effect/architecture_retest/journal.py",
         ROOT / "evaluation/cbt-memory-effect/architecture_retest/transport.py",
         ROOT / "evaluation/cbt-memory-effect/auto_eval_v2/run_colab.py",
@@ -70,6 +72,12 @@ def _reader(run_dir, fixture_only):
     run_dir = Path(run_dir).resolve()
     _guard(run_dir, fixture_only)
     reader = _json(run_dir / "protocol.json")
+    # A continuation has a separate send journal and immutable original
+    # receipts. Its adapter verifies both provenances rather than rewriting an
+    # old receipt's protocol hash to make it look like a new observation.
+    import formal_continuation
+    if reader.get("version") == formal_continuation.VERSION:
+        return formal_continuation.grading_reader(run_dir, fixture_only=fixture_only)
     cases, references = _json(run_dir / "cases.json"), _json(run_dir / "references.json")
     if reader.get("protocol_sha256") != digest({k:v for k,v in reader.items() if k != "protocol_sha256"}):
         raise ValueError("reader protocol checksum differs")

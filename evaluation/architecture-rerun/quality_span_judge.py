@@ -89,6 +89,7 @@ def _guard(folder, fixture_only):
 
 def code_hashes():
     names = [Path(__file__), ROOT / "evaluation/cbt-memory-effect/architecture_retest/journal.py",
+        ROOT / "evaluation/cbt-memory-effect/architecture_retest/receipt_resolver.py",
         ROOT / "evaluation/cbt-memory-effect/architecture_retest/transport.py",
         ROOT / "evaluation/cbt-memory-effect/auto_eval_v2/quality.py",
         ROOT / "evaluation/cbt-memory-effect/auto_eval_v2/evidence.py",
@@ -203,13 +204,25 @@ def _read_complete_reader(folder, fixture_only):
         if (not source.resolve().is_relative_to(ROOT) or source.is_symlink()
                 or not source.is_file() or file_hash(source) != expected):
             raise ValueError("original clinical source code differs: " + relative)
-    intent_rows, outcome_rows = rows(folder / "intents.jsonl"), rows(folder / "outcomes.jsonl")
+    from architecture_retest import CONTINUATION_VERSION
+    continuation=protocol.get("version")==CONTINUATION_VERSION
+    imported=None
+    if continuation:
+        from architecture_retest.receipt_resolver import load_manifest,receipt_pairs
+        imported=load_manifest(folder,protocol)
+        intents,outcomes=receipt_pairs(folder,protocol)
+        intent_rows,outcome_rows=list(intents.values()),list(outcomes.values())
+    else:
+        intent_rows, outcome_rows = rows(folder / "intents.jsonl"), rows(folder / "outcomes.jsonl")
     intents, outcomes = {r["key"]:r for r in intent_rows}, {r["key"]:r for r in outcome_rows}
     if len(intents) != len(intent_rows) or len(outcomes) != len(outcome_rows) or set(intents) != set(outcomes):
         raise ValueError("duplicate or outstanding source send")
     for key, intent in intents.items():
         out = outcomes[key]
-        if (intent.get("protocol_sha256") != protocol["protocol_sha256"] or out.get("protocol_sha256") != protocol["protocol_sha256"]
+        allowed_protocols={protocol["protocol_sha256"]}
+        if imported:
+            allowed_protocols.add(imported["source_protocol"]["protocol_sha256"])
+        if (intent.get("protocol_sha256") not in allowed_protocols or out.get("protocol_sha256") != intent.get("protocol_sha256")
                 or key != digest({"purpose":intent["purpose"], "payload":intent["payload"]})
                 or sha256(intent["serialized_request"].encode()).hexdigest() != intent["wire_sha256"]
                 or document_json(intent["serialized_request"]) != intent["payload"]
@@ -219,6 +232,8 @@ def _read_complete_reader(folder, fixture_only):
                 or out.get("finish_reason") != "stop" or out.get("wire_sha256") != intent["wire_sha256"]):
             raise ValueError("source response identity differs")
     files = {name:file_hash(folder / name) for name in ("protocol.json", "cases.json", "intents.jsonl", "outcomes.jsonl")}
+    if continuation:
+        files["receipt_import.json"]=file_hash(folder/"receipt_import.json")
     packets, mapping, dependencies = [], [], {}
     expected_markers = set()
     for case in cases:
@@ -271,8 +286,12 @@ def _read_complete_reader(folder, fixture_only):
         dependencies[case["case_id"]] = list(hashes)
     if set((folder / "cases").glob("*/completed.json")) != expected_markers:
         raise ValueError("foreign completion markers")
+    if continuation and len(cases)==7 and len(packets)!=21:
+        raise ValueError("repair all four missing professional managed answers before grading the full 21")
     return packets, mapping, {"reader_folder":str(folder), "files":files,
-        "per_case_files":dependencies, "source_protocol_sha256":protocol["protocol_sha256"]}
+        "per_case_files":dependencies, "source_protocol_sha256":protocol["protocol_sha256"],
+        **({"inherited_source_files":{str(Path(imported["source_folder"])/name):value
+             for name,value in imported["source_file_sha256"].items()}} if imported else {})}
 
 
 def _verify_source(snapshot, case_id=None):
@@ -282,6 +301,10 @@ def _verify_source(snapshot, case_id=None):
         path = root / name
         if path.is_symlink() or not path.is_file() or file_hash(path) != snapshot["files"][name]:
             raise ValueError("frozen source generation changed before grading")
+    if case_id is None:
+        for name,expected in snapshot.get("inherited_source_files",{}).items():
+            if file_hash(name)!=expected:
+                raise ValueError("immutable inherited source changed before grading")
 
 
 def prepare(reader_folder, output_folder, identity, fixture_only=False):

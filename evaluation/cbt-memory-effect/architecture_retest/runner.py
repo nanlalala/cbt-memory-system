@@ -15,7 +15,7 @@ import sys
 import threading
 import time
 
-from . import VERSION
+from . import VERSION, CONTINUATION_VERSION
 from . import projections as projection
 from .retrieval import DENSE_MODEL, DENSE_REVISION, DenseRetriever, rank
 
@@ -335,20 +335,56 @@ def _case(case,folder,journal,dense,assessor=None):
                 "status":"unavailable","reason":"independent_target_validation_failed",
                 "error_type":type(exc).__name__,"validation_error":str(exc),"answers_may_proceed":True})
     try:
+        isolated=journal.protocol.get("candidate_binding_version")==projection.BINDING_VERSION
+        audit=None
         _api()
         from cbt_projection import extraction_messages, projection_candidates, verification_messages, supported_projections
         product_sources=[dict(source_id=s["source_id"],text=s["content"],role=s["role"],source_time=s.get("date")) for s in sources]
         extracted=journal.call(case,"extraction",payload(extraction_messages(product_sources),"extraction"))
-        candidates=projection_candidates(extracted["text"],product_sources)
+        if isolated:
+            from cbt_projection import projection_candidates_with_status
+            candidates,binding_statuses=projection_candidates_with_status(extracted["text"],product_sources)
+            audit={"binding_version":projection.BINDING_VERSION,"binding_statuses":binding_statuses,
+                "proposed_count":len(binding_statuses),"literal_binding_retained_count":len(candidates),
+                "binding_rejected_count":len(binding_statuses)-len(candidates),
+                "extraction_request_key":extracted["key"],"candidates":candidates,
+                "accepted":[],"automatic_assessment":True,
+                "candidate_statuses":[{**status,"semantic_status":"pending" if status["binding_status"]=="retained" else "not_eligible",
+                    "semantic_reason":None} for status in binding_statuses]}
+            atomic(dest/"projections.json",audit)
+            if binding_statuses and not candidates:
+                raise ValueError("all proposed memory candidates failed literal binding")
+        else:
+            candidates=projection_candidates(extracted["text"],product_sources)
         reasons={}
         if candidates:
             checked=journal.call(case,"support_check",payload(verification_messages(candidates,product_sources),"support_check"))
             items=supported_projections(checked["text"],candidates,product_sources,verifier_model=checked["provider_model"])
             _,reasons=projection.checked_items(checked["text"],candidates)
-        atomic(dest/"projections.json",{"candidates":candidates,"accepted":items,"verdict_reasons":reasons,
-            "verifier_version":projection.VERIFIER_VERSION,"automatic_assessment":True})
-    except (ValueError,InvalidReceipt) as exc:
+        detail={"candidates":candidates,"accepted":items,"verdict_reasons":reasons,
+            "verifier_version":projection.VERIFIER_VERSION,"automatic_assessment":True}
+        if isolated:
+            accepted_ids={item["item_id"] for item in items}
+            retained_ids={item["item_id"] for item in candidates}
+            detail={**audit,**detail,"candidate_statuses":[{**status,
+                "semantic_status":"supported" if type(status["item_id"]) is str and status["item_id"] in accepted_ids else
+                    "rejected" if type(status["item_id"]) is str and status["item_id"] in retained_ids else "not_eligible",
+                "semantic_reason":reasons.get(status["item_id"]) if type(status["item_id"]) is str else None}
+                for status in binding_statuses]}
+        atomic(dest/"projections.json",detail)
+    except (ValueError,InvalidReceipt,TypeError,KeyError) as exc:
+        if not isolated and isinstance(exc,(TypeError,KeyError)):
+            raise
         failures.append({"stage":"memory_preparation","reason":type(exc).__name__})
+        if journal.protocol.get("candidate_binding_version")==projection.BINDING_VERSION:
+            if audit is not None:
+                atomic(dest/"projections.json",{**audit,"support_assessment_status":"unavailable",
+                    "support_validation_error":str(exc),"candidate_statuses":[{**status,
+                        "semantic_status":"unavailable" if status["binding_status"]=="retained" else "not_eligible",
+                        "semantic_reason":str(exc) if status["binding_status"]=="retained" else None}
+                        for status in binding_statuses]})
+            atomic(dest/"memory_preparation_failure.json",{"case_id":case["case_id"],
+                "status":"unavailable","error_type":type(exc).__name__,"validation_error":str(exc)})
     try:
         prepared=prepare_case_requests(case,sources,items,dense,journal.dense_mutex)
     except ValueError as exc:
@@ -383,8 +419,16 @@ def load(folder,fixture_only=False):
     cases=json.loads((folder/"cases.json").read_text())
     if not fixture_only:
         require_hosted()
-    if protocol["fixture_only"]!=fixture_only or protocol["version"]!=VERSION or protocol["cases_sha256"]!=digest(cases):
+    if protocol["fixture_only"]!=fixture_only or protocol["version"] not in {VERSION,CONTINUATION_VERSION} or protocol["cases_sha256"]!=digest(cases):
         raise ValueError("frozen source/protocol differs")
+    if (protocol.get("candidate_binding_version") is not None and
+            (protocol["version"]!=CONTINUATION_VERSION or protocol["candidate_binding_version"]!=projection.BINDING_VERSION)):
+        raise ValueError("candidate isolation requires its explicit new continuation protocol")
+    if protocol["version"]==CONTINUATION_VERSION:
+        if protocol.get("candidate_binding_version")!=projection.BINDING_VERSION or not protocol.get("receipt_import_sha256"):
+            raise ValueError("continuation binding/import contract missing")
+        from .receipt_resolver import load_manifest
+        load_manifest(folder,protocol)
     if protocol["protocol_sha256"]!=digest({k:v for k,v in protocol.items() if k!="protocol_sha256"}):
         raise ValueError("protocol checksum differs")
     if protocol["code_sha256"]!=code_hashes() or protocol["settings"]!=SETTINGS:
@@ -405,6 +449,9 @@ def run(folder,transport,*,max_new_calls,workers=4,dense=None,fixture_only=False
         raise ValueError("independent frozen pre-answer targets and assessor transport required")
     with lock(folder):
         journal=Journal(folder,protocol,transport,max_new_calls)
+        if protocol["version"]==CONTINUATION_VERSION:
+            from .receipt_resolver import InheritedJournal
+            journal=InheritedJournal(journal)
         assessor=None
         if assessment_folder is not None:
             from .memory_assessment import Assessor
@@ -445,20 +492,23 @@ def summarize(folder,*,fixture_only=False):
     outcomes=rows(folder/"outcomes.jsonl")
     usage={key:sum(r.get("usage",{}).get(key,0) for r in outcomes if type(r.get("usage",{}).get(key,0)) is int)
            for key in ("prompt_tokens","completion_tokens","total_tokens")}
-    return {"version":VERSION,"planned_cases":protocol["case_count"],"completed_cases":len(completed),
+    from .receipt_resolver import load_manifest
+    imported=load_manifest(folder,protocol)
+    return {"version":protocol.get("version",VERSION),"planned_cases":protocol["case_count"],"completed_cases":len(completed),
         "planned_source_families":protocol["source_families"],"arms":{arm:{"planned":protocol["case_count"],
          "received":sum(r["arm"]==arm and r["status"]=="received" for r in arm_rows)} for arm in ARMS},
         "attempts":len(rows(folder/"intents.jsonl")),"received_receipts":sum(r["status"]=="received" for r in outcomes),
         "unknown_receipts":sum(r["status"]=="unknown" for r in outcomes),"provider_usage":usage,
         "response_quality_scores_available":False,"currency_cost_verified":False,
+        "inherited_received_receipts":len(imported["entries"]) if imported else 0,
         "unbound_answer_files":unbound}
 
 
 def verified_answers(folder):
     """Count only files bound to a received request and its exact response."""
     folder=Path(folder)
-    intents={r["key"]:r for r in rows(folder/"intents.jsonl")}
-    outcomes={r["key"]:r for r in rows(folder/"outcomes.jsonl")}
+    from .receipt_resolver import receipt_pairs
+    intents,outcomes=receipt_pairs(folder)
     accepted,unbound=[],[]
     for path in (folder/"cases").glob("*/*.answer.json"):
         answer=json.loads(path.read_text())
