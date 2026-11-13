@@ -47,8 +47,11 @@ LOCOMO_NEW_ANSWER_CAP = 1638
 LOCOMO_JUDGE_CAP = 5082
 LME_PAID_CAPS = {ANSWER_IDENTITY["model"]: 39232, JUDGE_IDENTITY["model"]: 1650}
 STATE_NAME = "_capstone_non_mab_continuation_v1"
-RESTORED_CONNECTION_VERSION = "hosted-non-mab-restored-connection-v1"
-DEFAULT_RECOVERED_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v1"
+RESTORED_CONNECTION_VERSION = "hosted-non-mab-restored-connection-v2"
+DEFAULT_RECOVERED_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v2"
+PREVIOUS_RECOVERED_ROOT = "/content/capstone-non-mab-restored-continuation-20261113-v1"
+PREVIOUS_PREFLIGHT_NONCE = "4ef01c9e-9cf4-4c41-8f47-be9985b526bf"
+PREVIOUS_PREFLIGHT_COMMIT = "431e7fd7c451c7b1d792c98b67a3aa0a53e2c624"
 RESTORE_ARCHIVE_SHA256 = "f9c4159abc0d7853c1640cfbb7221139a79ababc012dbb960dfc3a227c65a430"
 RESTORE_FILE_COUNT = 11633
 RESTORE_UNCOMPRESSED_BYTES = 711889502
@@ -278,14 +281,140 @@ def _load_recovered_transports(repo):
         del key
 
 
+def _worker_is_running(pid, manifest_path):
+    if type(pid) is not int or pid <= 0:
+        raise ValueError("recorded source worker PID required")
+    command = Path("/proc") / str(pid) / "cmdline"
+    try:
+        args = command.read_bytes().split(b"\0")
+    except FileNotFoundError:
+        return False
+    return str(manifest_path).encode() in args
+
+
+def _zero_call_preflight_proof(previous_root, namespace, *, expected_nonce, sources, restoration):
+    """Allow one fixed successor to the observed failed, entirely zero-call preflight.
+
+    No file in the previous invocation is written or removed. Summary counters
+    alone are insufficient: source manifests, physical relay records and every
+    new reader/assessor journal must all prove that no send was admitted.
+    """
+    previous = Path(previous_root)
+    if expected_nonce != PREVIOUS_PREFLIGHT_NONCE:
+        raise ValueError("explicit observed zero-call preflight nonce required")
+    entry, saved = _read(previous / "entry.json"), _read(previous / "status.json")
+    if (entry.get("version") != "hosted-non-mab-restored-connection-v1"
+            or entry.get("nonce") != expected_nonce or saved.get("nonce") != expected_nonce
+            or entry.get("selected_commit") != PREVIOUS_PREFLIGHT_COMMIT
+            or entry.get("sources") != sources or entry.get("mab_accessed") is not False
+            or entry.get("allow_longmemeval_paid") is not False
+            or entry.get("connection_origin") != "reconstructed_from_existing_colab_secret"
+            or saved.get("phase") != "preflight_or_budget" or saved.get("status") != "stopped_without_retry"
+            or Path(saved.get("worker_root", "")) != previous / "workers/locomo1540-source"):
+        raise ValueError("the fixed prior source-only failure identity differs")
+    stable = ("source_restore_archive_sha256", "source_manifest_sha256", "source_restoration_receipt",
+              "source_restoration_receipt_sha256", "restored_original_files_verified", "restored_original_bytes_verified")
+    if any(entry.get("source_restoration", {}).get(key) != restoration.get(key) for key in stable):
+        raise ValueError("successor must retain the exact same restored originals")
+    old_state = namespace.get(STATE_NAME)
+    if isinstance(old_state, dict) and old_state.get("nonce") == expected_nonce:
+        thread, process = old_state.get("thread"), old_state.get("process")
+        if ((isinstance(thread, threading.Thread) and thread.is_alive())
+                or (process is not None and callable(getattr(process, "poll", None)) and process.poll() is None)):
+            raise RuntimeError("previous preflight controller or worker is still active")
+    if (previous / "relay/api.sock").exists() or (previous / "relay/api.sock").is_symlink():
+        raise RuntimeError("previous relay is still present; no successor may start")
+    expected = {"professional7-source": ("cbt-source", "professional7"),
+                "cactus600-source": ("cbt-source", "cactus600"),
+                "locomo1540-source": ("locomo-source", "locomo1540")}
+    manifests = list((previous / "workers").rglob("execution_manifest.json"))
+    if {path.parent.name for path in manifests} != set(expected) or len(manifests) != len(expected):
+        raise ValueError("previous invocation must contain exactly the three observed source phases")
+    controls = {"entry.json", "status.json", "relay/events.jsonl"}
+    jobs = {}
+    for path in manifests:
+        phase = path.parent.name
+        action, cohort = expected[phase]
+        manifest = _read(path)
+        limits = manifest.get("relay_limits")
+        if (path.parent.parent != previous / "workers" or manifest.get("phase") != phase
+                or manifest.get("action") != action or manifest.get("cohort") != cohort
+                or manifest.get("nonce") != expected_nonce
+                or manifest.get("job_id") != expected_nonce + ":" + phase
+                or manifest.get("selected_commit") != PREVIOUS_PREFLIGHT_COMMIT
+                or type(limits) is not dict or set(limits) != {ANSWER_IDENTITY["model"], JUDGE_IDENTITY["model"]}
+                or any(type(cap) is not int or cap != 0 for cap in limits.values())
+                or type(manifest.get("answer_max_new_calls")) is not int or manifest["answer_max_new_calls"] != 0
+                or type(manifest.get("judge_max_new_calls")) is not int or manifest["judge_max_new_calls"] != 0):
+            raise ValueError("a prior worker was not the exact zero-allowance source phase")
+        process_path = path.parent / "process.json"
+        process = _read(process_path)
+        if process.get("manifest_sha256") != _file_hash(path) or _worker_is_running(process.get("pid"), path):
+            raise RuntimeError("prior worker identity differs or remains active")
+        controls.update((str(path.relative_to(previous)), str(process_path.relative_to(previous))))
+        result_path = path.parent / ("error.json" if phase == "locomo1540-source" else "complete.json")
+        result = _read(result_path)
+        if phase == "locomo1540-source":
+            if result.get("error_type") != "ValueError" or (path.parent / "complete.json").exists():
+                raise ValueError("observed LoCoMo source-validation failure differs")
+        elif result.get("maximum_new_generation_requests") != {"professional7": 8, "cactus600": 2111}[cohort]:
+            raise ValueError("original source-only roster/budget differs")
+        controls.add(str(result_path.relative_to(previous)))
+        jobs[manifest["job_id"]] = limits
+    relay_rows = _rows(previous / "relay/events.jsonl")
+    if (len(relay_rows) != len(jobs) or len({r.get("job_id") for r in relay_rows}) != len(jobs)
+            or any(row.get("event") != "register" or row.get("fixture_only") is not False
+                   or type(row.get("limits")) is not dict
+                   or any(type(cap) is not int or cap != 0 for cap in row["limits"].values())
+                   or row.get("limits") != jobs.get(row.get("job_id")) for row in relay_rows)):
+        raise ValueError("prior relay contains a nonzero, duplicate or possibly sent request")
+    snapshot = saved.get("relay", {}).get("jobs", {})
+    if (set(snapshot) != set(jobs) or any(set(snapshot[job]) != set(limits)
+            or any(type(snapshot[job][model]) is not dict or set(snapshot[job][model]) != {"maximum", "admitted"}
+                   or any(type(count) is not int or count != 0 for count in snapshot[job][model].values())
+                   for model in limits)
+            for job, limits in jobs.items())):
+        raise ValueError("prior relay state does not confirm zero admission")
+    journals = list((previous / "studies").rglob("intents.jsonl")) + list((previous / "studies").rglob("outcomes.jsonl"))
+    if len(journals) != 8:
+        raise ValueError("the two completed CBT source preparations must retain all eight empty journals")
+    for journal in journals:
+        if _regular_file(journal).stat().st_size != 0:
+            raise ValueError("previous continuation has a new reader/assessor attempt")
+        controls.add(str(journal.relative_to(previous)))
+    diagnostics = previous / "provider_diagnostics.jsonl"
+    if diagnostics.exists():
+        if _regular_file(diagnostics).stat().st_size:
+            raise ValueError("previous preflight has provider diagnostics; inspect before any successor")
+        controls.add(str(diagnostics.relative_to(previous)))
+    return {"version": "zero-paid-preflight-successor-v1", "previous_run_root": str(previous),
+            "previous_nonce": expected_nonce, "previous_selected_commit": PREVIOUS_PREFLIGHT_COMMIT,
+            "previous_files_sha256": {name: _file_hash(_regular_file(previous / name)) for name in sorted(controls)},
+            "source_restoration_receipt_sha256": restoration["source_restoration_receipt_sha256"],
+            "registered_source_jobs": len(jobs), "provider_intents": 0, "provider_outcomes": 0,
+            "old_root_preserved": True, "verified_at_utc": _utc()}
+
+
+def _assert_zero_preflight_current(proof):
+    previous = Path(proof["previous_run_root"])
+    if (previous / "relay/api.sock").exists() or (previous / "relay/api.sock").is_symlink():
+        raise RuntimeError("previous relay reappeared after zero-call proof")
+    for name, expected in proof["previous_files_sha256"].items():
+        relative = PurePosixPath(name)
+        if (relative.is_absolute() or ".." in relative.parts or str(relative) != name
+                or _file_hash(_regular_file(previous / name)) != expected):
+            raise ValueError("previous zero-call preflight evidence changed")
+
+
 class _RecoveredConnection:
-    def __init__(self, repo, provenance):
+    def __init__(self, repo, provenance, prior_preflight=None):
         if (provenance.get("version") != RESTORED_CONNECTION_VERSION
                 or provenance.get("origin") != "reconstructed_from_existing_colab_secret"
                 or provenance.get("source_restore_archive_sha256") != RESTORE_ARCHIVE_SHA256
                 or provenance.get("restored_original_files_verified") != RESTORE_FILE_COUNT):
             raise ValueError("explicit verified restored-connection provenance required")
         self.repo, self.provenance = Path(repo), dict(provenance)
+        self.prior_preflight = json.loads(json.dumps(prior_preflight)) if prior_preflight is not None else None
         self._lock, self._loaded = threading.Lock(), None
         self._load_failed = False
         self.delegates = {identity["model"]: _RecoveredDelegate(self, identity)
@@ -299,6 +428,10 @@ class _RecoveredConnection:
             raise ValueError("restoration receipt changed before provider admission")
         if (Path(DEFAULT_ROOT) / "entry.json").exists():
             raise RuntimeError("original continuation invocation exists; reconcile before restored continuation")
+        if self.prior_preflight is not None:
+            _assert_zero_preflight_current(self.prior_preflight)
+        elif (Path(PREVIOUS_RECOVERED_ROOT) / "entry.json").exists():
+            raise RuntimeError("previous recovered invocation exists without a validated zero-call proof")
 
     def send(self, identity, payload):
         self.assert_current()
@@ -743,6 +876,8 @@ def run(namespace, *, repo, expected_commit, sources, root=DEFAULT_ROOT,
              "connection_origin": connection_origin, "created_at_utc": _utc()}
     if _recovered_connection is not None:
         entry["source_restoration"] = dict(_recovered_connection.provenance)
+        if _recovered_connection.prior_preflight is not None:
+            entry["preflight_predecessor"] = _recovered_connection.prior_preflight
     try:
         with (root / "entry.json").open("x", encoding="utf-8") as stream:
             json.dump(entry, stream, ensure_ascii=False, allow_nan=False, indent=2)
@@ -775,7 +910,8 @@ def run(namespace, *, repo, expected_commit, sources, root=DEFAULT_ROOT,
 
 
 def run_recovered(namespace, *, repo, expected_commit, sources, source_restoration_receipt,
-                  source_restore_archive, root=DEFAULT_RECOVERED_ROOT, background=True):
+                  source_restore_archive, root=DEFAULT_RECOVERED_ROOT, background=True,
+                  previous_preflight_nonce=None):
     """Continue from verified restored originals in a fresh genuine Colab.
 
     This separate entry never creates v5 globals or claims a reused original
@@ -791,12 +927,19 @@ def run_recovered(namespace, *, repo, expected_commit, sources, source_restorati
         return status(root)
     if (Path(DEFAULT_ROOT) / "entry.json").exists():
         raise RuntimeError("original continuation exists; inspect it before any restored run")
+    previous = _content_path(PREVIOUS_RECOVERED_ROOT)
+    has_previous = (previous / "entry.json").exists()
+    if ((has_previous and previous_preflight_nonce != PREVIOUS_PREFLIGHT_NONCE)
+            or (not has_previous and previous_preflight_nonce is not None)):
+        raise ValueError("an existing prior recovered run requires its explicit observed zero-call nonce")
     repo = _checkout(repo, expected_commit)
     sources = _source_paths(sources)
     archive = _content_path(source_restore_archive)
     receipt = _content_path(source_restoration_receipt)
     provenance = _restoration_provenance(archive, receipt, sources)
-    connection = _RecoveredConnection(repo, provenance)
+    prior = (_zero_call_preflight_proof(previous, namespace, expected_nonce=previous_preflight_nonce,
+              sources=sources, restoration=provenance) if has_previous else None)
+    connection = _RecoveredConnection(repo, provenance, prior_preflight=prior)
     return run(namespace, repo=repo, expected_commit=expected_commit, sources=sources,
                root=root, background=background, allow_longmemeval_paid=False,
                _recovered_connection=connection)

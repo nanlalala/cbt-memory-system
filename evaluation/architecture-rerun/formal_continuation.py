@@ -8,6 +8,7 @@ restricted to genuine hosted Colab. Imports have no network or credential work.
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import ast
 from hashlib import sha256
+import inspect
 import json
 from pathlib import Path
 import shutil
@@ -81,6 +82,15 @@ def code_hashes():
     return {**full.code_hashes(), str(Path(__file__).relative_to(full.ROOT)):_hash(__file__)}
 
 
+def _v1_ast_dump(tree):
+    # Python 3.13 otherwise omits empty fields that 3.12 included in the
+    # frozen digest. Preserve that exact serialization, never relax the AST.
+    options = {"include_attributes": False}
+    if "show_empty" in inspect.signature(ast.dump).parameters:
+        options["show_empty"] = True
+    return ast.dump(tree, **options)
+
+
 def _v1_ast_compatibility(name, old):
     if name not in V1_AST or old != V1_AST[name][0]:
         raise ValueError("original rendering code changed; this cannot be inherited as the same scheme")
@@ -105,7 +115,7 @@ def _v1_ast_compatibility(name, old):
             node.names = [a for a in node.names if a.name not in {"BINDING_VERSION","bind_candidates_with_status"}]
         retained.append(node)
     tree.body = retained
-    actual = sha256(ast.dump(tree,include_attributes=False).encode()).hexdigest()
+    actual = sha256(_v1_ast_dump(tree).encode()).hexdigest()
     if actual != V1_AST[name][1]:
         raise ValueError("frozen V1 projection behavior changed")
     return actual
