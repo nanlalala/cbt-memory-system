@@ -79,6 +79,9 @@ def _frozen_unknown(entry, protocol):
 def collect(source_folder, cases, identity, *, fixture_only, assessor=False):
     source = Path(source_folder).resolve()
     protocol = read_json(source / "protocol.json")
+    if protocol.get("receipt_import_sha256") is not None:
+        from .receipt_chain import collect as collect_chain
+        return collect_chain(source, cases, identity, fixture_only=fixture_only, assessor=assessor)
     names = ("protocol.json", "cases.json", "intents.jsonl", "outcomes.jsonl")
     hashes = {name: file_hash(source / name) for name in names}
     if (protocol.get("protocol_sha256") != digest({k:v for k,v in protocol.items() if k != "protocol_sha256"}) or
@@ -145,6 +148,9 @@ def _validate_legacy(legacy, parent_protocol):
 
 
 def validate_manifest(manifest, cases_sha256, identity, fixture_only):
+    from . import receipt_chain
+    if manifest.get("version") == receipt_chain.VERSION:
+        return receipt_chain.validate(manifest, cases_sha256, identity, fixture_only)
     protocol = manifest["source_protocol"]
     if (manifest.get("version") != MANIFEST_VERSION or
             protocol.get("protocol_sha256") != digest({k:v for k,v in protocol.items() if k != "protocol_sha256"}) or
@@ -202,10 +208,11 @@ class ReceiptResolver:
     def __init__(self, folder, protocol, journal=None):
         self.journal = journal
         self.manifest = load_manifest(folder, protocol)
-        self.received, self.unavailable = {}, {}
+        self.received, self.unavailable, self.terminal_invalid = {}, {}, {}
         if self.manifest:
             self.received = {e["intent"]["key"]: e for e in self.manifest["entries"]}
             self.unavailable = {e["intent"]["key"]: e for e in self.manifest["unavailable"]}
+            self.terminal_invalid = {e["intent"]["key"]: e for e in self.manifest.get("terminal_invalid", [])}
             legacy = self.manifest.get("legacy_inherited_target_receipts")
             if legacy:
                 for entry in legacy["entries"]:
@@ -215,15 +222,20 @@ class ReceiptResolver:
 
     def call(self, case, purpose, request):
         key = digest({"purpose": purpose, "payload": request})
-        entry = self.received.get(key) or self.unavailable.get(key)
+        entry = self.received.get(key) or self.unavailable.get(key) or self.terminal_invalid.get(key)
         if entry:
             if (entry["intent"]["case_id"] != case["case_id"] or
                     json.dumps(request, allow_nan=False) != entry["intent"]["serialized_request"]):
                 raise ValueError("inherited request is not the exact original case and wire")
             if key in self.unavailable:
                 # Identity is checked at load AND immediately before refusing.
-                _frozen_unknown(entry, self.manifest["source_protocol"])
+                from .receipt_chain import _protocol_for
+                _frozen_unknown(entry, _protocol_for(entry, self.manifest))
                 raise FrozenAssessmentUnavailable(key)
+            if key in self.terminal_invalid:
+                from .receipt_chain import FrozenInvalidReceipt, _protocol_for, validate_invalid
+                validate_invalid(entry, _protocol_for(entry, self.manifest))
+                raise FrozenInvalidReceipt(entry)
             return {**entry["receipt"], "receipt_origin": "inherited_received",
                 "source_protocol_sha256": entry["intent"]["protocol_sha256"]}
         if self.journal is None:
@@ -251,6 +263,9 @@ def receipt_pairs(folder, protocol=None):
     resolver = ReceiptResolver(folder, protocol)
     intents, outcomes = {}, {}
     for entry in resolver.received.values():
+        intents[entry["intent"]["key"]] = entry["intent"]
+        outcomes[entry["receipt"]["key"]] = entry["receipt"]
+    for entry in resolver.terminal_invalid.values():
         intents[entry["intent"]["key"]] = entry["intent"]
         outcomes[entry["receipt"]["key"]] = entry["receipt"]
     for name, target in (("intents.jsonl", intents), ("outcomes.jsonl", outcomes)):

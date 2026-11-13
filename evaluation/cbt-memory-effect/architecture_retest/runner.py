@@ -56,7 +56,8 @@ def payload(messages, purpose):
             "thinking": {"type":"disabled"}}
 
 
-from .journal import (Journal, UnknownAttempt, CallLimit, InvalidReceipt, atomic, canonical, digest, lock, rows, utc)
+from .journal import (Journal, UnknownAttempt, CallLimit, InvalidReceipt, TerminalLengthReceipt,
+    TERMINAL_RECEIPT_POLICY, atomic, canonical, digest, lock, rows, utc)
 
 def source_views(case):
     uid=case["source_family_id"]
@@ -328,7 +329,7 @@ def _case(case,folder,journal,dense,assessor=None):
         try:
             assessor.freeze_targets(case,sources)
             targets_available=True
-        except ValueError as exc:
+        except (ValueError,TerminalLengthReceipt) as exc:
             failures.append({"stage":"independent_target_preparation","reason":type(exc).__name__})
             assessor.record_unavailable(case,exc)
             atomic(dest/"target_preparation_failure.json",{"case_id":case["case_id"],
@@ -399,7 +400,16 @@ def _case(case,folder,journal,dense,assessor=None):
         if "preparation_failure" in row:
             answers.append({"arm":arm,"case_id":case["case_id"],"status":"preparation_failed"})
             continue
-        receipt=journal.call(case,"answer",row["payload"])
+        try:
+            receipt=journal.call(case,"answer",row["payload"])
+        except TerminalLengthReceipt as exc:
+            unavailable={"arm":arm,"case_id":case["case_id"],"status":"terminal_length_response",
+                "request_key":exc.request_key,"source_protocol_sha256":exc.source_protocol_sha256,
+                "wire_sha256":exc.wire_sha256,"resend_permitted":False,
+                "terminal_receipt_policy":TERMINAL_RECEIPT_POLICY}
+            atomic(dest/(arm+".terminal_invalid.json"),unavailable)
+            answers.append(unavailable)
+            continue
         answer={"arm":arm,"case_id":case["case_id"],"source_family":case["source_family_id"],
                 "status":"received","request_key":receipt["key"],"response":receipt["text"],
                 "provider_model":receipt["provider_model"],"usage":receipt["usage"]}
@@ -408,8 +418,14 @@ def _case(case,folder,journal,dense,assessor=None):
         if assessor is not None and targets_available:
             try:
                 assessor.score_answer(case,sources,answer,row["trace"]["source_ids"])
-            except ValueError as exc:
+            except (ValueError,TerminalLengthReceipt) as exc:
                 failures.append({"stage":"independent_assertion_scoring","arm":arm,"reason":type(exc).__name__})
+                if isinstance(exc,TerminalLengthReceipt):
+                    atomic(assessor.folder/"assessor_only"/case["case_id"]/(arm+".unavailable.json"),{
+                        "case_id":case["case_id"],"arm":arm,"status":"unavailable",
+                        "reason":"source_bound_terminal_length_response","assessor_request_key":exc.request_key,
+                        "source_protocol_sha256":exc.source_protocol_sha256,"wire_sha256":exc.wire_sha256,
+                        "resend_permitted":False,"terminal_receipt_policy":TERMINAL_RECEIPT_POLICY})
     atomic(dest/"completed.json",{"case_id":case["case_id"],"rows":answers,"preparation_failures":failures})
 
 
@@ -421,6 +437,9 @@ def load(folder,fixture_only=False):
         require_hosted()
     if protocol["fixture_only"]!=fixture_only or protocol["version"] not in {VERSION,CONTINUATION_VERSION} or protocol["cases_sha256"]!=digest(cases):
         raise ValueError("frozen source/protocol differs")
+    if (protocol.get("terminal_receipt_policy") not in {None,TERMINAL_RECEIPT_POLICY}
+            or protocol.get("terminal_receipt_policy") is not None and protocol["version"]!=CONTINUATION_VERSION):
+        raise ValueError("terminal receipt isolation requires its explicit continuation policy")
     if (protocol.get("candidate_binding_version") is not None and
             (protocol["version"]!=CONTINUATION_VERSION or protocol["candidate_binding_version"]!=projection.BINDING_VERSION)):
         raise ValueError("candidate isolation requires its explicit new continuation protocol")

@@ -15,12 +15,13 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "evaluation/cbt-memory-effect"))
 from architecture_retest.journal import (Journal, UnknownAttempt, CallLimit,
+    TerminalLengthReceipt, TERMINAL_RECEIPT_POLICY, is_terminal_length,
     atomic, canonical, digest, document_json, lock, rows, utc)
 from architecture_retest.transport import require_hosted
 from auto_eval_v2 import quality
 from auto_eval_v2.evidence import _cluster_interval
 
-VERSION = "cbt-indexed-evidence-quality-v3-format"
+VERSION = "cbt-indexed-evidence-quality-v3-format-terminal-v1"
 ARMS = ("no_rag", "raw_history_rag", "managed_memory_rag")
 DIMENSIONS = quality.DIMENSIONS
 JUDGE_IDENTITY = {"provider": "https://tokendance.space/gateway/v1", "model": "qwen3.5-plus",
@@ -163,6 +164,7 @@ def _guard(folder, fixture_only):
 def code_hashes():
     names = [Path(__file__), ROOT / "evaluation/cbt-memory-effect/architecture_retest/journal.py",
         ROOT / "evaluation/cbt-memory-effect/architecture_retest/receipt_resolver.py",
+        ROOT / "evaluation/cbt-memory-effect/architecture_retest/receipt_chain.py",
         ROOT / "evaluation/cbt-memory-effect/architecture_retest/transport.py",
         ROOT / "evaluation/cbt-memory-effect/auto_eval_v2/quality.py",
         ROOT / "evaluation/cbt-memory-effect/auto_eval_v2/evidence.py",
@@ -295,6 +297,7 @@ def _read_complete_reader(folder, fixture_only):
         allowed_protocols={protocol["protocol_sha256"]}
         if imported:
             allowed_protocols.add(imported["source_protocol"]["protocol_sha256"])
+            allowed_protocols.update(imported.get("source_protocols", {}))
         if (intent.get("protocol_sha256") not in allowed_protocols or out.get("protocol_sha256") != intent.get("protocol_sha256")
                 or key != digest({"purpose":intent["purpose"], "payload":intent["payload"]})
                 or sha256(intent["serialized_request"].encode()).hexdigest() != intent["wire_sha256"]
@@ -361,10 +364,11 @@ def _read_complete_reader(folder, fixture_only):
         raise ValueError("foreign completion markers")
     if continuation and len(cases)==7 and len(packets)!=21:
         raise ValueError("repair all four missing professional managed answers before grading the full 21")
+    if imported:
+        from architecture_retest.receipt_chain import source_dependencies
     return packets, mapping, {"reader_folder":str(folder), "files":files,
         "per_case_files":dependencies, "source_protocol_sha256":protocol["protocol_sha256"],
-        **({"inherited_source_files":{str(Path(imported["source_folder"])/name):value
-             for name,value in imported["source_file_sha256"].items()}} if imported else {})}
+        **({"inherited_source_files":source_dependencies(imported)} if imported else {})}
 
 
 def _verify_source(snapshot, case_id=None):
@@ -405,6 +409,7 @@ def prepare(reader_folder, output_folder, identity, fixture_only=False):
     output = Path(output_folder).resolve()
     output.mkdir(parents=True, exist_ok=False)
     protocol = {"version":VERSION, "provider":dict(identity), "fixture_only":fixture_only,
+        "terminal_receipt_policy":TERMINAL_RECEIPT_POLICY,
         "maximum_attempts":(len(mapping) * 11 + 9) // 10, "request_limits":{"answer":MAX_REQUEST_CHARS,"preparation":MAX_REQUEST_CHARS},
         "cases_sha256":digest(packets), "mapping_sha256":digest(mapping), "plan_sha256":digest(plan),
         "segment_manifest_sha256":digest(manifests), "source_snapshot_sha256":digest(snapshot),
@@ -432,7 +437,8 @@ def _load(folder, fixture_only):
         "plan.json", "segment_manifest.json", "source_snapshot.json")}
     if (protocol["protocol_sha256"] != digest({k:v for k,v in protocol.items() if k != "protocol_sha256"})
             or protocol["fixture_only"] is not fixture_only or protocol["provider"] != JUDGE_IDENTITY
-            or protocol["code_sha256"] != code_hashes()):
+            or protocol["code_sha256"] != code_hashes()
+            or protocol.get("terminal_receipt_policy") != TERMINAL_RECEIPT_POLICY):
         raise ValueError("grading protocol, mode, provider or executable code differs")
     for name, field in (("cases.json","cases_sha256"), ("controller_arm_mapping.json","mapping_sha256"),
             ("plan.json","plan_sha256"), ("segment_manifest.json","segment_manifest_sha256"),
@@ -455,7 +461,12 @@ def _load(folder, fixture_only):
     return folder, protocol, artifacts
 
 
-def _checked_reviews(artifacts, retained, intents, outcomes):
+def terminal_review():
+    return {"accepted":False,"status":"invalid","assessment":None,
+        "resolved_evidence":[],"reason":"source_bound_terminal_length_response_unavailable"}
+
+
+def _checked_reviews(artifacts, retained, intents, outcomes, protocol=None):
     plan = {r["item_id"]:r for r in artifacts["plan.json"]}
     packets = {p["case_id"]:p for p in artifacts["cases.json"]}
     by_item = {r["item_id"]:r for r in retained}
@@ -468,12 +479,14 @@ def _checked_reviews(artifacts, retained, intents, outcomes):
         purpose = "quality_v2" if item["repeat_of"] is None else "quality_v2_repeat:" + item["item_id"]
         key = digest({"purpose":purpose, "payload":item["payload"]})
         receipt, intent = outcomes.get(key, {}), intents.get(key, {})
+        terminal = protocol is not None and is_terminal_length(receipt,protocol,item["wire_sha256"])
+        expected_review = terminal_review() if terminal else validate_review(receipt.get("text"), packets[row["case_id"]])
         if (row["request_key"] != key or row["case_id"] != item["case_id"]
                 or row["source_family"] != item["source_family"] or row["repeat_of"] != item["repeat_of"]
                 or intent.get("purpose") != purpose or intent.get("payload") != item["payload"]
-                or receipt.get("status") != "received" or receipt.get("provider_model") != JUDGE_IDENTITY["returned_model"]
-                or receipt.get("finish_reason") != "stop" or receipt.get("wire_sha256") != item["wire_sha256"]
-                or row["review"] != validate_review(receipt["text"], packets[row["case_id"]])):
+                or not terminal and (receipt.get("status") != "received" or receipt.get("provider_model") != JUDGE_IDENTITY["returned_model"]
+                    or receipt.get("finish_reason") != "stop" or receipt.get("wire_sha256") != item["wire_sha256"])
+                or row["review"] != expected_review):
             raise ValueError("retained grade differs from its actual request/model receipt")
     return by_item
 
@@ -489,15 +502,18 @@ def run(output_folder, transport, max_new_calls, workers=4, fixture_only=False):
     with lock(folder):
         journal = Journal(folder, protocol, transport, max_new_calls)
         retained = rows(folder / "reviews.jsonl")
-        by_item = _checked_reviews(artifacts, retained, journal.intents, journal.outcomes)
+        by_item = _checked_reviews(artifacts, retained, journal.intents, journal.outcomes, protocol)
         plan = {r["item_id"]:r for r in artifacts["plan.json"]}
         def one(item):
             _verify_source(artifacts["source_snapshot.json"], original_case[item["case_id"]])
             purpose = "quality_v2" if item["repeat_of"] is None else "quality_v2_repeat:" + item["item_id"]
-            receipt = journal.call({"case_id":item["case_id"]}, purpose, item["payload"])
+            try:
+                receipt = journal.call({"case_id":item["case_id"]}, purpose, item["payload"])
+                request_key,review=receipt["key"],validate_review(receipt["text"], packets[item["case_id"]])
+            except TerminalLengthReceipt as exc:
+                request_key,review=exc.request_key,terminal_review()
             row = {"item_id":item["item_id"], "case_id":item["case_id"], "source_family":item["source_family"],
-                "repeat_of":item["repeat_of"], "request_key":receipt["key"],
-                "review":validate_review(receipt["text"], packets[item["case_id"]])}
+                "repeat_of":item["repeat_of"], "request_key":request_key,"review":review}
             with journal.mutex:
                 journal.append("reviews.jsonl", row)
         failures = []
@@ -524,7 +540,7 @@ def summarize(output_folder):
     reviewed = rows(folder / "reviews.jsonl")
     _checked_reviews(artifacts, reviewed,
         {r["key"]:r for r in rows(folder / "intents.jsonl")},
-        {r["key"]:r for r in rows(folder / "outcomes.jsonl")})
+        {r["key"]:r for r in rows(folder / "outcomes.jsonl")}, protocol)
     primary = {r["case_id"]:r for r in reviewed if r["repeat_of"] is None}
     result = {"version":VERSION, "planned_primary":len(mapping),
         "available_response_packets":protocol["available_response_packets"], "reviewed_primary":len(primary),
@@ -582,6 +598,9 @@ def summarize(output_folder):
     result["provider_usage"] = {k:sum(r.get("usage",{}).get(k,0) for r in outcomes) for k in
                                 ("prompt_tokens","completion_tokens","total_tokens")}
     result["received_requests"] = sum(r["status"] == "received" for r in outcomes)
+    intents = {r["key"]:r for r in rows(folder / "intents.jsonl")}
+    result["terminal_invalid_requests"] = sum(is_terminal_length(r,protocol,intents[r["key"]]["wire_sha256"])
+        for r in outcomes)
     result["complete"] = len(reviewed) == len(_json(folder / "plan.json"))
     result["all_primary_scores_valid"] = all(r["review"]["status"] == "completed" for r in primary.values()) and len(primary) == len(mapping)
     return result

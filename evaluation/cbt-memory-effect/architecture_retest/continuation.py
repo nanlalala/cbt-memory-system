@@ -139,6 +139,7 @@ def validate_seed_artifacts(folder, protocol):
 
 def prepare(source_reader, source_assessor, output_folder, *, fixture_only=False):
     """Preserve the exact original roster; never select by observed outcome."""
+    from .journal import TERMINAL_RECEIPT_POLICY
     output = Path(output_folder).resolve()
     _guard(output, fixture_only)
     source_reader, source_assessor = Path(source_reader).resolve(), Path(source_assessor).resolve()
@@ -164,8 +165,9 @@ def prepare(source_reader, source_assessor, output_folder, *, fixture_only=False
     reader, assessor = output / "reader", output / "memory"
     reader.mkdir(); assessor.mkdir()
     preflight = runner.source_preflight(cases)
-    generation_cap = len(cases)*5 - _received_count(gen_import)
-    assessment_cap = len(cases)*5 - _received_count(assessment_import) - len(assessment_import["unavailable"])
+    generation_cap = len(cases)*5 - _received_count(gen_import) - len(gen_import.get("terminal_invalid", []))
+    assessment_cap = (len(cases)*5 - _received_count(assessment_import) - len(assessment_import["unavailable"])
+                      - len(assessment_import.get("terminal_invalid", [])))
     if min(generation_cap, assessment_cap) < 0:
         raise ValueError("imported receipts exceed the original full-grid attempt cap")
     protocol = {"version":CONTINUATION_VERSION,"fixture_only":fixture_only,"cases_sha256":digest(cases),
@@ -173,6 +175,7 @@ def prepare(source_reader, source_assessor, output_folder, *, fixture_only=False
         "provider":runner.IDENTITY,"settings":runner.SETTINGS,"arms":list(runner.ARMS),
         "maximum_attempts":generation_cap,"request_limits":{"answer":24000,"preparation":48000},
         "candidate_binding_version":runner.projection.BINDING_VERSION,
+        "terminal_receipt_policy":TERMINAL_RECEIPT_POLICY,
         "source_preflight_sha256":digest(preflight),"receipt_import_sha256":digest(gen_import),
         "source_protocol_sha256":old_protocol["protocol_sha256"],"code_sha256":runner.code_hashes(),
         "family_roster_policy":"exact_immutable_original_cases_json",
@@ -197,6 +200,7 @@ def prepare(source_reader, source_assessor, output_folder, *, fixture_only=False
             "within_source_request_cap":chars<=96000,"scope":"full original source-only independent target request"})
     artifacts=_seed_targets(source_assessor,assessor,cases,assessment_import)
     ap={"version":ASSESSOR_VERSION,"fixture_only":fixture_only,"provider":identity,
+        "terminal_receipt_policy":TERMINAL_RECEIPT_POLICY,
         "maximum_attempts":assessment_cap,"request_limits":{"answer":96000,"preparation":96000},
         "cases_sha256":digest(cases),"source_preflight_sha256":digest(assessment_preflight),
         "receipt_import_sha256":digest(assessment_import),"imported_target_artifacts_sha256":digest(artifacts),
@@ -215,7 +219,9 @@ def prepare(source_reader, source_assessor, output_folder, *, fixture_only=False
         "maximum_new_generation_requests":generation_cap,"maximum_new_assertion_requests":assessment_cap,
         "quality_after_complete_grid":{"primary":len(cases)*3,"with_independent_10_percent_repeats":(len(cases)*33+9)//10},
         "inherited_generation_received":_received_count(gen_import),
+        "inherited_generation_terminal_invalid":len(gen_import.get("terminal_invalid", [])),
         "inherited_assertion_received":_received_count(assessment_import),
+        "inherited_assertion_terminal_invalid":len(assessment_import.get("terminal_invalid", [])),
         "inherited_frozen_unavailable_assessments":len(assessment_import["unavailable"]),
         "budget_is_a_cap_not_new_authorization":True,"mab_changed":False,
         "comparison_scope":"original fixed grid; exact reusable answers may originate in an earlier execution window",

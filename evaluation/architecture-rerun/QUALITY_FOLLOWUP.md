@@ -1,10 +1,20 @@
 # Separate quality-format follow-up
 
-The new `quality_span_judge_v3.py` is the reviewed format-only candidate. Only
-`VERSION` and `GUIDE` differ from v2: the complete outer response example
+The original format-only scheduler is the historical route for a fully
+completed compatible checkout. For the observed partial CACTUS stop, use
+[C6_TERMINAL_RECOVERY.md](C6_TERMINAL_RECOVERY.md): it first migrates sources
+through the receipt chain under the new code hashes and explicit terminal
+response policy. Do not grade an old reader directly with changed journal
+bytes. The currently queued historical scheduler remains pinned to its old
+checkout and will not be modified.
+
+The v3 format prompt uses the reviewed candidate: the complete outer response example
 contains all five scalar ratings and all five evidence rows. The original
 rubric, validators, source segments, answering model and generated answers
-are unchanged. No effectiveness or better formatting is assumed.
+are unchanged. The current implementation additionally authenticates receipt
+chains and explicitly records terminal-length grades as invalid without
+stopping unrelated grading requests. Its distinct version and policy are
+documented in the C6 recovery entry. No effectiveness or better formatting is assumed.
 
 `cloud_quality_followup.schedule(prior_state, repo=..., expected_commit=...)`
 can be scheduled in the genuine parent Colab kernel while v4 runs. It waits

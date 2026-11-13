@@ -90,6 +90,7 @@ def _guard(folder, fixture_only):
 def code_hashes():
     names = [Path(__file__), ROOT / "evaluation/cbt-memory-effect/architecture_retest/journal.py",
         ROOT / "evaluation/cbt-memory-effect/architecture_retest/receipt_resolver.py",
+        ROOT / "evaluation/cbt-memory-effect/architecture_retest/receipt_chain.py",
         ROOT / "evaluation/cbt-memory-effect/architecture_retest/transport.py",
         ROOT / "evaluation/cbt-memory-effect/auto_eval_v2/quality.py",
         ROOT / "evaluation/cbt-memory-effect/auto_eval_v2/evidence.py",
@@ -222,6 +223,7 @@ def _read_complete_reader(folder, fixture_only):
         allowed_protocols={protocol["protocol_sha256"]}
         if imported:
             allowed_protocols.add(imported["source_protocol"]["protocol_sha256"])
+            allowed_protocols.update(imported.get("source_protocols", {}))
         if (intent.get("protocol_sha256") not in allowed_protocols or out.get("protocol_sha256") != intent.get("protocol_sha256")
                 or key != digest({"purpose":intent["purpose"], "payload":intent["payload"]})
                 or sha256(intent["serialized_request"].encode()).hexdigest() != intent["wire_sha256"]
@@ -288,10 +290,11 @@ def _read_complete_reader(folder, fixture_only):
         raise ValueError("foreign completion markers")
     if continuation and len(cases)==7 and len(packets)!=21:
         raise ValueError("repair all four missing professional managed answers before grading the full 21")
+    if imported:
+        from architecture_retest.receipt_chain import source_dependencies
     return packets, mapping, {"reader_folder":str(folder), "files":files,
         "per_case_files":dependencies, "source_protocol_sha256":protocol["protocol_sha256"],
-        **({"inherited_source_files":{str(Path(imported["source_folder"])/name):value
-             for name,value in imported["source_file_sha256"].items()}} if imported else {})}
+        **({"inherited_source_files":source_dependencies(imported)} if imported else {})}
 
 
 def _verify_source(snapshot, case_id=None):

@@ -90,6 +90,27 @@ class InvalidReceipt(RuntimeError):
     pass
 
 
+TERMINAL_RECEIPT_POLICY = "source-bound-terminal-length-v1"
+
+
+class TerminalLengthReceipt(InvalidReceipt):
+    """An exact returned length-limited response, preserved but never reused."""
+    def __init__(self, request_key, protocol_sha256, wire_sha256):
+        self.request_key = request_key
+        self.source_protocol_sha256 = protocol_sha256
+        self.wire_sha256 = wire_sha256
+        super().__init__("source-bound terminal length response unavailable; no retry")
+
+
+def is_terminal_length(receipt, protocol, wire_sha256):
+    return (protocol.get("terminal_receipt_policy") == TERMINAL_RECEIPT_POLICY
+        and type(receipt) is dict and receipt.get("status", "invalid") == "invalid"
+        and receipt.get("provider_model") == protocol["provider"]["returned_model"]
+        and receipt.get("wire_sha256") == wire_sha256
+        and receipt.get("finish_reason") == "length"
+        and type(receipt.get("text")) is str)
+
+
 def _hosted_runtime_present():
     """Recognize the actual host without treating local fixtures as hosted."""
     if not os.environ.get("COLAB_RELEASE_TAG") or not Path("/content").is_dir():
@@ -144,6 +165,10 @@ class Journal:
             if row["status"]=="received" and (row.get("provider_model")!=protocol["provider"]["returned_model"] or
                     row.get("finish_reason")!="stop" or row.get("wire_sha256")!=self.intents[key]["wire_sha256"]):
                 raise ValueError("retained successful receipt identity differs")
+            if (protocol.get("terminal_receipt_policy") == TERMINAL_RECEIPT_POLICY
+                    and row.get("status") == "invalid"
+                    and not is_terminal_length(row, protocol, self.intents[key]["wire_sha256"])):
+                raise UnknownAttempt("nonterminal invalid response retained; admission stopped")
         if set(self.intents)-set(self.outcomes) or any(r["status"]=="unknown" for r in self.outcomes.values()):
             raise UnknownAttempt("unreconciled send retained; no automatic resend")
 
@@ -163,6 +188,8 @@ class Journal:
             if key in self.outcomes:
                 result=self.outcomes[key]
                 if result["status"]!="received":
+                    if is_terminal_length(result, self.protocol, self.intents[key]["wire_sha256"]):
+                        raise TerminalLengthReceipt(key,self.protocol["protocol_sha256"],self.intents[key]["wire_sha256"])
                     raise InvalidReceipt("previous rejected request preserved")
                 return result
             event = self.pending.get(key)
@@ -201,11 +228,16 @@ class Journal:
                           provider_model=received.get("provider_model"),status="invalid",
                           finish_reason=received.get("finish_reason"),response_id=received.get("response_id"),
                           wire_sha256=received.get("wire_sha256"))
+            if is_terminal_length(result,self.protocol,self.intents[key]["wire_sha256"]):
+                raise TerminalLengthReceipt(key,self.protocol["protocol_sha256"],self.intents[key]["wire_sha256"])
             if (received.get("provider_model")!=self.protocol["provider"]["returned_model"] or received.get("finish_reason")!="stop" or
                 received.get("wire_sha256")!=self.intents[key]["wire_sha256"] or
                 type(received.get("text")) is not str or not received["text"].strip()):
                 raise InvalidReceipt("incomplete or model/wire-mismatched response")
             result["status"]="received"
+        except TerminalLengthReceipt as exc:
+            result["error_type"]=type(exc).__name__
+            result["terminal_receipt_policy"]=TERMINAL_RECEIPT_POLICY
         except Exception as exc:
             result["error_type"]=type(exc).__name__
             self.stop.set()
@@ -216,6 +248,8 @@ class Journal:
                 self.outcomes[key]=result
                 event.set()
         if result["status"]!="received":
+            if is_terminal_length(result,self.protocol,self.intents[key]["wire_sha256"]):
+                raise TerminalLengthReceipt(key,self.protocol["protocol_sha256"],self.intents[key]["wire_sha256"])
             raise UnknownAttempt("provider send retained; admission stopped")
         return result
 
