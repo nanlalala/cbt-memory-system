@@ -44,6 +44,10 @@ class Transport:
                     wire_sha256=sha256(json.dumps(body).encode()).hexdigest())
 
 
+def first_case(root):
+    return json.loads((root / "prior/cases.json").read_text())[0]["case_id"]
+
+
 LADDER = {"L1": UnionConfig(), "L4": UnionConfig(rerank=True, fact_key_sources=3, pin_profile=True, renderer="v5")}
 
 
@@ -172,6 +176,16 @@ class UnionRun(unittest.TestCase):
                                     dev_families=1, dense=FakeDense(), fixture_only=True)
             atomic(scope_file, scope)
             union_run.prepare(root / "prior", root / "union", dev_families=1, ladder=LADDER, fixture_only=True)
+            with self.assertRaisesRegex(ValueError, "not finished"):
+                union_run.export_quality(root / "union", {"provider": "f", "model": "j", "returned_model": "j",
+                                         "model_family": "qwen"}, root / "q", maximum_attempts=9, fixture_only=True)
+            marker = root / "prior/cases" / first_case(root) / "completed.json"
+            saved = marker.read_text()
+            marker.unlink()
+            with self.assertRaisesRegex(ValueError, "prior run not finished"):
+                union_run.run(root / "union", Transport(runner.IDENTITY), max_new_calls=6, workers=1,
+                              dense=FakeDense(), fixture_only=True)
+            marker.write_text(saved)
             summary = union_run.run(root / "union", Transport(runner.IDENTITY), max_new_calls=6, workers=1,
                                     dense=FakeDense(), fixture_only=True)
             self.assertEqual(summary["completed_cases"], 3)

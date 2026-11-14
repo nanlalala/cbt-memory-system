@@ -271,6 +271,10 @@ def run(folder, transport, *, max_new_calls, workers=4, dense=None, fixture_only
         raise ValueError("explicit bounded invocation budget and workers required")
     if fixture_only and getattr(transport, "fixture_only", False) is not True:
         raise ValueError("fixture execution cannot send to a real provider")
+    unfinished = [c["case_id"] for c in cases if not (prior / "cases" / c["case_id"] / "completed.json").exists()]
+    if unfinished:
+        # Otherwise a case whose prior answers are still pending would be skipped for good.
+        raise ValueError("prior run not finished for %d cases of this split; finish it first" % len(unfinished))
     with lock(folder):
         journal = Journal(folder, protocol, transport, max_new_calls)
         dense = dense if dense is not None else DenseRetriever()
@@ -339,6 +343,10 @@ def export_quality(folder, judge_identity, output, *, maximum_attempts, include_
     one session for every compared condition.
     """
     folder, protocol, cases, prior, ladder = load(folder, fixture_only)
+    unfinished = [c["case_id"] for c in cases if not (folder / "cases" / c["case_id"] / "completed.json").exists()]
+    if unfinished:
+        raise ValueError("union run not finished for %d cases; export only after every case is completed or skipped"
+                         % len(unfinished))
     prior_answers, _ = runner.verified_answers(prior)
     old = {(a["case_id"], a["arm"]): a for a in prior_answers}
     new = {(a["case_id"], a["config"]): a for a in _answers(folder)}
