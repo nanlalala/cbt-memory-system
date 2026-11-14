@@ -31,7 +31,8 @@ from auto_eval_v2.run_colab import require_hosted
 
 from . import VERSION
 from .layers import UnionConfig
-from .union_requests import prepare_case_requests_union
+from .knowledge import load_packets
+from .union_requests import fit_knowledge, prepare_case_requests_union
 
 RUN_VERSION = "cbt-managed-union-run-v1"
 SPLIT_SALT = "cbt-managed-union-dev-test-split-v1"
@@ -64,6 +65,24 @@ GENERATION_FILES = ("evaluation/cbt-memory-effect/architecture_union/__init__.py
                     "evaluation/cbt-memory-effect/architecture_union/layers.py",
                     "evaluation/cbt-memory-effect/architecture_union/union_requests.py",
                     "modules/agent-integration/cbt_context_v5_draft.py")
+
+
+# union_requests.py before the optional knowledge channel was added. Its output
+# for runs without knowledge is unchanged (tests/test_architecture_union_knowledge.py
+# pins the request digest), so answers prepared with it stay readable.
+KNOWLEDGE_FREE_EQUIVALENT = {
+    "evaluation/cbt-memory-effect/architecture_union/union_requests.py":
+        {"f918bb403318e01c193510a90c746afd0513402afe77c0bed9cfd03470b24323"},
+}
+
+
+def generation_compatible(protocol):
+    old, new = generation_hashes(protocol["code_sha256"]), generation_hashes(code_hashes())
+    if not protocol.get("knowledge"):
+        for key, allowed in KNOWLEDGE_FREE_EQUIVALENT.items():
+            if old.get(key) in allowed:
+                old[key] = new[key]
+    return old == new
 
 
 def generation_hashes(hashes):
@@ -179,12 +198,17 @@ def prior_completed_case_ids(prior, *, split="dev", dev_families=40):
                   and received.get(c["case_id"]) == set(runner.ARMS))
 
 
-def prepare(prior, folder, *, split="dev", dev_families=40, ladder=None, case_ids=None, fixture_only=False):
+def prepare(prior, folder, *, split="dev", dev_families=40, ladder=None, case_ids=None, fixture_only=False,
+            knowledge_packets=None):
     """Freeze roster, split, layer configs and code for one new run directory.
 
     ``case_ids`` makes an exploratory pilot on a subset of the split (for example
     the cases whose prior run already finished). A pilot never replaces the full
     split run and is labelled as such in its protocol.
+
+    ``knowledge_packets`` (from ``knowledge.build_packets``) turns on the CBT
+    textbook channel. Every arm then receives the same cards, so no-RAG and raw
+    answers are generated again in this run instead of being reused from the prior.
     """
     if not fixture_only:
         require_hosted()
@@ -203,21 +227,32 @@ def prepare(prior, folder, *, split="dev", dev_families=40, ladder=None, case_id
         if not wanted or not wanted <= {c["case_id"] for c in cases}:
             raise ValueError("pilot case IDs must be a nonempty subset of the split")
         cases = [c for c in cases if c["case_id"] in wanted]
+    knowledge = None
+    if knowledge_packets is not None:
+        knowledge = load_packets(knowledge_packets, [c["case_id"] for c in cases], fixture_only=fixture_only)
     folder = Path(folder).resolve()
     if not fixture_only and (not folder.is_relative_to("/content") or folder == Path("/content")):
         raise ValueError("new hosted run directory required")
     folder.mkdir(parents=True, exist_ok=False)
+    if knowledge is not None:
+        atomic(folder / "knowledge_packets.json", knowledge)
     protocol = {"version": RUN_VERSION, "union_version": VERSION, "fixture_only": fixture_only,
         "prior_folder": str(prior), "prior_protocol_sha256": prior_protocol["protocol_sha256"],
         "split": split, "scope": "pilot_subset_exploratory" if case_ids is not None else "full_split",
         "split_salt": SPLIT_SALT, "dev_families": dev_families, "family_split": families,
         "configs": {name: config.as_dict() for name, config in ladder.items()},
         "case_count": len(cases), "cases_sha256": digest(cases), "provider": runner.IDENTITY,
-        "settings": runner.SETTINGS, "maximum_attempts": len(cases) * len(ladder),
+        "settings": runner.SETTINGS,
+        "maximum_attempts": len(cases) * (len(ladder) + (2 if knowledge else 0)),
+        "knowledge": None if knowledge is None else {
+            "packets_sha256": knowledge["packets_sha256"], "policy_hash": knowledge["policy_hash"],
+            "corpus_fingerprints": knowledge["corpus_fingerprints"], "status_counts": knowledge["status_counts"],
+            "shared_by_all_arms": True},
         "request_limits": {"answer": runner.SETTINGS["max_answer_chars"],
                            "preparation": runner.SETTINGS["max_preparation_chars"]},
-        "reused_from_prior": ["extracted_and_checked_items", "no_rag_answers", "raw_history_rag_answers",
-                              "frozen_managed_answers"],
+        "reused_from_prior": (["extracted_and_checked_items"] if knowledge else
+                              ["extracted_and_checked_items", "no_rag_answers", "raw_history_rag_answers",
+                               "frozen_managed_answers"]),
         "tuning_rule": "tune and choose on dev only; run test once with frozen configs",
         "code_sha256": code_hashes(), "created_at_utc": utc()}
     protocol["protocol_sha256"] = digest(protocol)
@@ -240,8 +275,7 @@ def load(folder, fixture_only=False, *, stage="run"):
             or protocol["cases_sha256"] != digest(cases)
             or protocol["protocol_sha256"] != digest({k: v for k, v in protocol.items() if k != "protocol_sha256"})):
         raise ValueError("frozen union run protocol differs")
-    same = (protocol["code_sha256"] == code_hashes() if stage == "run" else
-            generation_hashes(protocol["code_sha256"]) == generation_hashes(code_hashes()))
+    same = (protocol["code_sha256"] == code_hashes() if stage == "run" else generation_compatible(protocol))
     if not same or protocol["settings"] != runner.SETTINGS:
         raise ValueError("code or settings changed since prepare; prepare a new run")
     prior, prior_protocol, _ = _load_prior(protocol["prior_folder"], fixture_only)
@@ -249,6 +283,16 @@ def load(folder, fixture_only=False, *, stage="run"):
         raise ValueError("prior run differs from the one this run was prepared on")
     ladder = {name: UnionConfig(**values) for name, values in protocol["configs"].items()}
     return folder, protocol, cases, prior, ladder
+
+
+def knowledge_cards(folder, protocol):
+    """Frozen cards by case for a knowledge run, or None for a run without the channel."""
+    if not protocol.get("knowledge"):
+        return None
+    body = json.loads((Path(folder) / "knowledge_packets.json").read_text())
+    if body.get("packets_sha256") != protocol["knowledge"]["packets_sha256"] or body["packets_sha256"] != digest(body["packets"]):
+        raise ValueError("knowledge packets differ from the frozen run")
+    return {case_id: packet["items"] for case_id, packet in body["packets"].items()}
 
 
 def _prior_items(prior, case):
@@ -277,7 +321,20 @@ def raw_bytes_match(payload, wire):
     return serialized == wire[0] and sha256(serialized.encode()).hexdigest() == wire[1]
 
 
-def _case(case, folder, prior, ladder, journal, dense, raw_wires):
+def _answer(case, dest, name, row, journal):
+    atomic(dest / (name + ".request.json"), row)
+    try:
+        receipt = journal.call(case, "answer", row["payload"])
+    except TerminalLengthReceipt as exc:
+        return {"config": name, "status": "terminal_length_response", "request_key": exc.request_key}
+    answer = {"config": name, "case_id": case["case_id"], "source_family": case["source_family_id"],
+              "status": "received", "request_key": receipt["key"], "response": receipt["text"],
+              "provider_model": receipt["provider_model"], "usage": receipt["usage"]}
+    atomic(dest / (name + ".answer.json"), answer)
+    return {"config": name, "status": "received", "request_key": receipt["key"]}
+
+
+def _case(case, folder, prior, ladder, journal, dense, raw_wires, knowledge=None):
     dest = folder / "cases" / case["case_id"]
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "completed.json").exists():
@@ -287,36 +344,45 @@ def _case(case, folder, prior, ladder, journal, dense, raw_wires):
         atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
                                          "reason": "prior_memory_preparation_unavailable"})
         return
-    wire = raw_wires.get(case["case_id"])
-    if wire is None:
-        atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
-                                         "reason": "prior_raw_answer_unavailable"})
-        return
     sources = runner.source_views(case)
-    rows_out = []
+    rows_out, cards = [], []
+    if knowledge is None:
+        wire = raw_wires.get(case["case_id"])
+        if wire is None:
+            atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
+                                             "reason": "prior_raw_answer_unavailable"})
+            return
+    else:
+        # Same cards for every arm: the largest prefix that fits all of them.
+        raw_ids = runner.prepare_case_requests(case, sources, [], dense, journal.dense_mutex)["raw_history_rag"][
+            "selection_audit"]["raw_selected_source_ids"]
+        cards = fit_knowledge(case, sources, raw_ids, knowledge.get(case["case_id"], []), list(ladder.values()))
+        try:
+            base = prepare_case_requests_union(case, sources, items, dense, journal.dense_mutex,
+                                               next(iter(ladder.values())), knowledge=cards)
+        except ValueError as exc:
+            atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
+                                             "reason": "knowledge_base_arms_failed", "error_type": type(exc).__name__})
+            return
+        for arm in ("no_rag", "raw_history_rag"):
+            rows_out.append(_answer(case, dest, arm, base[arm], journal))
     for name, config in ladder.items():
         try:
-            plans = prepare_case_requests_union(case, sources, items, dense, journal.dense_mutex, config)
+            plans = prepare_case_requests_union(case, sources, items, dense, journal.dense_mutex, config,
+                                                knowledge=cards)
         except ValueError as exc:
             rows_out.append({"config": name, "status": "preparation_failed", "reason": type(exc).__name__})
             continue
-        if not raw_bytes_match(plans["raw_history_rag"]["payload"], wire):
+        if knowledge is None and not raw_bytes_match(plans["raw_history_rag"]["payload"], wire):
             atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
                                              "reason": "raw_request_bytes_differ_from_prior_receipt"})
             return
-        row = plans["managed_memory_rag"]
-        atomic(dest / (name + ".request.json"), row)
-        try:
-            receipt = journal.call(case, "answer", row["payload"])
-        except TerminalLengthReceipt as exc:
-            rows_out.append({"config": name, "status": "terminal_length_response", "request_key": exc.request_key})
-            continue
-        answer = {"config": name, "case_id": case["case_id"], "source_family": case["source_family_id"],
-                  "status": "received", "request_key": receipt["key"], "response": receipt["text"],
-                  "provider_model": receipt["provider_model"], "usage": receipt["usage"]}
-        atomic(dest / (name + ".answer.json"), answer)
-        rows_out.append({"config": name, "status": "received", "request_key": receipt["key"]})
-    atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "completed", "rows": rows_out})
+        rows_out.append(_answer(case, dest, name, plans["managed_memory_rag"], journal))
+    done = {"case_id": case["case_id"], "status": "completed", "rows": rows_out}
+    if knowledge is not None:
+        done["knowledge_card_ids"] = [c["chunk_id"] for c in cards]
+    atomic(dest / "completed.json", done)
+
 
 
 def run(folder, transport, *, max_new_calls, workers=4, dense=None, fixture_only=False):
@@ -334,10 +400,11 @@ def run(folder, transport, *, max_new_calls, workers=4, dense=None, fixture_only
         dense = dense if dense is not None else DenseRetriever()
         if not fixture_only and (getattr(dense, "model_id", None), getattr(dense, "revision", None)) != (DENSE_MODEL, DENSE_REVISION):
             raise ValueError("dense ranker identity differs from frozen E5 model/revision")
-        raw_wires = _prior_raw_wires(prior)
+        knowledge = knowledge_cards(folder, protocol)
+        raw_wires = _prior_raw_wires(prior) if knowledge is None else {}
         failures = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_case, c, folder, prior, ladder, journal, dense, raw_wires): c["case_id"]
+            futures = {pool.submit(_case, c, folder, prior, ladder, journal, dense, raw_wires, knowledge): c["case_id"]
                        for c in cases}
             for future in as_completed(futures):
                 try:
@@ -433,7 +500,8 @@ def summarize(folder):
                           for r in {c.get("reason") for c in completed if c["status"] == "skipped"}},
         "configs": {name: {"received": sum(a["config"] == name for a in answers),
                            "mean_request_chars": (sum(sizes.get(name, [])) / len(sizes[name])) if sizes.get(name) else None}
-                    for name in protocol["configs"]},
+                    for name in [*(["no_rag", "raw_history_rag"] if protocol.get("knowledge") else []),
+                                 *protocol["configs"]]},
         "new_receipts": sum(r["status"] == "received" for r in rows(folder / "outcomes.jsonl")),
         "response_quality_scores_available": False}
 
@@ -449,10 +517,16 @@ def quality_packets(folder, *, include_no_rag=False, fixture_only=False):
     if unfinished:
         raise ValueError("union run not finished for %d cases; export only after every case is completed or skipped"
                          % len(unfinished))
-    prior_answers, _ = runner.verified_answers(prior)
-    old = {(a["case_id"], a["arm"]): a for a in prior_answers}
+    knowledge = bool(protocol.get("knowledge"))
+    old = {}
+    if not knowledge:
+        prior_answers, _ = runner.verified_answers(prior)
+        old = {(a["case_id"], a["arm"]): a for a in prior_answers}
     new = {(a["case_id"], a["config"]): a for a in _answers(folder)}
-    arms = [*(["no_rag"] if include_no_rag else []), "raw_history_rag", "managed_memory_rag", *ladder]
+    # A knowledge run regenerates no-RAG and raw answers with the shared cards; the
+    # prior's frozen managed answer had no cards, so it is not compared there.
+    arms = [*(["no_rag"] if include_no_rag else []), "raw_history_rag",
+            *([] if knowledge else ["managed_memory_rag"]), *ladder]
     packets, mapping = [], []
     for case in cases:
         marker = folder / "cases" / case["case_id"] / "completed.json"
@@ -460,7 +534,8 @@ def quality_packets(folder, *, include_no_rag=False, fixture_only=False):
             continue
         history = [{"id": s["source_id"], "role": s["role"], "content": s["content"]} for s in runner.source_views(case)]
         for arm in arms:
-            answer = old.get((case["case_id"], arm)) if arm in runner.ARMS else new.get((case["case_id"], arm))
+            answer = (old.get((case["case_id"], arm)) if arm in runner.ARMS and not knowledge
+                      else new.get((case["case_id"], arm)))
             if answer is None:
                 mapping.append({"case_id": case["case_id"], "source_family": case["source_family_id"],
                                 "arm": arm, "packet_id": None, "status": "not_received"})
