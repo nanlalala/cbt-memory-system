@@ -53,7 +53,6 @@ The [MAB 800-question conflict-task result](../objective-memory/results/full-202
 | [`formal_judge.py`](formal_judge.py) | Frozen adapted independent reference scoring and complete-denominator summaries |
 | [CBT architecture retest](../cbt-memory-effect/architecture_retest/README.md) | Domain-specific fact/continuity evaluation |
 | [`quality_span_judge_v3.py`](quality_span_judge_v3.py) | Separately versioned R1–R5 automatic assessment |
-| [Migration matrix](../ARCHITECTURE_MIGRATION_20261113.md) | Which artifacts can be reused after architecture changes |
 
 Models, embeddings, full datasets and paid requests run only in genuine hosted Colab. Source-only preparation is distinct from paid execution. Existing runtime modules, checkpoints, receipts and in-flight requests must be checked before continuation; a file on disk alone does not identify the code objects already loaded by a kernel. Isolated credential-free child workers preserve selected source versions while approved provider transports remain in the parent. Call caps are ceilings, not new permission or automatic-retry instructions.
 

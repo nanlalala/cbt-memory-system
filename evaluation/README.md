@@ -16,7 +16,21 @@ The primary managed-minus-raw gain is **13.88 percentage points** (95% family-cl
 
 [Methods, all category rates and denominators](architecture-rerun/results/locomo1540_completed_20261113.md) · [Exact aggregates](architecture-rerun/results/locomo1540_completed_20261113.json)
 
-These are adapted independent Qwen reference scores for DeepSeek-generated answers, not official benchmark scores or clinical outcomes. The homepage highlights completed findings; historical records are retained separately.
+### MemoryAgentBench conflict resolution (800 questions)
+
+| Condition | Accuracy | Token F1 |
+| --- | ---: | ---: |
+| No RAG (short-term only) | 10/800 (1.25%) | 1.3 |
+| Raw-history RAG | 419/800 (52.38%) | 52.6 |
+| **Managed-memory RAG** | **480/800 (60.00%)** | **60.1** |
+
+Managed memory gained 68 questions and lost 7; multi-hop questions rose from 44 to 96 correct. [Full record](objective-memory/results/full-20261105/README.md)
+
+### CBT dialogue pilot
+
+On synthetic CACTUS-based CBT dialogues, a blinded pairwise judge preferred the managed-memory response for use of the client's history (net win **+0.42**, 95% interval 0.17–0.65). [Union run and judge](cbt-memory-effect/architecture_union/README.md)
+
+Benchmark scores are adapted independent Qwen reference scores for DeepSeek-generated answers, not official benchmark scores or clinical outcomes. The homepage highlights completed findings; historical records are retained separately.
 
 ## Current experiment design
 
@@ -38,7 +52,6 @@ The primary comparator is capable raw-history RAG. A recent window is shared aux
 | Record | Purpose |
 | --- | --- |
 | [Architecture reruns](architecture-rerun/README.md) | Current implementation, original rosters and separately frozen executions |
-| [Migration matrix](ARCHITECTURE_MIGRATION_20261113.md) | Which outputs need new execution after the architecture change |
 | [CBT memory study](cbt-memory-effect/architecture_retest/README.md) | Domain-specific facts, continuity and source-bound automatic evaluation |
 | [Managed-union CBT pilot](cbt-memory-effect/architecture_union/README.md) | Raw-superset managed arm, knowledge channel, blinded pairwise judging |
 | [Published-label calibration](architecture-calibration/README.md) | Calibration only for the dimensions covered by released expert labels |
