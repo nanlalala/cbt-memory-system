@@ -48,7 +48,8 @@ def first_case(root):
     return json.loads((root / "prior/cases.json").read_text())[0]["case_id"]
 
 
-LADDER = {"L1": UnionConfig(), "L4": UnionConfig(rerank=True, fact_key_sources=3, pin_profile=True, renderer="v5")}
+LADDER = {"L1": UnionConfig(), "L4": UnionConfig(rerank=True, fact_key_sources=3, pin_profile=True, renderer="v5",
+                                                 compact_quotes=True, evidence_once=True)}
 
 
 class UnionRun(unittest.TestCase):

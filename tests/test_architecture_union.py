@@ -221,8 +221,46 @@ class AdditiveLayers(unittest.TestCase):
         self.assertEqual(audit["union_fact_key_source_ids"], [])
         self.assertEqual(audit["union_item_ids"], [])
 
+    def test_compact_quotes_render_each_message_once_and_fit_more_items(self):
+        case, sources = long_fixture()
+        users = [s for s in sources[:-runner.SETTINGS["recent_messages"]] if s["role"] == "user"]
+        items = [item_on(users[i % len(users)], "m%d" % i, "Processed summary %d about walking practice." % i)
+                 for i in range(14)]
+        naive = self.run_union(case, sources, items)
+        compact = self.run_union(case, sources, items, renderer="v5", compact_quotes=True)
+        once = self.run_union(case, sources, items, renderer="v5", compact_quotes=True, evidence_once=True)
+        self.assertGreater(len(item_ids(compact)), len(item_ids(naive)))
+        self.assertLess(once["managed_memory_rag"]["trace"]["request_chars"],
+                        compact["managed_memory_rag"]["trace"]["request_chars"])
+        for plans in (compact, once):
+            audit = plans["managed_memory_rag"]["selection_audit"]
+            self.assertTrue(audit["raw_selection_is_subset_of_managed"])
+            quotes = [c for c in memory_block(plans)["claims"] if c.get("field") == "history_quote"]
+            self.assertTrue(all("evidence" not in c and "bundle_id" not in c for c in quotes))
+        # Compact alone still repeats item evidence spans; evidence_once leaves one copy in total.
+        block = json.dumps(memory_block(once), ensure_ascii=False)
+        for sid in once["managed_memory_rag"]["selection_audit"]["union_raw_source_ids"]:
+            text = next(s["content"] for s in sources if s["source_id"] == sid)
+            self.assertEqual(block.count(json.dumps(text, ensure_ascii=False)[1:-1]), 1)
+
+    def test_evidence_once_quotes_each_older_evidence_message_whole(self):
+        case, sources = long_fixture()
+        frozen = runner.prepare_case_requests(case, sources, [], FakeDense(), threading.Lock())
+        missed = set(frozen["raw_history_rag"]["selection_audit"]["raw_omitted_source_ids"])
+        target = [s for s in sources[:-runner.SETTINGS["recent_messages"]] if s["role"] == "user"
+                  and s["source_id"] in missed][0]
+        plans = self.run_union(case, sources, [item_on(target, "m0", "Plans walking practice.")],
+                               renderer="v5", compact_quotes=True, evidence_once=True)
+        audit = plans["managed_memory_rag"]["selection_audit"]
+        self.assertEqual(audit["union_item_ids"], ["m0"])
+        self.assertEqual(audit["union_evidence_quote_source_ids"], [target["source_id"]])
+        block = memory_block(plans)
+        self.assertNotIn("evidence", block["case_state"][0])
+        self.assertEqual(json.dumps(block, ensure_ascii=False).count(target["content"]), 1)
+
     def test_bad_config_is_refused(self):
-        for bad in ({"renderer": "v6"}, {"fact_key_sources": -1}, {"recency_weight": 2}):
+        for bad in ({"renderer": "v6"}, {"fact_key_sources": -1}, {"recency_weight": 2},
+                    {"compact_quotes": True}, {"renderer": "v5", "evidence_once": True}):
             with self.assertRaises(ValueError):
                 UnionConfig(**bad)
 

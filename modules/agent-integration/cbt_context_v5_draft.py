@@ -7,6 +7,8 @@ Differences from cbt_context.py (v4, hash-pinned, unchanged):
   3. Hypotheses rank below facts.
   4. A pinned item that cannot fit is reported with its own drop reason, never
      silently mixed with ordinary budget drops, and listed in trace.pinned_item_ids.
+  5. Optional compact_quotes (default off): a whole-message history quote, whose
+     value is already checked to equal its single span, is rendered once.
 Adopting this needs a new evaluation run under a new version identity.
 
 This module selects and renders already supported representations. It never
@@ -101,6 +103,7 @@ def build_cbt_context(
     current_source_id: str | None = None,
     knowledge_context: Sequence[Mapping[str, Any]] = (),
     selected_source_ids: Sequence[str] | None = None,
+    compact_quotes: bool = False,
 ) -> CBTContextPackage:
     """Render fixed policy, genuine recent messages, data block, current input.
 
@@ -282,6 +285,18 @@ def build_cbt_context(
             block["claims"] = []
             for _, _, section, payload, spans in selected:
                 view = deepcopy(payload)
+                if compact_quotes and payload.get("field") == "history_quote":
+                    # The claim value was already checked to equal its single whole-message
+                    # span, so the text is rendered once and the duplicate span is omitted.
+                    (span,) = spans
+                    view = {"claim_id": payload["claim_id"], "field": "history_quote",
+                            "origin": payload["origin"], "support_status": payload["support_status"],
+                            "source_id": span.source_id, "role": span.role, "text": payload["value"]}
+                    if source(span.source_id).get("source_time") is not None:
+                        view["source_time"] = source(span.source_id)["source_time"]
+                    block["claims"].append(view)
+                    block.setdefault(section, []).append({"claim_id": view["claim_id"]})
+                    continue
                 if representation == "processed_with_evidence" or section == "source_reports":
                     view["evidence"] = [span_view(s) for s in spans]
                 if "claim_id" in view:

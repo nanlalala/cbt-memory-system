@@ -38,11 +38,15 @@ SPLIT_SALT = "cbt-managed-union-dev-test-split-v1"
 HERE = Path(__file__).resolve().parent
 
 # The layer ladder from the design note: one change per step.
+_COMPACT = dict(renderer="v5", compact_quotes=True, evidence_once=True)
 DEFAULT_LADDER = {
-    "L1_raw_plus_items": UnionConfig(),
-    "L2_plus_rerank": UnionConfig(rerank=True),
-    "L3_plus_fact_key": UnionConfig(rerank=True, fact_key_sources=3),
-    "L4_plus_pinned_profile": UnionConfig(rerank=True, fact_key_sources=3, pin_profile=True, renderer="v5"),
+    # Reference: the first union, where each quoted message is rendered twice with long
+    # IDs and item evidence repeats it again; the diagnosis showed most items crowded out.
+    "L0_naive_union": UnionConfig(),
+    "L1_raw_plus_items_compact": UnionConfig(**_COMPACT),
+    "L2_plus_rerank": UnionConfig(rerank=True, **_COMPACT),
+    "L3_plus_fact_key": UnionConfig(rerank=True, fact_key_sources=3, **_COMPACT),
+    "L4_plus_pinned_profile": UnionConfig(rerank=True, fact_key_sources=3, pin_profile=True, **_COMPACT),
 }
 
 

@@ -37,6 +37,8 @@ EVIDENCE_GRADE = {"user_correction": 1.0, "explicit_user_statement": 0.75,
 class UnionConfig:
     """Which additive layers are on. The default reproduces the tested 1+4 union."""
     renderer: str = "v4"            # "v5" uses the draft renderer that pins user corrections
+    compact_quotes: bool = False    # each whole message rendered once, with a short claim ID (v5 only)
+    evidence_once: bool = False     # items cite whole quoted messages instead of repeating spans
     fact_key_sources: int = 0       # layer 2: extra whole messages (design value 3)
     pin_profile: bool = False       # layer 3
     profile_limit: int | None = None
@@ -48,6 +50,10 @@ class UnionConfig:
     def __post_init__(self):
         if self.renderer not in {"v4", "v5"}:
             raise ValueError("renderer must be v4 or v5")
+        if self.evidence_once and not self.compact_quotes:
+            raise ValueError("evidence_once requires compact_quotes")
+        if self.compact_quotes and self.renderer != "v5":
+            raise ValueError("compact_quotes is implemented only in the v5 draft renderer")
         if type(self.fact_key_sources) is not int or self.fact_key_sources < 0:
             raise ValueError("fact_key_sources must be a nonnegative integer")
         if self.profile_limit is not None and (type(self.profile_limit) is not int or self.profile_limit < 0):

@@ -15,6 +15,13 @@ runs. A run of this variant needs its own protocol and result directory.
 | 4 | Question-ranked items in the frozen relevance order | always on | on |
 | 4 | Optional re-rank: relevance stays primary; recency (ordinal, mutable sections only), importance by kind and evidence-grade reliability adjust neighbours | `rerank`, `*_weight` | off |
 | — | Renderer: v4 or the v5 draft that pins user corrections | `renderer` | `v4` |
+| — | Compact quotes (v5 only): each whole message rendered once with a short claim ID, instead of value + identical evidence span + long IDs | `compact_quotes` | off |
+| — | Evidence once: items cite whole quoted messages by source ID instead of repeating spans (`processed` representation) | `evidence_once` | off |
+
+A zero-cost diagnosis on real cases showed the first union rendering each quoted
+message twice with long IDs, so on average less than half of the frozen managed
+arm's items still fitted under the ceiling. The compact options remove that
+duplication; the quote-equals-source check is unchanged.
 
 Addition order is 1, 3, 2, 4, so the layer added last loses first when the
 complete-request ceiling binds. A candidate counts as added only if the context

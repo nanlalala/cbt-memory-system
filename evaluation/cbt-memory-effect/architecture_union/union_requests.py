@@ -39,7 +39,18 @@ def _renderer(name):
     return api, Span
 
 
-def assemble_union(case, sources, quote_ids, items, *, extra_source_ids=(), renderer="v4"):
+def quote_claim_ids(quote_ids, compact):
+    """Claim IDs for whole-message quotations: ``quote:<source_id>`` or a short unique form."""
+    if not compact:
+        return {sid: "quote:" + sid for sid in quote_ids}
+    short = {sid: "q:" + sid.rsplit(":", 1)[-1] for sid in quote_ids}
+    if len(set(short.values())) != len(short):
+        return {sid: "quote:" + sid for sid in quote_ids}
+    return short
+
+
+def assemble_union(case, sources, quote_ids, items, *, extra_source_ids=(), renderer="v4",
+                   compact=False, representation="processed_with_evidence"):
     """Like ``runner.assemble`` for processed_with_evidence, with whole-message
     quotations for ``quote_ids`` and item evidence sources admitted alongside."""
     api, Span = _renderer(renderer)
@@ -67,24 +78,26 @@ def assemble_union(case, sources, quote_ids, items, *, extra_source_ids=(), rend
                           else "historical_report_at_ordinal_cutoff",
                           "cutoff_order": case["history_cutoff_order_exclusive"] - 1, "calendar_date": None}))
     bundles = []
+    ids = quote_claim_ids([s["source_id"] for s in sources], compact)  # one mapping per case
     for rank, sid in enumerate(quote_ids):
         source = by_id[sid]
-        span = Span(sid, "quote:" + sid, source["content"], 0, len(source["content"]), None, source["role"])
-        claim = EvidenceClaim("quote:" + sid, "history_quote", source["content"], (span,),
+        span = Span(sid, ids[sid], source["content"], 0, len(source["content"]), None, source["role"])
+        claim = EvidenceClaim(ids[sid], "history_quote", source["content"], (span,),
             support_status="source_quote", priority=-rank,
             origin="assistant_proposal" if source["role"] == "assistant" else "explicit_user_statement")
-        bundles.append(EvidenceBundle("quote:" + sid, (claim,)))
+        bundles.append(EvidenceBundle(ids[sid], (claim,)))
     selected_ids = list(dict.fromkeys([*quote_ids, *extra_source_ids]))
     options = {"model": runner.MODEL, "temperature": 0, "thinking": {"type": "disabled"}}
+    compact_kw = {"compact_quotes": True} if compact else {}
     return api.build_cbt_context([{"role": "system", "content": api.CBT_POLICY},
                                   {"role": "user", "content": case["input"]}],
         bundles=bundles, source_registry=registry, subject_id=uid,
         max_outbound_chars=runner.SETTINGS["max_answer_chars"],
         max_response_tokens=runner.SETTINGS["answer_output_tokens"], request_metadata=options,
-        representation="processed_with_evidence", contextual_items=contextual,
+        representation=representation, contextual_items=contextual,
         recent_messages=[{"role": s["role"], "content": s["content"]} for s in recent],
         recent_source_ids=[s["source_id"] for s in recent], selected_source_ids=selected_ids,
-        current_source_id="CURRENT")
+        current_source_id="CURRENT", **compact_kw)
 
 
 def prepare_case_requests_union(case, sources, items, dense, dense_mutex, config=None):
@@ -104,10 +117,25 @@ def prepare_case_requests_union(case, sources, items, dense, dense_mutex, config
     source_orders = {s["source_id"]: s["source_order"] for s in sources}
     source_roles = {s["source_id"]: s["role"] for s in sources}
 
+    representation = "processed" if config.evidence_once else "processed_with_evidence"
+
+    def all_quotes(quotes, chosen):
+        """With evidence_once, every older evidence message is quoted whole, once."""
+        if not config.evidence_once:
+            return list(quotes)
+        return list(dict.fromkeys([*quotes, *(e["source_id"] for it in chosen for e in it["evidence"]
+                                              if e["source_id"] not in recent_ids)]))
+
     def build(quotes, chosen):
         extra = list(dict.fromkeys(e["source_id"] for it in chosen for e in it["evidence"]
                                    if e["source_id"] not in recent_ids))
-        return assemble_union(case, sources, quotes, chosen, extra_source_ids=extra, renderer=config.renderer)
+        return assemble_union(case, sources, all_quotes(quotes, chosen), chosen, extra_source_ids=extra,
+                              renderer=config.renderer, compact=config.compact_quotes,
+                              representation=representation)
+
+    def quoted(package, quote_list):
+        ids = quote_claim_ids([s["source_id"] for s in sources], config.compact_quotes)
+        return all(ids[s] in package.included_claim_ids for s in quote_list)
 
     # Layer 1: the raw selection alone must fit; never drop any of it.
     package = build(raw_ids, [])
@@ -147,7 +175,7 @@ def prepare_case_requests_union(case, sources, items, dense, dense_mutex, config
             except ValueError as exc:
                 fact_rejections.append({"source_id": sid, "reason": type(exc).__name__})
                 continue
-            if "quote:" + sid in trial.included_claim_ids:
+            if quoted(trial, all_quotes([*quotes, sid], managed)):
                 quotes, package = [*quotes, sid], trial
                 fact_ids.append(sid)
             else:
@@ -161,7 +189,8 @@ def prepare_case_requests_union(case, sources, items, dense, dense_mutex, config
         if item["item_id"] not in tried:
             try_item(item, "ranked")
 
-    assert all(("quote:" + s) in package.included_claim_ids for s in quotes)
+    final_quotes = all_quotes(quotes, managed)
+    assert quoted(package, final_quotes)
     assert all(i["item_id"] in package.included_claim_ids for i in managed)
     row = runner._package(package)
     row.update(arm="managed_memory_rag", case_id=case["case_id"], source_family=case["source_family_id"])
@@ -173,6 +202,7 @@ def prepare_case_requests_union(case, sources, items, dense, dense_mutex, config
         "union_fact_key_source_ids": fact_ids, "union_fact_key_rejections": fact_rejections,
         "union_rerank": rerank_rows,
         "union_item_reliability": {i["item_id"]: reliability(i, source_roles)[1] for i in managed},
-        "raw_selection_is_subset_of_managed": all(("quote:" + s) in package.included_claim_ids for s in raw_ids)}
+        "union_evidence_quote_source_ids": [s for s in final_quotes if s not in quotes],
+        "raw_selection_is_subset_of_managed": quoted(package, raw_ids) if raw_ids else True}
     plans["managed_memory_rag"] = row
     return plans
