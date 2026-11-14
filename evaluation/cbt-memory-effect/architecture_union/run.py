@@ -54,9 +54,22 @@ def code_hashes():
     """Union files plus every frozen file the reused runner already pins."""
     own = {str(p.relative_to(runner.ROOT)): sha256(p.read_bytes()).hexdigest()
            for p in sorted(HERE.glob("*.py"))}
-    v5 = runner.ROOT / "modules/agent-integration/cbt_context_v5_draft.py"
-    own[str(v5.relative_to(runner.ROOT))] = sha256(v5.read_bytes()).hexdigest()
+    for extra in ("modules/agent-integration/cbt_context_v5_draft.py",
+                  "evaluation/architecture-rerun/quality_span_judge_v3.py"):
+        own[extra] = sha256((runner.ROOT / extra).read_bytes()).hexdigest()
     return {**runner.code_hashes(), **own}
+
+
+GENERATION_FILES = ("evaluation/cbt-memory-effect/architecture_union/__init__.py",
+                    "evaluation/cbt-memory-effect/architecture_union/layers.py",
+                    "evaluation/cbt-memory-effect/architecture_union/union_requests.py",
+                    "modules/agent-integration/cbt_context_v5_draft.py")
+
+
+def generation_hashes(hashes):
+    """The files that decide what a request contains: frozen pipeline plus union assembly."""
+    keys = set(runner.code_hashes()) | set(GENERATION_FILES)
+    return {k: hashes.get(k) for k in sorted(keys)}
 
 
 def split_families(family_ids, dev_families):
@@ -213,7 +226,11 @@ def prepare(prior, folder, *, split="dev", dev_families=40, ladder=None, case_id
     return protocol
 
 
-def load(folder, fixture_only=False):
+def load(folder, fixture_only=False, *, stage="run"):
+    """``run`` needs the exact frozen code; ``read`` (export, judging, comparison of
+    answers already received) needs only the request-generating files unchanged."""
+    if stage not in {"run", "read"}:
+        raise ValueError("stage must be run or read")
     folder = Path(folder).resolve()
     protocol = json.loads((folder / "protocol.json").read_text())
     cases = json.loads((folder / "cases.json").read_text())
@@ -223,7 +240,9 @@ def load(folder, fixture_only=False):
             or protocol["cases_sha256"] != digest(cases)
             or protocol["protocol_sha256"] != digest({k: v for k, v in protocol.items() if k != "protocol_sha256"})):
         raise ValueError("frozen union run protocol differs")
-    if protocol["code_sha256"] != code_hashes() or protocol["settings"] != runner.SETTINGS:
+    same = (protocol["code_sha256"] == code_hashes() if stage == "run" else
+            generation_hashes(protocol["code_sha256"]) == generation_hashes(code_hashes()))
+    if not same or protocol["settings"] != runner.SETTINGS:
         raise ValueError("code or settings changed since prepare; prepare a new run")
     prior, prior_protocol, _ = _load_prior(protocol["prior_folder"], fixture_only)
     if prior_protocol["protocol_sha256"] != protocol["prior_protocol_sha256"]:
@@ -419,13 +438,13 @@ def summarize(folder):
         "response_quality_scores_available": False}
 
 
-def export_quality(folder, judge_identity, output, *, maximum_attempts, include_no_rag=False, fixture_only=False):
-    """One blinded judge batch: prior raw (+ frozen managed, + optional no-RAG) and every config.
+def quality_packets(folder, *, include_no_rag=False, fixture_only=False):
+    """Blinded packets and the controller mapping for one judge batch.
 
-    Re-judging the prior answers in the same batch keeps one judge, one prompt and
-    one session for every compared condition.
+    Prior raw (+ frozen managed, + optional no-RAG) answers and every config's
+    answers for the same cases, so all compared conditions share one judge batch.
     """
-    folder, protocol, cases, prior, ladder = load(folder, fixture_only)
+    folder, protocol, cases, prior, ladder = load(folder, fixture_only, stage="read")
     unfinished = [c["case_id"] for c in cases if not (folder / "cases" / c["case_id"] / "completed.json").exists()]
     if unfinished:
         raise ValueError("union run not finished for %d cases; export only after every case is completed or skipped"
@@ -451,6 +470,12 @@ def export_quality(folder, judge_identity, output, *, maximum_attempts, include_
                             "history": history, "input": case["input"], "response": answer["response"]})
             mapping.append({"case_id": case["case_id"], "source_family": case["source_family_id"], "arm": arm,
                             "packet_id": opaque, "status": "received"})
+    return packets, mapping, protocol
+
+
+def export_quality(folder, judge_identity, output, *, maximum_attempts, include_no_rag=False, fixture_only=False):
+    """Older strict-quotation judge (architecture_retest.judge). Prefer judge_v3.prepare."""
+    packets, mapping, _ = quality_packets(folder, include_no_rag=include_no_rag, fixture_only=fixture_only)
     result = judge.prepare(packets, judge_identity, output, maximum_attempts=maximum_attempts, fixture_only=fixture_only)
     atomic(Path(output) / "controller_arm_mapping.json", mapping)
     return result

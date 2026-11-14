@@ -234,6 +234,50 @@ class UnionRun(unittest.TestCase):
                 union_run.run_prior(root / "prior", Transport(runner.IDENTITY), max_new_calls=0, workers=1,
                                     dev_families=1, dense=FakeDense(), fixture_only=True)
 
+    def test_v3_judge_batch_reads_answers_after_post_hoc_code_change(self):
+        from architecture_union import judge_v3
+        from architecture_retest.journal import digest
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            prior = self.prior(root)
+            union_run.prepare(prior, root / "union", dev_families=1, ladder=LADDER, fixture_only=True)
+            union_run.run(root / "union", Transport(runner.IDENTITY), max_new_calls=6, workers=1,
+                          dense=FakeDense(), fixture_only=True)
+            # Simulate a run prepared before a post-hoc-only change to run.py.
+            protocol = json.loads((root / "union/protocol.json").read_text())
+            protocol["code_sha256"]["evaluation/cbt-memory-effect/architecture_union/run.py"] = "older"
+            protocol.pop("protocol_sha256")
+            protocol["protocol_sha256"] = digest(protocol)
+            atomic(root / "union/protocol.json", protocol)
+            with self.assertRaisesRegex(ValueError, "code or settings changed"):
+                union_run.run(root / "union", Transport(runner.IDENTITY), max_new_calls=0, workers=1,
+                              dense=FakeDense(), fixture_only=True)
+            ready = judge_v3.prepare(root / "union", root / "q3", fixture_only=True)
+            self.assertEqual(ready["packets"], 3 * 4)   # raw, frozen managed, L1, L4
+
+            class JudgeTransport:
+                fixture_only = True
+                identity = judge_v3.JUDGE_IDENTITY
+
+                def __call__(self, body):
+                    visible = json.loads(body["messages"][1]["content"])
+                    src = visible["history"][0]["segments"][0]["id"]
+                    resp = visible["response"]["segments"][0]["id"]
+                    value = {"R1": 3, "R2": 3, "R3": 3, "R4": 3, "R5": "pass", "evidence": [
+                        {"dimension": d, "source_refs": [src], "response_refs": [resp],
+                         "disposition": "supported", "reason": "fixture"} for d in ("R1", "R2", "R3", "R4", "R5")]}
+                    return dict(text=json.dumps(value), provider_model=self.identity["returned_model"],
+                                finish_reason="stop", usage={"total_tokens": 1},
+                                wire_sha256=sha256(json.dumps(body).encode()).hexdigest())
+
+            summary = judge_v3.run(root / "q3", JudgeTransport(), max_new_calls=50, workers=1, fixture_only=True)
+            self.assertEqual(summary["review_status"], {"completed": summary["planned"]})
+            report = union_run.compare(root / "q3", draws=100)
+            self.assertEqual(report["comparisons"]["L1"]["R1"]["scored_pairs"], 3)
+            self.assertEqual(report["comparisons"]["L1"]["R1"]["ties"], 3)
+            again = judge_v3.run(root / "q3", JudgeTransport(), max_new_calls=0, workers=1, fixture_only=True)
+            self.assertEqual(again["reviewed"], summary["reviewed"])
+
     def test_bad_ladder_names_are_refused(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)
