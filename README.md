@@ -51,13 +51,13 @@ The fixed denominator retains all 1,540 questions per condition, including four 
 
 ### MemoryAgentBench: 800-question evaluation
 
-| Condition | Conflict-task accuracy |
-| --- | ---: |
-| Short-term history | 10/800 (1.25%) |
-| Raw-history RAG | 419/800 (52.38%) |
-| Managed-memory RAG | 480/800 (60.00%) |
+| Condition | Conflict-task accuracy | Token F1 |
+| --- | ---: | ---: |
+| Short-term history | 10/800 (1.25%) | 1.3 |
+| Raw-history RAG | 419/800 (52.38%) | 52.6 |
+| Managed-memory RAG | 480/800 (60.00%) | 60.1 |
 
-The MAB conflict-task evaluation covers **800 questions per condition**. Managed memory improves accuracy over raw-history RAG by **7.625 percentage points**.
+The MAB conflict-task evaluation covers **800 questions per condition**. Managed memory improves accuracy over raw-history RAG by **7.625 percentage points** (68 questions gained, 7 lost), with the largest gain on multi-hop questions (44 → 96 correct).
 
 [Methods and full results](evaluation/objective-memory/results/full-20261105/README.md) · [MAB data policy](evaluation/selected-memory.json)
 
