@@ -1,0 +1,316 @@
+"""Hosted, resumable run of the additive managed-memory layers.
+
+Reuses a completed ``architecture_retest`` run (the "prior" folder):
+  * its frozen case roster and the memory items it already extracted and checked;
+  * its received no-RAG, raw-RAG and frozen managed answers.
+Only the new managed-arm answers, one per layer config, are generated here, so the
+raw arm is literally the same answered request. A case is skipped (and recorded)
+when rebuilding its raw request no longer gives the prior raw payload byte for
+byte: the superset claim would then not hold for the answer that was scored.
+
+Source families are split once, deterministically, into a development set and a
+test set. Run and tune on ``dev`` only; freeze the configs; then run ``test`` once.
+Importing this module sends nothing and reads no credential.
+"""
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from hashlib import sha256
+import json
+from pathlib import Path
+
+from architecture_retest import runner, judge
+from architecture_retest.journal import (Journal, UnknownAttempt, CallLimit, InvalidReceipt,
+                                         TerminalLengthReceipt, atomic, digest, lock, rows, utc)
+from architecture_retest.retrieval import DENSE_MODEL, DENSE_REVISION, DenseRetriever
+from auto_eval_v2 import quality
+from auto_eval_v2.evidence import _cluster_interval
+from auto_eval_v2.run_colab import require_hosted
+
+from . import VERSION
+from .layers import UnionConfig
+from .union_requests import prepare_case_requests_union
+
+RUN_VERSION = "cbt-managed-union-run-v1"
+SPLIT_SALT = "cbt-managed-union-dev-test-split-v1"
+HERE = Path(__file__).resolve().parent
+
+# The layer ladder from the design note: one change per step.
+DEFAULT_LADDER = {
+    "L1_raw_plus_items": UnionConfig(),
+    "L2_plus_rerank": UnionConfig(rerank=True),
+    "L3_plus_fact_key": UnionConfig(rerank=True, fact_key_sources=3),
+    "L4_plus_pinned_profile": UnionConfig(rerank=True, fact_key_sources=3, pin_profile=True, renderer="v5"),
+}
+
+
+def code_hashes():
+    """Union files plus every frozen file the reused runner already pins."""
+    own = {str(p.relative_to(runner.ROOT)): sha256(p.read_bytes()).hexdigest()
+           for p in sorted(HERE.glob("*.py"))}
+    v5 = runner.ROOT / "modules/agent-integration/cbt_context_v5_draft.py"
+    own[str(v5.relative_to(runner.ROOT))] = sha256(v5.read_bytes()).hexdigest()
+    return {**runner.code_hashes(), **own}
+
+
+def split_families(family_ids, dev_families):
+    """Deterministic, outcome-blind family split; a family never spans both sets."""
+    ordered = sorted(set(family_ids), key=lambda f: sha256((SPLIT_SALT + f).encode()).hexdigest())
+    if type(dev_families) is not int or not 0 < dev_families <= len(ordered):
+        raise ValueError("dev family count must be between 1 and the number of families")
+    return {"dev": sorted(ordered[:dev_families]), "test": sorted(ordered[dev_families:])}
+
+
+def _load_prior(prior, fixture_only):
+    prior = Path(prior).resolve()
+    protocol = json.loads((prior / "protocol.json").read_text())
+    cases = json.loads((prior / "cases.json").read_text())
+    if protocol["protocol_sha256"] != digest({k: v for k, v in protocol.items() if k != "protocol_sha256"}):
+        raise ValueError("prior protocol checksum differs")
+    if protocol["cases_sha256"] != digest(cases) or protocol["fixture_only"] != fixture_only:
+        raise ValueError("prior roster or fixture mode differs")
+    if protocol["settings"] != runner.SETTINGS or protocol["provider"] != runner.IDENTITY:
+        raise ValueError("prior run used different settings or answer model")
+    return prior, protocol, cases
+
+
+def prepare(prior, folder, *, split="dev", dev_families=40, ladder=None, fixture_only=False):
+    """Freeze roster, split, layer configs and code for one new run directory."""
+    if not fixture_only:
+        require_hosted()
+    prior, prior_protocol, prior_cases = _load_prior(prior, fixture_only)
+    ladder = DEFAULT_LADDER if ladder is None else ladder
+    if not ladder or any(type(c) is not UnionConfig for c in ladder.values()):
+        raise ValueError("named UnionConfig ladder required")
+    if any(not isinstance(n, str) or not n or "/" in n or n in runner.ARMS for n in ladder):
+        raise ValueError("path-safe config names that differ from the frozen arm names required")
+    families = split_families([c["source_family_id"] for c in prior_cases], dev_families)
+    if split not in families:
+        raise ValueError("split must be dev or test")
+    cases = [c for c in prior_cases if c["source_family_id"] in set(families[split])]
+    folder = Path(folder).resolve()
+    if not fixture_only and (not folder.is_relative_to("/content") or folder == Path("/content")):
+        raise ValueError("new hosted run directory required")
+    folder.mkdir(parents=True, exist_ok=False)
+    protocol = {"version": RUN_VERSION, "union_version": VERSION, "fixture_only": fixture_only,
+        "prior_folder": str(prior), "prior_protocol_sha256": prior_protocol["protocol_sha256"],
+        "split": split, "split_salt": SPLIT_SALT, "dev_families": dev_families, "family_split": families,
+        "configs": {name: config.as_dict() for name, config in ladder.items()},
+        "case_count": len(cases), "cases_sha256": digest(cases), "provider": runner.IDENTITY,
+        "settings": runner.SETTINGS, "maximum_attempts": len(cases) * len(ladder),
+        "request_limits": {"answer": runner.SETTINGS["max_answer_chars"],
+                           "preparation": runner.SETTINGS["max_preparation_chars"]},
+        "reused_from_prior": ["extracted_and_checked_items", "no_rag_answers", "raw_history_rag_answers",
+                              "frozen_managed_answers"],
+        "tuning_rule": "tune and choose on dev only; run test once with frozen configs",
+        "code_sha256": code_hashes(), "created_at_utc": utc()}
+    protocol["protocol_sha256"] = digest(protocol)
+    atomic(folder / "cases.json", cases)
+    atomic(folder / "protocol.json", protocol)
+    return protocol
+
+
+def load(folder, fixture_only=False):
+    folder = Path(folder).resolve()
+    protocol = json.loads((folder / "protocol.json").read_text())
+    cases = json.loads((folder / "cases.json").read_text())
+    if not fixture_only:
+        require_hosted()
+    if (protocol["version"] != RUN_VERSION or protocol["fixture_only"] != fixture_only
+            or protocol["cases_sha256"] != digest(cases)
+            or protocol["protocol_sha256"] != digest({k: v for k, v in protocol.items() if k != "protocol_sha256"})):
+        raise ValueError("frozen union run protocol differs")
+    if protocol["code_sha256"] != code_hashes() or protocol["settings"] != runner.SETTINGS:
+        raise ValueError("code or settings changed since prepare; prepare a new run")
+    prior, prior_protocol, _ = _load_prior(protocol["prior_folder"], fixture_only)
+    if prior_protocol["protocol_sha256"] != protocol["prior_protocol_sha256"]:
+        raise ValueError("prior run differs from the one this run was prepared on")
+    ladder = {name: UnionConfig(**values) for name, values in protocol["configs"].items()}
+    return folder, protocol, cases, prior, ladder
+
+
+def _prior_items(prior, case):
+    """Accepted items the prior run actually checked, or None if preparation failed."""
+    dest = prior / "cases" / case["case_id"]
+    if (dest / "memory_preparation_failure.json").exists() or not (dest / "projections.json").exists():
+        return None
+    return json.loads((dest / "projections.json").read_text()).get("accepted")
+
+
+def _case(case, folder, prior, ladder, journal, dense):
+    dest = folder / "cases" / case["case_id"]
+    dest.mkdir(parents=True, exist_ok=True)
+    if (dest / "completed.json").exists():
+        return
+    items = _prior_items(prior, case)
+    if items is None:
+        atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
+                                         "reason": "prior_memory_preparation_unavailable"})
+        return
+    prior_raw = prior / "cases" / case["case_id"] / "raw_history_rag.request.json"
+    sources = runner.source_views(case)
+    rows_out = []
+    for name, config in ladder.items():
+        try:
+            plans = prepare_case_requests_union(case, sources, items, dense, journal.dense_mutex, config)
+        except ValueError as exc:
+            rows_out.append({"config": name, "status": "preparation_failed", "reason": type(exc).__name__})
+            continue
+        if not prior_raw.exists() or plans["raw_history_rag"]["payload"] != json.loads(prior_raw.read_text())["payload"]:
+            atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
+                                             "reason": "raw_request_differs_from_prior_run"})
+            return
+        row = plans["managed_memory_rag"]
+        atomic(dest / (name + ".request.json"), row)
+        try:
+            receipt = journal.call(case, "answer", row["payload"])
+        except TerminalLengthReceipt as exc:
+            rows_out.append({"config": name, "status": "terminal_length_response", "request_key": exc.request_key})
+            continue
+        answer = {"config": name, "case_id": case["case_id"], "source_family": case["source_family_id"],
+                  "status": "received", "request_key": receipt["key"], "response": receipt["text"],
+                  "provider_model": receipt["provider_model"], "usage": receipt["usage"]}
+        atomic(dest / (name + ".answer.json"), answer)
+        rows_out.append({"config": name, "status": "received", "request_key": receipt["key"]})
+    atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "completed", "rows": rows_out})
+
+
+def run(folder, transport, *, max_new_calls, workers=4, dense=None, fixture_only=False):
+    folder, protocol, cases, prior, ladder = load(folder, fixture_only)
+    if type(max_new_calls) is not int or max_new_calls < 0 or type(workers) is not int or not 1 <= workers <= 4:
+        raise ValueError("explicit bounded invocation budget and workers required")
+    if fixture_only and getattr(transport, "fixture_only", False) is not True:
+        raise ValueError("fixture execution cannot send to a real provider")
+    with lock(folder):
+        journal = Journal(folder, protocol, transport, max_new_calls)
+        dense = dense if dense is not None else DenseRetriever()
+        if not fixture_only and (getattr(dense, "model_id", None), getattr(dense, "revision", None)) != (DENSE_MODEL, DENSE_REVISION):
+            raise ValueError("dense ranker identity differs from frozen E5 model/revision")
+        failures = []
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(_case, c, folder, prior, ladder, journal, dense): c["case_id"] for c in cases}
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except (UnknownAttempt, CallLimit, InvalidReceipt) as exc:
+                    journal.stop.set()
+                    failures.append({"case_id": futures[future], "status": type(exc).__name__})
+                except Exception as exc:
+                    journal.stop.set()
+                    failures.append({"case_id": futures[future], "status": "runner_error",
+                                     "error_type": type(exc).__name__})
+        result = summarize(folder)
+        atomic(folder / "summary.json", result)
+        atomic(folder / "last_invocation.json", {"new_calls": journal.new_calls, "errors": failures, "at_utc": utc()})
+        return result
+
+
+def _answers(folder):
+    """Only answer files bound to a received receipt with the same text and request."""
+    outcomes = {r["key"]: r for r in rows(folder / "outcomes.jsonl")}
+    intents = {r["key"]: r for r in rows(folder / "intents.jsonl")}
+    accepted = []
+    for path in (folder / "cases").glob("*/*.answer.json"):
+        answer = json.loads(path.read_text())
+        receipt, intent = outcomes.get(answer.get("request_key"), {}), intents.get(answer.get("request_key"), {})
+        request = json.loads(path.with_name(answer["config"] + ".request.json").read_text())
+        if (receipt.get("status") == "received" and receipt.get("text") == answer.get("response")
+                and request.get("payload") == intent.get("payload")):
+            accepted.append(answer)
+    return accepted
+
+
+def summarize(folder):
+    folder = Path(folder)
+    protocol = json.loads((folder / "protocol.json").read_text())
+    completed = [json.loads(p.read_text()) for p in (folder / "cases").glob("*/completed.json")]
+    answers = _answers(folder)
+    sizes = {}
+    for path in (folder / "cases").glob("*/*.request.json"):
+        sizes.setdefault(path.name.removesuffix(".request.json"), []).append(
+            json.loads(path.read_text())["trace"]["request_chars"])
+    return {"version": RUN_VERSION, "split": protocol["split"], "planned_cases": protocol["case_count"],
+        "completed_cases": sum(c["status"] == "completed" for c in completed),
+        "skipped_cases": {r: sum(c.get("reason") == r for c in completed)
+                          for r in {c.get("reason") for c in completed if c["status"] == "skipped"}},
+        "configs": {name: {"received": sum(a["config"] == name for a in answers),
+                           "mean_request_chars": (sum(sizes.get(name, [])) / len(sizes[name])) if sizes.get(name) else None}
+                    for name in protocol["configs"]},
+        "new_receipts": sum(r["status"] == "received" for r in rows(folder / "outcomes.jsonl")),
+        "response_quality_scores_available": False}
+
+
+def export_quality(folder, judge_identity, output, *, maximum_attempts, include_no_rag=False, fixture_only=False):
+    """One blinded judge batch: prior raw (+ frozen managed, + optional no-RAG) and every config.
+
+    Re-judging the prior answers in the same batch keeps one judge, one prompt and
+    one session for every compared condition.
+    """
+    folder, protocol, cases, prior, ladder = load(folder, fixture_only)
+    prior_answers, _ = runner.verified_answers(prior)
+    old = {(a["case_id"], a["arm"]): a for a in prior_answers}
+    new = {(a["case_id"], a["config"]): a for a in _answers(folder)}
+    arms = [*(["no_rag"] if include_no_rag else []), "raw_history_rag", "managed_memory_rag", *ladder]
+    packets, mapping = [], []
+    for case in cases:
+        marker = folder / "cases" / case["case_id"] / "completed.json"
+        if not marker.exists() or json.loads(marker.read_text()).get("status") != "completed":
+            continue
+        history = [{"id": s["source_id"], "role": s["role"], "content": s["content"]} for s in runner.source_views(case)]
+        for arm in arms:
+            answer = old.get((case["case_id"], arm)) if arm in runner.ARMS else new.get((case["case_id"], arm))
+            if answer is None:
+                mapping.append({"case_id": case["case_id"], "source_family": case["source_family_id"],
+                                "arm": arm, "packet_id": None, "status": "not_received"})
+                continue
+            opaque = "response-" + digest([protocol["protocol_sha256"], case["case_id"], arm])[:32]
+            packets.append({"case_id": opaque, "source_family": case["source_family_id"], "answer_model_family": "deepseek",
+                            "history": history, "input": case["input"], "response": answer["response"]})
+            mapping.append({"case_id": case["case_id"], "source_family": case["source_family_id"], "arm": arm,
+                            "packet_id": opaque, "status": "received"})
+    result = judge.prepare(packets, judge_identity, output, maximum_attempts=maximum_attempts, fixture_only=fixture_only)
+    atomic(Path(output) / "controller_arm_mapping.json", mapping)
+    return result
+
+
+def compare(quality_folder, *, baseline="raw_history_rag", draws=10000, seed=20261114):
+    """Paired difference of every condition against the raw arm, per R1--R5.
+
+    Clustered by source family. 10,000 draws only stabilise the percentile
+    computation; they add no independent observations. Exploratory on dev.
+    """
+    folder = Path(quality_folder)
+    mapping = json.loads((folder / "controller_arm_mapping.json").read_text())
+    reviews = {r["case_id"]: r for r in rows(folder / "reviews.jsonl") if r["repeat_of"] is None}
+    grouped = {}
+    for row in mapping:
+        grouped.setdefault(row["case_id"], {})[row["arm"]] = row
+    arms = list(dict.fromkeys(r["arm"] for r in mapping))
+    if baseline not in arms:
+        raise ValueError("baseline condition is not in this judge batch")
+
+    def score(row, dimension):
+        review = reviews.get(row["packet_id"], {}).get("review", {}) if row and row["packet_id"] else {}
+        if review.get("status") != "completed":
+            return None
+        value = review["assessment"][dimension]
+        return int(value == "pass") if dimension == "R5" else value
+
+    report = {"baseline": baseline, "interpretation": "automatic independent assessment; exploratory unless test split",
+              "comparisons": {}}
+    for arm in arms:
+        if arm == baseline:
+            continue
+        report["comparisons"][arm] = {}
+        for dimension in quality.DIMENSIONS:
+            differences = []
+            for pair in grouped.values():
+                a, b = score(pair.get(baseline), dimension), score(pair.get(arm), dimension)
+                if a is not None and b is not None:
+                    differences.append((pair[baseline]["source_family"], b - a))
+            report["comparisons"][arm][dimension] = {"planned_pairs": len(grouped), "scored_pairs": len(differences),
+                "wins": sum(d > 0 for _, d in differences), "ties": sum(d == 0 for _, d in differences),
+                "losses": sum(d < 0 for _, d in differences),
+                "family_cluster_difference": _cluster_interval(differences, draws=draws, seed=seed)}
+    atomic(folder / "union_comparison.json", report)
+    return report
