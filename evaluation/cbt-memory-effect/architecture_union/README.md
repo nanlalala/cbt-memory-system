@@ -40,9 +40,10 @@ new is shown to the answer model.
 `run.py` reuses a completed `architecture_retest` CACTUS run: its roster, its checked
 memory items and its no-RAG, raw and frozen managed answers. Only new managed
 answers are generated, one per config in `DEFAULT_LADDER`, through the same
-journal (identical requests share one receipt; nothing is resent). A case whose
-raw request does not rebuild byte-identically to the prior run is skipped and
-counted. Families are split deterministically into dev and test. `export_quality`
+journal (identical requests share one receipt; nothing is resent). A case is skipped and
+counted unless its prior raw answer is a verified receipt and the rebuilt raw
+request serializes to exactly the bytes sent for it (`serialized_request`,
+`wire_sha256`). Families are split deterministically into dev and test. `export_quality`
 puts the prior raw and frozen managed answers and every config into one blinded
 judge batch; `compare` reports paired differences against raw per R1–R5 with a
 family-clustered bootstrap. Use `Managed_Union_Layers_Colab.ipynb`; paid steps are
