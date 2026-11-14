@@ -37,6 +37,12 @@ new is shown to the answer model.
 
 ## Running
 
+If no completed prior run is available, `prepare_prior` freezes a new roster from
+the verified public CACTUS file and `run_prior` runs the unchanged frozen
+three-arm pipeline (`runner._case`) for one split only, without the independent
+pre-answer assessor. Without the historical family list this roster can differ
+from earlier runs and is reported as a new run.
+
 `run.py` reuses a completed `architecture_retest` CACTUS run: its roster, its checked
 memory items and its no-RAG, raw and frozen managed answers. Only new managed
 answers are generated, one per config in `DEFAULT_LADDER`, through the same

@@ -63,6 +63,72 @@ def split_families(family_ids, dev_families):
     return {"dev": sorted(ordered[:dev_families]), "test": sorted(ordered[dev_families:])}
 
 
+def prepare_prior(source, folder, *, family_ids=None, fixture_only=False):
+    """Freeze a new natural CACTUS roster with the frozen runner (no model call).
+
+    Without ``family_ids`` the public deterministic compiler chooses 200 source
+    families; pass the historical list only if its frozen copy still exists.
+    """
+    return runner.prepare(source, folder, family_limit=200 if not fixture_only else 1,
+                          fixture_only=fixture_only, family_ids=family_ids)
+
+
+def run_prior(folder, transport, *, max_new_calls, split="dev", dev_families=40, workers=4,
+              dense=None, fixture_only=False):
+    """Run the frozen three-arm pipeline only for one split of a fresh roster.
+
+    Each case goes through the unchanged ``runner._case``: extraction, automatic
+    support check, then no-RAG, raw-RAG and frozen managed answers, with the same
+    journal and receipts. The independent pre-answer assessor (direct memory
+    endpoints) is not run here; R1--R5 judging still is, later, in one batch.
+    """
+    folder, protocol, cases = runner.load(folder, fixture_only)
+    if protocol["version"] != runner.VERSION:
+        raise ValueError("a fresh roster prepared by prepare_prior is required")
+    if type(max_new_calls) is not int or max_new_calls < 0 or type(workers) is not int or not 1 <= workers <= 4:
+        raise ValueError("explicit bounded invocation budget and workers required")
+    if fixture_only and getattr(transport, "fixture_only", False) is not True:
+        raise ValueError("fixture execution cannot send to a real provider")
+    families = set(split_families([c["source_family_id"] for c in cases], dev_families)[split])
+    selected = [c for c in cases if c["source_family_id"] in families]
+    scope = {"split": split, "dev_families": dev_families, "split_salt": SPLIT_SALT,
+             "case_ids": sorted(c["case_id"] for c in selected), "independent_assessor": "not_run",
+             "code_sha256": code_hashes()}
+    scope_path = folder / ("union_prior_scope_" + split + ".json")
+    other = folder / ("union_prior_scope_" + ("test" if split == "dev" else "dev") + ".json")
+    if scope_path.exists() and json.loads(scope_path.read_text()) != scope:
+        raise ValueError("this split was already run with a different family split or code")
+    if other.exists() and json.loads(other.read_text())["dev_families"] != dev_families:
+        raise ValueError("dev and test splits must use the same family split")
+    with lock(folder):
+        atomic(scope_path, scope)
+        journal = Journal(folder, protocol, transport, max_new_calls)
+        dense = dense if dense is not None else DenseRetriever()
+        if not fixture_only and (getattr(dense, "model_id", None), getattr(dense, "revision", None)) != (DENSE_MODEL, DENSE_REVISION):
+            raise ValueError("dense ranker identity differs from frozen E5 model/revision")
+        failures = []
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(runner._case, c, folder, journal, dense, None): c["case_id"] for c in selected}
+            for future in as_completed(futures):
+                try:
+                    future.result()
+                except (UnknownAttempt, CallLimit, InvalidReceipt) as exc:
+                    journal.stop.set()
+                    failures.append({"case_id": futures[future], "status": type(exc).__name__})
+                except Exception as exc:
+                    journal.stop.set()
+                    failures.append({"case_id": futures[future], "status": "runner_error",
+                                     "error_type": type(exc).__name__})
+        answers, _ = runner.verified_answers(folder)
+        wanted = set(scope["case_ids"])
+        result = {"split": split, "planned_cases": len(selected),
+                  "completed_cases": sum((folder / "cases" / c / "completed.json").exists() for c in wanted),
+                  "arms": {arm: sum(a["arm"] == arm and a["case_id"] in wanted for a in answers) for arm in runner.ARMS},
+                  "new_calls": journal.new_calls, "errors": failures}
+        atomic(folder / ("union_prior_summary_" + split + ".json"), result)
+        return result
+
+
 def _load_prior(prior, fixture_only):
     prior = Path(prior).resolve()
     protocol = json.loads((prior / "protocol.json").read_text())

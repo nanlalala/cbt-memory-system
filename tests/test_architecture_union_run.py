@@ -150,6 +150,33 @@ class UnionRun(unittest.TestCase):
         with self.assertRaises(ValueError):
             union_run.split_families(ids, 0)
 
+    def test_fresh_prior_for_one_split_then_union_run(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            source = root / "invented.json"
+            source.write_text(json.dumps(cactus_materials.invented_fixture_rows()))
+            union_run.prepare_prior(source, root / "prior", fixture_only=True)
+            first = union_run.run_prior(root / "prior", Transport(runner.IDENTITY), max_new_calls=15, workers=1,
+                                        dev_families=1, dense=FakeDense(), fixture_only=True)
+            self.assertEqual(first["planned_cases"], 3)
+            self.assertEqual(first["arms"], {"no_rag": 3, "raw_history_rag": 3, "managed_memory_rag": 3})
+            again = Transport(runner.IDENTITY)
+            union_run.run_prior(root / "prior", again, max_new_calls=0, workers=1, dev_families=1,
+                                dense=FakeDense(), fixture_only=True)
+            self.assertEqual(again.sent, [])
+            scope_file = root / "prior/union_prior_scope_dev.json"
+            scope = json.loads(scope_file.read_text())
+            atomic(scope_file, {**scope, "case_ids": scope["case_ids"][:1]})
+            with self.assertRaisesRegex(ValueError, "already run"):
+                union_run.run_prior(root / "prior", again, max_new_calls=0, workers=1,
+                                    dev_families=1, dense=FakeDense(), fixture_only=True)
+            atomic(scope_file, scope)
+            union_run.prepare(root / "prior", root / "union", dev_families=1, ladder=LADDER, fixture_only=True)
+            summary = union_run.run(root / "union", Transport(runner.IDENTITY), max_new_calls=6, workers=1,
+                                    dense=FakeDense(), fixture_only=True)
+            self.assertEqual(summary["completed_cases"], 3)
+            self.assertEqual(summary["skipped_cases"], {})
+
     def test_bad_ladder_names_are_refused(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)
