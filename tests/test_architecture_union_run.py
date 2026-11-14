@@ -104,6 +104,43 @@ class UnionRun(unittest.TestCase):
             with self.assertRaises(ValueError):
                 union_run.load(root / "union", fixture_only=True)
 
+    def test_equal_dicts_with_different_bytes_do_not_match(self):
+        payload = {"model": "m", "messages": [{"role": "user", "content": "x"}]}
+        wire = json.dumps(payload, allow_nan=False)
+        reordered = {"messages": payload["messages"], "model": "m"}
+        self.assertEqual(reordered, payload)
+        self.assertTrue(union_run.raw_bytes_match(payload, (wire, sha256(wire.encode()).hexdigest())))
+        self.assertFalse(union_run.raw_bytes_match(reordered, (wire, sha256(wire.encode()).hexdigest())))
+        self.assertFalse(union_run.raw_bytes_match(payload, (wire, "0" * 64)))
+
+    def test_cases_without_matching_prior_raw_receipt_are_skipped_without_calls(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            prior = self.prior(root)
+            cases = json.loads((prior / "cases.json").read_text())
+            (prior / "cases" / cases[0]["case_id"] / "raw_history_rag.answer.json").unlink()
+            union_run.prepare(prior, root / "union", dev_families=1, ladder=LADDER, fixture_only=True)
+            original = union_run.raw_bytes_match
+            calls = {"n": 0}
+            def fake(payload, wire):
+                calls["n"] += 1
+                return original(payload, wire) and calls["n"] != 1
+            # The first byte check (whichever case runs first among the two with receipts) fails.
+            union_run.raw_bytes_match = fake
+            try:
+                transport = Transport(runner.IDENTITY)
+                summary = union_run.run(root / "union", transport, max_new_calls=6, workers=1,
+                                        dense=FakeDense(), fixture_only=True)
+            finally:
+                union_run.raw_bytes_match = original
+            self.assertEqual(summary["skipped_cases"], {"prior_raw_answer_unavailable": 1,
+                                                        "raw_request_bytes_differ_from_prior_receipt": 1})
+            self.assertEqual(summary["completed_cases"], 1)
+            # Identical L1/L4 requests for the one remaining case share one receipt.
+            self.assertEqual({k: v["received"] for k, v in summary["configs"].items()}, {"L1": 1, "L4": 1})
+            self.assertLessEqual(len(transport.sent), 2)
+            self.assertFalse((root / "union/cases" / cases[0]["case_id"] / "L1.request.json").exists())
+
     def test_split_is_deterministic_and_disjoint(self):
         ids = ["family-%d" % n for n in range(10)]
         a, b = union_run.split_families(ids, 4), union_run.split_families(list(reversed(ids)), 4)

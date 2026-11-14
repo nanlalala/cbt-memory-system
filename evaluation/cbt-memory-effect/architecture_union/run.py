@@ -5,8 +5,10 @@ Reuses a completed ``architecture_retest`` run (the "prior" folder):
   * its received no-RAG, raw-RAG and frozen managed answers.
 Only the new managed-arm answers, one per layer config, are generated here, so the
 raw arm is literally the same answered request. A case is skipped (and recorded)
-when rebuilding its raw request no longer gives the prior raw payload byte for
-byte: the superset claim would then not hold for the answer that was scored.
+unless the prior raw answer is a verified received receipt and the rebuilt raw
+request serializes to exactly the bytes that were sent for it (same
+``serialized_request`` and ``wire_sha256``): otherwise the superset claim would
+not hold for the answer that is scored.
 
 Source families are split once, deterministically, into a development set and a
 test set. Run and tune on ``dev`` only; freeze the configs; then run ``test`` once.
@@ -137,7 +139,25 @@ def _prior_items(prior, case):
     return json.loads((dest / "projections.json").read_text()).get("accepted")
 
 
-def _case(case, folder, prior, ladder, journal, dense):
+def _prior_raw_wires(prior):
+    """Exact sent bytes of every verified prior raw answer, by case."""
+    from architecture_retest.receipt_resolver import receipt_pairs
+    answers, _ = runner.verified_answers(prior)
+    intents, _ = receipt_pairs(prior)
+    wires = {}
+    for answer in answers:
+        if answer["arm"] == "raw_history_rag":
+            intent = intents[answer["request_key"]]
+            wires[answer["case_id"]] = (intent["serialized_request"], intent["wire_sha256"])
+    return wires
+
+
+def raw_bytes_match(payload, wire):
+    serialized = json.dumps(payload, allow_nan=False)
+    return serialized == wire[0] and sha256(serialized.encode()).hexdigest() == wire[1]
+
+
+def _case(case, folder, prior, ladder, journal, dense, raw_wires):
     dest = folder / "cases" / case["case_id"]
     dest.mkdir(parents=True, exist_ok=True)
     if (dest / "completed.json").exists():
@@ -147,7 +167,11 @@ def _case(case, folder, prior, ladder, journal, dense):
         atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
                                          "reason": "prior_memory_preparation_unavailable"})
         return
-    prior_raw = prior / "cases" / case["case_id"] / "raw_history_rag.request.json"
+    wire = raw_wires.get(case["case_id"])
+    if wire is None:
+        atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
+                                         "reason": "prior_raw_answer_unavailable"})
+        return
     sources = runner.source_views(case)
     rows_out = []
     for name, config in ladder.items():
@@ -156,9 +180,9 @@ def _case(case, folder, prior, ladder, journal, dense):
         except ValueError as exc:
             rows_out.append({"config": name, "status": "preparation_failed", "reason": type(exc).__name__})
             continue
-        if not prior_raw.exists() or plans["raw_history_rag"]["payload"] != json.loads(prior_raw.read_text())["payload"]:
+        if not raw_bytes_match(plans["raw_history_rag"]["payload"], wire):
             atomic(dest / "completed.json", {"case_id": case["case_id"], "status": "skipped",
-                                             "reason": "raw_request_differs_from_prior_run"})
+                                             "reason": "raw_request_bytes_differ_from_prior_receipt"})
             return
         row = plans["managed_memory_rag"]
         atomic(dest / (name + ".request.json"), row)
@@ -186,9 +210,11 @@ def run(folder, transport, *, max_new_calls, workers=4, dense=None, fixture_only
         dense = dense if dense is not None else DenseRetriever()
         if not fixture_only and (getattr(dense, "model_id", None), getattr(dense, "revision", None)) != (DENSE_MODEL, DENSE_REVISION):
             raise ValueError("dense ranker identity differs from frozen E5 model/revision")
+        raw_wires = _prior_raw_wires(prior)
         failures = []
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            futures = {pool.submit(_case, c, folder, prior, ladder, journal, dense): c["case_id"] for c in cases}
+            futures = {pool.submit(_case, c, folder, prior, ladder, journal, dense, raw_wires): c["case_id"]
+                       for c in cases}
             for future in as_completed(futures):
                 try:
                     future.result()
