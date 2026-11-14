@@ -34,6 +34,26 @@ independent user-role mentions. Repetition never raises a hypothesis, and a mode
 confidence number is not used. It is written to the selection audit only; nothing
 new is shown to the answer model.
 
+## CBT knowledge (textbook RAG) channel
+
+`knowledge.py` connects the existing knowledge adapter
+(`modules/agent-integration/knowledge_adapter_v2.py`, over the reviewed corpus in
+`modules/cbt-knowledge-rag/`) to this run. `build_packets` asks the adapter once
+per case, using the current user message as the query, and freezes the cards.
+`prepare(..., knowledge_packets=...)` then gives the **same** cards to no-RAG, raw
+RAG and every managed config, as `cbt_knowledge` inside the sourced data block.
+`fit_knowledge` keeps the longest prefix of cards that fits every arm under the
+24,000-character limit, so the arms still differ only in memory. Because the raw
+and no-RAG requests change, those answers are generated again in the union run
+rather than reused from the prior, and the frozen managed answer is not compared.
+
+The adapter returns cards only for sources whose retrieval and external-model use
+are approved and pinned in `source_registry.json`. All seven sources are disabled
+today, so packets are empty and `prepare` refuses them instead of reporting
+textbook grounding that did not happen. Without packets every request is byte-for-byte
+what it was before this channel existed (pinned by a request digest test), and
+answers prepared before it stay readable.
+
 ## Not implemented here
 
 - Linked "possibly related" memory (layer 5).

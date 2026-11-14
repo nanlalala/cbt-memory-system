@@ -50,7 +50,7 @@ def quote_claim_ids(quote_ids, compact):
 
 
 def assemble_union(case, sources, quote_ids, items, *, extra_source_ids=(), renderer="v4",
-                   compact=False, representation="processed_with_evidence"):
+                   compact=False, representation="processed_with_evidence", knowledge=()):
     """Like ``runner.assemble`` for processed_with_evidence, with whole-message
     quotations for ``quote_ids`` and item evidence sources admitted alongside."""
     api, Span = _renderer(renderer)
@@ -97,19 +97,77 @@ def assemble_union(case, sources, quote_ids, items, *, extra_source_ids=(), rend
         representation=representation, contextual_items=contextual,
         recent_messages=[{"role": s["role"], "content": s["content"]} for s in recent],
         recent_source_ids=[s["source_id"] for s in recent], selected_source_ids=selected_ids,
-        current_source_id="CURRENT", **compact_kw)
+        current_source_id="CURRENT", knowledge_context=list(knowledge), **compact_kw)
 
 
-def prepare_case_requests_union(case, sources, items, dense, dense_mutex, config=None):
+def assemble_base(case, sources, selected_ids, knowledge=()):
+    """``runner.assemble(..., "raw")`` plus the shared CBT knowledge cards.
+
+    With no cards it returns exactly the frozen runner's request.
+    """
+    if not knowledge:
+        return runner.assemble(case, sources, selected_ids, [], "raw")
+    api, _ = runner._api()
+    uid = case["source_family_id"]
+    recent = sources[-runner.SETTINGS["recent_messages"]:]
+    registry = {s["source_id"]: dict(user_id=uid, source_id=s["source_id"], text=s["content"], role=s["role"],
+                source_time=s.get("date"), source_order=s["source_order"],
+                permissions={"save": True, "long_term_use": True, "response_external": True}) for s in sources}
+    registry["CURRENT"] = dict(user_id=uid, source_id="CURRENT", text=case["input"], role="user",
+        source_time=case.get("input_date") if case.get("calendar_time_available") else None,
+        source_order=case["history_cutoff_order_exclusive"],
+        permissions={"save": True, "long_term_use": True, "response_external": True})
+    options = {"model": runner.MODEL, "temperature": 0, "thinking": {"type": "disabled"}}
+    return api.build_cbt_context([{"role": "system", "content": api.CBT_POLICY},
+                                  {"role": "user", "content": case["input"]}],
+        source_registry=registry, subject_id=uid, max_outbound_chars=runner.SETTINGS["max_answer_chars"],
+        max_response_tokens=runner.SETTINGS["answer_output_tokens"], request_metadata=options,
+        representation="raw", recent_messages=[{"role": s["role"], "content": s["content"]} for s in recent],
+        recent_source_ids=[s["source_id"] for s in recent], selected_source_ids=selected_ids,
+        current_source_id="CURRENT", knowledge_context=list(knowledge))
+
+
+def fit_knowledge(case, sources, raw_ids, cards, configs):
+    """Largest prefix of ``cards`` that fits every arm: no-RAG, raw and the raw layer
+    of every managed config. The same prefix then goes to all arms of the case."""
+    cards = list(cards)
+    for k in range(len(cards), 0, -1):
+        chosen = cards[:k]
+        try:
+            assemble_base(case, sources, [], chosen)
+            assemble_base(case, sources, raw_ids, chosen)
+            for config in configs:
+                assemble_union(case, sources, list(raw_ids), [], extra_source_ids=(), renderer=config.renderer,
+                               compact=config.compact_quotes,
+                               representation="processed" if config.evidence_once else "processed_with_evidence",
+                               knowledge=chosen)
+        except ValueError:
+            continue
+        return chosen
+    return []
+
+
+def prepare_case_requests_union(case, sources, items, dense, dense_mutex, config=None, knowledge=()):
     """Return the three frozen arms, with the managed arm made a raw superset.
 
-    no_rag and raw_history_rag are exactly what ``runner.prepare_case_requests``
-    produces; only the managed arm is rebuilt.
+    Without ``knowledge``, no_rag and raw_history_rag are exactly what
+    ``runner.prepare_case_requests`` produces; only the managed arm is rebuilt.
+    ``knowledge`` is an already fitted list of CBT knowledge cards (see
+    ``fit_knowledge``); every arm then receives the same cards, so the arms still
+    differ only in memory.
     """
     config = config or UnionConfig()
+    knowledge = list(knowledge)
     plans = runner.prepare_case_requests(case, sources, items, dense, dense_mutex)
     audit = plans["raw_history_rag"]["selection_audit"]
     raw_ids = list(audit["raw_selected_source_ids"])
+    if knowledge:
+        for arm, selected in (("no_rag", []), ("raw_history_rag", raw_ids)):
+            row = runner._package(assemble_base(case, sources, selected, knowledge))
+            row.update({k: v for k, v in plans[arm].items() if k not in ("payload", "trace")})
+            row["selection_audit"] = {**plans[arm]["selection_audit"],
+                                      "knowledge_card_ids": [c["chunk_id"] for c in knowledge]}
+            plans[arm] = row
     by_item = {item["item_id"]: item for item in items}
     ranked = [by_item[i] for i in audit["managed_ranked_item_ids"]]
     recent_ids = {s["source_id"] for s in sources[-runner.SETTINGS["recent_messages"]:]}
@@ -131,7 +189,7 @@ def prepare_case_requests_union(case, sources, items, dense, dense_mutex, config
                                    if e["source_id"] not in recent_ids))
         return assemble_union(case, sources, all_quotes(quotes, chosen), chosen, extra_source_ids=extra,
                               renderer=config.renderer, compact=config.compact_quotes,
-                              representation=representation)
+                              representation=representation, knowledge=knowledge)
 
     def quoted(package, quote_list):
         ids = quote_claim_ids([s["source_id"] for s in sources], config.compact_quotes)
@@ -204,5 +262,7 @@ def prepare_case_requests_union(case, sources, items, dense, dense_mutex, config
         "union_item_reliability": {i["item_id"]: reliability(i, source_roles)[1] for i in managed},
         "union_evidence_quote_source_ids": [s for s in final_quotes if s not in quotes],
         "raw_selection_is_subset_of_managed": quoted(package, raw_ids) if raw_ids else True}
+    if knowledge:
+        row["selection_audit"]["knowledge_card_ids"] = [c["chunk_id"] for c in knowledge]
     plans["managed_memory_rag"] = row
     return plans
