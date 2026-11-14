@@ -53,7 +53,7 @@ The fixed denominator retains all 1,540 questions per condition, including four 
 
 | Condition | Conflict-task accuracy | Token F1 |
 | --- | ---: | ---: |
-| Short-term history | 10/800 (1.25%) | 1.3 |
+| No RAG (short-term only) | 10/800 (1.25%) | 1.3 |
 | Raw-history RAG | 419/800 (52.38%) | 52.6 |
 | Managed-memory RAG | 480/800 (60.00%) | 60.1 |
 

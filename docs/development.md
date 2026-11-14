@@ -71,8 +71,6 @@ A future packaging migration should preserve notebook and Colab compatibility
 and verify installation outside the checkout before claiming wheel support.
 
 Do not commit local databases, full benchmark inputs, model caches, API credentials,
-or arbitrary generated conversations. The named `pilot_20261019_audit.zip` is an
-explicit noncommercial, attributed LoCoMo benchmark-audit release; its manifest,
-license, file hashes and offline verifier must travel with it. This exception never
-applies to real-user or patient prompts/responses. API generation is a separate
+or arbitrary generated conversations. Real-user or patient prompts and responses
+are never committed. API generation is a separate
 opt-in step; dry-run plans and software tests are not effectiveness results.
