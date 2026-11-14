@@ -191,6 +191,48 @@ class UnionRun(unittest.TestCase):
             self.assertEqual(summary["completed_cases"], 3)
             self.assertEqual(summary["skipped_cases"], {})
 
+    def test_pilot_on_finished_cases_and_zero_cost_diagnosis(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            prior = self.prior(root)
+            done = union_run.prior_completed_case_ids(prior, dev_families=1)
+            self.assertEqual(len(done), 3)
+            report = union_run.diagnose(prior, done[:2], ladder=LADDER, dense=FakeDense(), fixture_only=True)
+            self.assertEqual(report["summary"]["cases"], 2)
+            self.assertTrue(report["summary"]["configs"]["L1"]["raw_subset_all"])
+            self.assertEqual(set(report["cases"][0]["configs"]), {"L1", "L4"})
+            protocol = union_run.prepare(prior, root / "pilot", dev_families=1, ladder=LADDER, case_ids=done[:2],
+                                         fixture_only=True)
+            self.assertEqual(protocol["case_count"], 2)
+            self.assertEqual(protocol["scope"], "pilot_subset_exploratory")
+            summary = union_run.run(root / "pilot", Transport(runner.IDENTITY), max_new_calls=4, workers=1,
+                                    dense=FakeDense(), fixture_only=True)
+            self.assertEqual(summary["completed_cases"], 2)
+            with self.assertRaises(ValueError):
+                union_run.prepare(prior, root / "bad", dev_families=1, ladder=LADDER, case_ids=["nope"],
+                                  fixture_only=True)
+
+    def test_prior_scope_tolerates_union_only_code_changes(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            source = root / "invented.json"
+            source.write_text(json.dumps(cactus_materials.invented_fixture_rows()))
+            union_run.prepare_prior(source, root / "prior", fixture_only=True)
+            union_run.run_prior(root / "prior", Transport(runner.IDENTITY), max_new_calls=15, workers=1,
+                                dev_families=1, dense=FakeDense(), fixture_only=True)
+            scope_file = root / "prior/union_prior_scope_dev.json"
+            scope = json.loads(scope_file.read_text())
+            scope["code_sha256"]["evaluation/cbt-memory-effect/architecture_union/run.py"] = "old"
+            atomic(scope_file, scope)
+            union_run.run_prior(root / "prior", Transport(runner.IDENTITY), max_new_calls=0, workers=1,
+                                dev_families=1, dense=FakeDense(), fixture_only=True)
+            frozen_key = next(iter(runner.code_hashes()))
+            scope["code_sha256"][frozen_key] = "changed"
+            atomic(scope_file, scope)
+            with self.assertRaisesRegex(ValueError, "frozen code"):
+                union_run.run_prior(root / "prior", Transport(runner.IDENTITY), max_new_calls=0, workers=1,
+                                    dev_families=1, dense=FakeDense(), fixture_only=True)
+
     def test_bad_ladder_names_are_refused(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)

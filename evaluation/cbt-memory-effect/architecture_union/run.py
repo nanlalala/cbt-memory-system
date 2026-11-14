@@ -96,8 +96,15 @@ def run_prior(folder, transport, *, max_new_calls, split="dev", dev_families=40,
              "code_sha256": code_hashes()}
     scope_path = folder / ("union_prior_scope_" + split + ".json")
     other = folder / ("union_prior_scope_" + ("test" if split == "dev" else "dev") + ".json")
-    if scope_path.exists() and json.loads(scope_path.read_text()) != scope:
-        raise ValueError("this split was already run with a different family split or code")
+    if scope_path.exists():
+        # The prior run depends only on the frozen pipeline, so only its hashes must match;
+        # union-only files may change between batches without blocking the prior run.
+        stored, frozen = json.loads(scope_path.read_text()), runner.code_hashes()
+        same_cases = {k: v for k, v in stored.items() if k != "code_sha256"} == \
+                     {k: v for k, v in scope.items() if k != "code_sha256"}
+        same_frozen = {k: stored["code_sha256"].get(k) for k in frozen} == frozen
+        if not (same_cases and same_frozen):
+            raise ValueError("this split was already run with a different family split or frozen code")
     if other.exists() and json.loads(other.read_text())["dev_families"] != dev_families:
         raise ValueError("dev and test splits must use the same family split")
     with lock(folder):
@@ -142,8 +149,26 @@ def _load_prior(prior, fixture_only):
     return prior, protocol, cases
 
 
-def prepare(prior, folder, *, split="dev", dev_families=40, ladder=None, fixture_only=False):
-    """Freeze roster, split, layer configs and code for one new run directory."""
+def prior_completed_case_ids(prior, *, split="dev", dev_families=40):
+    """Cases of the split whose prior three-arm run finished with all three answers received."""
+    prior = Path(prior)
+    cases = json.loads((prior / "cases.json").read_text())
+    families = set(split_families([c["source_family_id"] for c in cases], dev_families)[split])
+    answers, _ = runner.verified_answers(prior)
+    received = {}
+    for a in answers:
+        received.setdefault(a["case_id"], set()).add(a["arm"])
+    return sorted(c["case_id"] for c in cases if c["source_family_id"] in families
+                  and received.get(c["case_id"]) == set(runner.ARMS))
+
+
+def prepare(prior, folder, *, split="dev", dev_families=40, ladder=None, case_ids=None, fixture_only=False):
+    """Freeze roster, split, layer configs and code for one new run directory.
+
+    ``case_ids`` makes an exploratory pilot on a subset of the split (for example
+    the cases whose prior run already finished). A pilot never replaces the full
+    split run and is labelled as such in its protocol.
+    """
     if not fixture_only:
         require_hosted()
     prior, prior_protocol, prior_cases = _load_prior(prior, fixture_only)
@@ -156,13 +181,19 @@ def prepare(prior, folder, *, split="dev", dev_families=40, ladder=None, fixture
     if split not in families:
         raise ValueError("split must be dev or test")
     cases = [c for c in prior_cases if c["source_family_id"] in set(families[split])]
+    if case_ids is not None:
+        wanted = set(case_ids)
+        if not wanted or not wanted <= {c["case_id"] for c in cases}:
+            raise ValueError("pilot case IDs must be a nonempty subset of the split")
+        cases = [c for c in cases if c["case_id"] in wanted]
     folder = Path(folder).resolve()
     if not fixture_only and (not folder.is_relative_to("/content") or folder == Path("/content")):
         raise ValueError("new hosted run directory required")
     folder.mkdir(parents=True, exist_ok=False)
     protocol = {"version": RUN_VERSION, "union_version": VERSION, "fixture_only": fixture_only,
         "prior_folder": str(prior), "prior_protocol_sha256": prior_protocol["protocol_sha256"],
-        "split": split, "split_salt": SPLIT_SALT, "dev_families": dev_families, "family_split": families,
+        "split": split, "scope": "pilot_subset_exploratory" if case_ids is not None else "full_split",
+        "split_salt": SPLIT_SALT, "dev_families": dev_families, "family_split": families,
         "configs": {name: config.as_dict() for name, config in ladder.items()},
         "case_count": len(cases), "cases_sha256": digest(cases), "provider": runner.IDENTITY,
         "settings": runner.SETTINGS, "maximum_attempts": len(cases) * len(ladder),
@@ -299,6 +330,54 @@ def run(folder, transport, *, max_new_calls, workers=4, dense=None, fixture_only
         atomic(folder / "summary.json", result)
         atomic(folder / "last_invocation.json", {"new_calls": journal.new_calls, "errors": failures, "at_utc": utc()})
         return result
+
+
+def diagnose(prior, case_ids, *, ladder=None, dense=None, fixture_only=False):
+    """Build every config's managed request for finished prior cases; no model call.
+
+    Reports, per config, whether the raw selection is inside, how many items fit
+    compared with the frozen managed arm, the extra fact-key messages and the
+    request size against the ceiling.
+    """
+    if not fixture_only:
+        require_hosted()
+    prior, _, cases = _load_prior(prior, fixture_only)
+    ladder = DEFAULT_LADDER if ladder is None else ladder
+    dense = dense if dense is not None else DenseRetriever()
+    by_id = {c["case_id"]: c for c in cases}
+    mutex, rows_out = __import__("threading").Lock(), []
+    for cid in case_ids:
+        case = by_id[cid]
+        items = _prior_items(prior, case)
+        frozen = json.loads((prior / "cases" / cid / "managed_memory_rag.request.json").read_text())
+        row = {"case_id": cid, "items_available": None if items is None else len(items),
+               "frozen_managed_items": len(frozen.get("selection_audit", {}).get("managed_selected_item_ids", [])),
+               "frozen_managed_chars": frozen["trace"]["request_chars"], "configs": {}}
+        if items is not None:
+            for name, config in ladder.items():
+                plans = prepare_case_requests_union(case, runner.source_views(case), items, dense, mutex, config)
+                audit, trace = plans["managed_memory_rag"]["selection_audit"], plans["managed_memory_rag"]["trace"]
+                row["configs"][name] = {"raw_subset": audit["raw_selection_is_subset_of_managed"],
+                    "items_included": len(audit["union_item_ids"]),
+                    "items_rejected_for_budget": sum(r["reason"] == "OutboundBudgetError" for r in audit["union_item_rejections"]),
+                    "items_rejected_other": sum(r["reason"] != "OutboundBudgetError" for r in audit["union_item_rejections"]),
+                    "fact_key_messages": len(audit["union_fact_key_source_ids"]),
+                    "pinned_profile_items": len(audit["union_profile_item_ids"]),
+                    "request_chars": trace["request_chars"]}
+        rows_out.append(row)
+    def mean(values):
+        values = [v for v in values if v is not None]
+        return round(sum(values) / len(values), 2) if values else None
+    usable = [r for r in rows_out if r["configs"]]
+    summary = {"cases": len(rows_out), "cases_with_items": len(usable),
+               "ceiling_chars": runner.SETTINGS["max_answer_chars"],
+               "frozen_managed_mean_items": mean([r["frozen_managed_items"] for r in usable]),
+               "configs": {name: {key: mean([r["configs"][name][key] for r in usable])
+                                  for key in ("items_included", "items_rejected_for_budget", "items_rejected_other",
+                                              "fact_key_messages", "pinned_profile_items", "request_chars")}
+                           | {"raw_subset_all": all(r["configs"][name]["raw_subset"] for r in usable)}
+                           for name in ladder}}
+    return {"summary": summary, "cases": rows_out}
 
 
 def _answers(folder):
