@@ -8,7 +8,12 @@ The system connects source-supported personal memory to a CBT dialogue agent. It
 
 ## Memory architecture
 
-The implemented context-v4 path reads **processed, source-supported representations**, with the evidence needed to interpret them. It combines relevant case state, goals and action plans, conversation progress, intervention experience and tentative formulations under a complete request budget.
+The system has two lanes.
+
+- **Store and process** (after each turn): every message is saved verbatim with speaker and time; memory items are extracted, each citing the quote it came from, and checked; a lifecycle manager supersedes, updates, expires or deletes records. Memory is organised in layers: background profile, goals, emotion (stated vs. inferred from wording), task state and the agent's own hypotheses.
+- **Read and respond** (every user turn): after a safety check, the context builder fills a sourced memory block in a fixed order — the original messages that raw retrieval would select (never dropped), pinned profile items, up to three linked messages, ranked processed items, and CBT knowledge cards from reviewed textbooks — under a 24,000-character request limit. Each quoted message appears once and items cite it by a short identifier.
+
+The managed context therefore always contains the raw-retrieval arm's information plus the processed memory ([union layers](evaluation/cbt-memory-effect/architecture_union/README.md)). The CBT knowledge channel ([knowledge adapter](modules/agent-integration/knowledge_adapter_v2.py), [corpus](modules/cbt-knowledge-rag/README.md)) gives every evaluation arm identical cards, so it never explains a difference between arms.
 
 ![Source-supported memory readout and context assembly](docs/context-assembly-v4/readout-flow.svg)
 
@@ -46,15 +51,19 @@ The fixed denominator retains all 1,540 questions per condition, including four 
 
 ### MemoryAgentBench: 800-question evaluation
 
-| Condition | Conflict-task accuracy |
-| --- | ---: |
-| Short-term history | 10/800 (1.25%) |
-| Raw-history RAG | 419/800 (52.38%) |
-| Managed-memory RAG | 480/800 (60.00%) |
+| Condition | Conflict-task accuracy | Token F1 |
+| --- | ---: | ---: |
+| Short-term history | 10/800 (1.25%) | 1.3 |
+| Raw-history RAG | 419/800 (52.38%) | 52.6 |
+| Managed-memory RAG | 480/800 (60.00%) | 60.1 |
 
-The MAB conflict-task evaluation covers **800 questions per condition**. Managed memory improves accuracy over raw-history RAG by **7.625 percentage points**.
+The MAB conflict-task evaluation covers **800 questions per condition**. Managed memory improves accuracy over raw-history RAG by **7.625 percentage points** (68 questions gained, 7 lost), with the largest gain on multi-hop questions (44 → 96 correct).
 
-[Methods and full results](evaluation/objective-memory/results/full-20261105/README.md) · [MAB data policy](evaluation/selected-memory.json) · [Separate repair experiment](evaluation/objective-memory/results/v4-repair-20261105/README.md)
+[Methods and full results](evaluation/objective-memory/results/full-20261105/README.md) · [MAB data policy](evaluation/selected-memory.json)
+
+### CBT dialogue pilot (CACTUS)
+
+On 28 synthetic CBT dialogues the model wrote the counsellor's next turn. Absolute 1–5 quality ratings were at the ceiling for every arm, so a blinded judge compared each managed answer with the raw-RAG answer in both orders. For "which answer uses the client's history better", the full managed configuration had a net win of **+0.42** (95% family-cluster interval 0.17–0.65) over raw-history RAG. This is an exploratory development-split result; a preregistered test-split run is planned. [Union run and judge](evaluation/cbt-memory-effect/architecture_union/README.md)
 
 Each benchmark retains its own frozen protocol. Exact implementations, scoring rules and supporting records are documented with the corresponding experiment.
 

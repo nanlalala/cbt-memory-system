@@ -228,7 +228,6 @@ burden; time and repeat-question outcomes remain null.
 
 ## Review fixes and frozen-run migration
 
-The follow-up [review response](../../docs/review-response-20261105.md) records
 F01–F03 and L01–L07 separately from benchmark effectiveness. Patched objective
 protocols are v2.1 / v3.1; the extraction stage now uses a complete visible-history
 identity. Only cases with identical subject, source versions and complete visible
