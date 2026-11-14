@@ -52,7 +52,6 @@ contains five fictional scenarios, 22 assertions and six local
 mock calls. It includes historical-source-only retrieval, zero-hit/top-k controls
 and exact final outbound body/offset checks. The earlier four-scenario records
 are preserved at their original executable identities. Review repairs and their
-regressions are listed in the [remediation record](../docs/review-c757-remediation-20261109.md).
 
 The [control contract](../docs/cbt-memory-implementation-contract-v2.md) documents
 the underlying lifecycle and recovery rules. The current default response path
@@ -195,7 +194,6 @@ keys, environment variables, SQLite files or the full original dataset downloads
 Keep benchmark-derived archives under controlled access.
 
 These are historical-QA comparisons with unconfirmed source records, not evidence
-of improved CBT care. The [next validation plan](../docs/validation-next.md)
 separately covers CBT continuity and semantic memory, including source and
 annotation gates.
 

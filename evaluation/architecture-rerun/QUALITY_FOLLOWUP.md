@@ -2,7 +2,6 @@
 
 The original format-only scheduler is the historical route for a fully
 completed compatible checkout. For the observed partial CACTUS stop, use
-[C6_TERMINAL_RECOVERY.md](C6_TERMINAL_RECOVERY.md): it first migrates sources
 through the receipt chain under the new code hashes and explicit terminal
 response policy. Do not grade an old reader directly with changed journal
 bytes. The currently queued historical scheduler remains pinned to its old

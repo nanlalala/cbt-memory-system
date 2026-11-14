@@ -38,9 +38,7 @@ The genuine hosted notebook was opened read-only. Its UI showed Connect rather t
 
 ## Hosted model replications
 
-Three fictional questions cover a corrected practice target, a requested pause and a proposal without agreement. Selected sources and recent history were fixed in each matched set. The Qwen2.5-1.5B check scored 2/3 in every condition and missed the pause in each. All nine [development outcomes](qwen_pilot_observed.json) are retained.
 
-The [DeepSeek replication](deepseek_pilot_results.json) used the same nine messages arrays, a 6,000-character ceiling, temperature zero, thinking disabled and 64 output tokens per request. All nine intents matched individual completed receipts for `deepseek-v4-1-flash-260910` with `finish_reason=stop`. The frozen plan digest was `29f1f3215d9b42d1b8a1692406b8e77e5b5141185e10e088da9a9225ed81694f`.
 
 | Representation | Correct / planned | Input tokens | Output tokens |
 |---|---:|---:|---:|

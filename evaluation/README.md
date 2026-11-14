@@ -40,12 +40,12 @@ The primary comparator is capable raw-history RAG. A recent window is shared aux
 | [Architecture reruns](architecture-rerun/README.md) | Current implementation, original rosters and separately frozen executions |
 | [Migration matrix](ARCHITECTURE_MIGRATION_20261113.md) | Which outputs need new execution after the architecture change |
 | [CBT memory study](cbt-memory-effect/architecture_retest/README.md) | Domain-specific facts, continuity and source-bound automatic evaluation |
+| [Managed-union CBT pilot](cbt-memory-effect/architecture_union/README.md) | Raw-superset managed arm, knowledge channel, blinded pairwise judging |
 | [Published-label calibration](architecture-calibration/README.md) | Calibration only for the dimensions covered by released expert labels |
 | [MAB 800-question comparison](objective-memory/results/full-20261105/README.md) | Conflict-task accuracy, methods and complete result record |
 | [Objective-memory protocols](objective-memory/README.md) | Released-answer scoring and historical control comparisons |
 | [Memory-control replay](controlled-memory-v2/README.md) | Versioned software evidence for lifecycle and access controls |
-| [Earlier historical-QA workflow](end-to-end-dialogue/README.md) | Preserved earlier questions, responses and original model-assisted endpoint |
-| [Evidence-status checkpoint](../docs/evidence-status-20261105.md) | Historical pilot scope and evidence boundaries |
+| [Shared dialogue pipeline](end-to-end-dialogue/README.md) | Preparation, provider and scoring code used by the current runs |
 
 Existing results, failures and preparation costs are not overwritten to create a new score. Different dataset versions and scoring formats are not pooled into a preferred aggregate. Identical requests can share a source-bound receipt, while genuinely different requests require their own recorded execution. Automatic judgments are not described as human ratings or clinical efficacy.
 

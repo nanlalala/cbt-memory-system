@@ -66,7 +66,6 @@ calls and no efficacy conclusion.
 
 The previous 17-stage records above are retained. Review of `c757b0d` identified
 15 code/API defects and one acceptance blind spot; the bounded repair is recorded
-[finding by finding](../../docs/review-c757-remediation-20261109.md).
 The revised executable is `2d48a7917e17aa8e02fa13f419ebe35961e11d0f`.
 The Colab entry pins that executable; the later entry/documentation commit changes
 no runtime Python files or frozen model experiment.
@@ -86,7 +85,6 @@ old scripted demo and both pinned historical verifiers passed. An initial
 1,042-test run found a genuine concurrent checkpoint-read race; it was fixed
 without loosening ledger equality, then tested with deterministic interrupted
 commit windows. Reads do not advance storage revision or rewrite checkpoints.
-The [validation record](../../docs/review-c757-validation-20261109.json) retains
 hashes of the initial failure and final logs. GitHub CI may skip the optional
 reference-validator test in its default dependency environment; that status must
 be reported separately rather than silently added to the pass count.

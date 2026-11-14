@@ -30,7 +30,6 @@ Three conclusions require different evidence:
 
 Correctly recalling a homework statement is not proof that the homework was
 helpful, performed well, or changed symptoms. Professional approval of a response
-is not a patient outcome. See [CBT process and outcome evidence](cbt-process-outcome-evidence.md)
 for the separation between task fidelity, process quality and actual benefit.
 
 ## Design, population and allocation
@@ -210,7 +209,6 @@ Use a **research-specific, unvalidated** 0/1/2/`NA`/`UNRESOLVED` rubric; never c
 validated therapy competency score. The seven executable dimensions are
 `source_fidelity`, `current_goal_alignment`, `homework_review`, `guided_discovery`,
 `collaborative_action`, `progress_integration`, and `scope_and_safety`, with anchors in
-[the CBT evidence note](cbt-process-outcome-evidence.md). Zero means inappropriate
 or materially missing where required; one means partial/mixed; two means appropriate
 for the visible task; `NA` means not applicable with reason and `UNRESOLVED` means
 insufficient evidence with reason. Neither is zero or success. Source fidelity is
