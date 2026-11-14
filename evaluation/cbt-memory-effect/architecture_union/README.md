@@ -34,8 +34,19 @@ new is shown to the answer model.
   cannot be detected reliably at this stage.
 - New profile fields (background kind, core goal, risk, follow-ups): these need a
   new extraction contract version, because the contract file is hash-pinned.
-- A run harness. `prepare_case_requests_union(..., config=UnionConfig(...))` builds
-  the three requests; protocol, journal and scoring still have to be written.
+
+## Running
+
+`run.py` reuses a completed `architecture_retest` CACTUS run: its roster, its checked
+memory items and its no-RAG, raw and frozen managed answers. Only new managed
+answers are generated, one per config in `DEFAULT_LADDER`, through the same
+journal (identical requests share one receipt; nothing is resent). A case whose
+raw request does not rebuild byte-identically to the prior run is skipped and
+counted. Families are split deterministically into dev and test. `export_quality`
+puts the prior raw and frozen managed answers and every config into one blinded
+judge batch; `compare` reports paired differences against raw per R1–R5 with a
+family-clustered bootstrap. Use `Managed_Union_Layers_Colab.ipynb`; paid steps are
+off by default.
 
 Weights default to the product retriever's values and must be tuned on a
 development split only, then frozen before any test run.
